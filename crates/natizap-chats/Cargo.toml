@@ -1,0 +1,17 @@
+[package]
+name = "natizap-chats"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+async-channel.workspace = true
+chrono.workspace = true
+gpui.workspace = true
+natizap-protocol.workspace = true
+rusqlite.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true
