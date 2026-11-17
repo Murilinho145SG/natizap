@@ -5,5 +5,7 @@
 //! line, and a business's public details, fetched when it opens.
 
 mod panel;
+mod sections;
 
 pub use panel::{ProfileClosed, ProfilePanel};
+pub use sections::{ChatSettings, ChatSummary, DisappearingChosen, MuteToggled, Tile};

@@ -2,10 +2,12 @@ use std::sync::Arc;
 
 use gpui::prelude::*;
 use gpui::{
-    Context, Div, Entity, EventEmitter, FontWeight, Image, ImageFormat, ObjectFit, SharedString,
-    Window, div, img, px, rgb,
+    Context, Div, Entity, EventEmitter, FontWeight, Image, ImageFormat, ObjectFit, Pixels, Point,
+    SharedString, Window, div, img, px, rgb,
 };
 use natizap_protocol::{ChatId, Profile, Protocol};
+
+use crate::sections::{ChatSettings, ChatSummary, DisappearingChosen, MuteToggled};
 use natizap_ui::theme::{LINE, MUTED, PANEL, TEXT};
 use natizap_ui::{Button, ButtonVariant, Icon, avatar, separator, skeleton, verified_seal};
 
@@ -24,6 +26,10 @@ pub struct ProfilePanel {
     verified: bool,
     picture: Option<Arc<Image>>,
     profile: Option<Profile>,
+    pub(crate) summary: Option<ChatSummary>,
+    pub(crate) settings: Option<ChatSettings>,
+    /// Where the disappearing messages choices are open.
+    pub(crate) timer_menu: Option<Point<Pixels>>,
 }
 
 impl EventEmitter<ProfileClosed> for ProfilePanel {}
@@ -73,9 +79,28 @@ impl ProfilePanel {
             verified,
             picture: None,
             profile: None,
+            summary: None,
+            settings: None,
+            timer_menu: None,
         }
     }
+
+    /// Shows the chat's media and starred messages.
+    pub fn set_summary(&mut self, summary: ChatSummary, cx: &mut Context<Self>) {
+        self.summary = Some(summary);
+        cx.notify();
+    }
+
+    /// Shows how the chat is set up: notifications and disappearing
+    /// messages.
+    pub fn set_settings(&mut self, settings: ChatSettings, cx: &mut Context<Self>) {
+        self.settings = Some(settings);
+        cx.notify();
+    }
 }
+
+impl EventEmitter<MuteToggled> for ProfilePanel {}
+impl EventEmitter<DisappearingChosen> for ProfilePanel {}
 
 impl Render for ProfilePanel {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -167,7 +192,8 @@ impl Render for ProfilePanel {
                             .child(phone)
                     }))
                     .child(div().w_full().py_4().child(separator()))
-                    .child(self.details()),
+                    .child(self.details())
+                    .child(self.sections(cx)),
             )
     }
 }

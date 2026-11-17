@@ -6,7 +6,9 @@ use gpui::{
 use natizap_chats::{
     ChatList, ChatListView, ChatPicker, ChatRow, ChatSelected, ChatsPicked, PickerDismissed,
 };
-use natizap_contacts::{ProfileClosed, ProfilePanel};
+use natizap_contacts::{
+    ChatSettings, ChatSummary, DisappearingChosen, MuteToggled, ProfileClosed, ProfilePanel, Tile,
+};
 use natizap_messages::{
     ConversationView, ForwardRequested, MessageLog, MessageSent, OpenChat, PlayRequested,
     ProfileRequested,
@@ -186,10 +188,63 @@ impl Root {
                     cx.notify();
                 })
                 .detach();
+                root.fill_profile(&panel, &request.chat, cx);
                 root.profile = Some(panel);
                 cx.notify();
             },
         )
+        .detach();
+    }
+
+    /// Gives the profile of `chat` what the other features know of it: its
+    /// media and starred messages, and its notifications and disappearing
+    /// messages, which it can change.
+    fn fill_profile(&self, panel: &Entity<ProfilePanel>, chat: &ChatId, cx: &mut Context<Self>) {
+        let Some(row) = self
+            .chats
+            .read(cx)
+            .rows()
+            .iter()
+            .find(|row| row.addresses.contains(chat))
+            .cloned()
+        else {
+            return;
+        };
+        let settings = ChatSettings {
+            muted: row.muted,
+            disappearing: row.disappearing,
+        };
+        panel.update(cx, |panel, cx| panel.set_settings(settings, cx));
+
+        let reading = self.messages.read(cx).overview(row.addresses.to_vec(), cx);
+        let summarized = panel.downgrade();
+        cx.spawn(async move |_, cx| {
+            let overview = reading.await;
+            let summary = ChatSummary {
+                media: overview.media,
+                tiles: overview
+                    .recent
+                    .into_iter()
+                    .map(|tile| Tile {
+                        image: tile.image.map(Into::into),
+                        length: tile.length,
+                    })
+                    .collect(),
+                starred: overview.starred,
+            };
+            let _ = summarized.update(cx, |panel, cx| panel.set_summary(summary, cx));
+        })
+        .detach();
+
+        let (chats, id) = (self.chats.clone(), row.id.clone());
+        cx.subscribe(panel, move |_, _, MuteToggled(muted), cx| {
+            chats.read(cx).set_muted(&id, *muted, cx);
+        })
+        .detach();
+        let (chats, id) = (self.chats.clone(), row.id.clone());
+        cx.subscribe(panel, move |_, _, DisappearingChosen(timer), cx| {
+            chats.read(cx).set_disappearing(&id, *timer, cx);
+        })
         .detach();
     }
 
