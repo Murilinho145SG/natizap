@@ -5,11 +5,10 @@ use rusqlite::{Connection, Row, params, params_from_iter};
 
 use crate::message::{Delivery, Message, MessageChange};
 
-/// Bumped when the schema changes; older caches are rebuilt from WhatsApp.
-const SCHEMA_VERSION: i64 = 1;
-
-const SCHEMA: &str = "
-    CREATE TABLE messages (
+/// Schema history: `MIGRATIONS[n]` upgrades a store from version `n` to
+/// `n + 1`. Stores are migrated, never rebuilt: WhatsApp sends the history
+/// only once, right after linking, so a dropped store cannot be refilled.
+const MIGRATIONS: &[&str] = &["CREATE TABLE messages (
         chat TEXT NOT NULL,
         id TEXT NOT NULL,
         from_me INTEGER NOT NULL,
@@ -23,8 +22,7 @@ const SCHEMA: &str = "
         delivery TEXT NOT NULL,
         PRIMARY KEY (chat, id)
     );
-    CREATE INDEX messages_by_time ON messages (chat, sent_at);
-";
+    CREATE INDEX messages_by_time ON messages (chat, sent_at);"];
 
 /// Every message natizap has seen, on disk.
 #[derive(Debug)]
@@ -45,11 +43,11 @@ impl MessageStore {
 
     fn init(connection: Connection) -> rusqlite::Result<Self> {
         let version: i64 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-        if version != SCHEMA_VERSION {
-            // Messages only mirror what WhatsApp holds; an outdated cache is
-            // dropped instead of migrated.
+        let applied = usize::try_from(version).unwrap_or(0);
+        for (from, migration) in MIGRATIONS.iter().enumerate().skip(applied) {
             connection.execute_batch(&format!(
-                "DROP TABLE IF EXISTS messages; {SCHEMA} PRAGMA user_version = {SCHEMA_VERSION};"
+                "BEGIN; {migration} PRAGMA user_version = {}; COMMIT;",
+                from + 1
             ))?;
         }
         connection.pragma_update(None, "journal_mode", "WAL")?;
