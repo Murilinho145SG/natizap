@@ -53,7 +53,6 @@ expected split, for orientation:
 | Crate                      | Feature                                                    |
 | -------------------------- | ---------------------------------------------------------- |
 | `natizap-session`          | Device pairing (QR/code) and connection state.             |
-| `natizap-store`            | Local persistence of keys, chats and message history.      |
 | `natizap-chats`            | Chat list: ordering, unread counts, pin, archive, mute.    |
 | `natizap-messages`         | Conversation view: send, receive, reply, react, edit, polls. |
 | `natizap-media`            | Images, video, audio, voice notes, documents, stickers.    |
@@ -65,8 +64,11 @@ expected split, for orientation:
 | `natizap-notifications`    | Native desktop notifications.                              |
 | `natizap-ui`               | Shared GPUI theme and reusable components.                 |
 
-Each feature crate owns its GPUI views together with its logic (colocation);
-`natizap-ui` holds only components that several features share.
+Each feature crate owns its GPUI views, logic and local cache together
+(colocation); `natizap-ui` holds only components that several features
+share. Local data lives in the platform's per-user data directory, one
+file per owner (`session.db` for protocol keys, `chats.db` for the chat
+list).
 
 ## Architecture: one crate per feature
 
@@ -103,6 +105,7 @@ organizing rule of the codebase.
 | `natizap`         | binary  | Entry point; wires the feature crates together.          |
 | `natizap-session` | feature | Pairing lifecycle and the pairing screen.                 |
 | `natizap-protocol` | shared  | Owns the WhatsApp client; fans its events out to features. |
+| `natizap-chats`    | feature | Chat list synced from WhatsApp, cached in SQLite, and its view. |
 
 Keep this table current when a crate is added, renamed or removed.
 
