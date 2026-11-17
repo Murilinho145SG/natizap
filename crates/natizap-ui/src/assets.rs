@@ -82,6 +82,8 @@ icons! {
     Mic => "mic.svg",
     /// Minimize the window.
     Minimize => "minimize.svg",
+    /// More actions, in a menu.
+    More => "more.svg",
     /// Notifications silenced.
     Muted => "muted.svg",
     /// Pause what is playing.
