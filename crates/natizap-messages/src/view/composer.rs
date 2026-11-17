@@ -3,8 +3,8 @@
 
 use gpui::prelude::*;
 use gpui::{
-    Context, Div, MouseButton, PathPromptOptions, Stateful, Window, deferred, div, px, relative,
-    rgb, svg,
+    ClickEvent, Context, Div, MouseButton, PathPromptOptions, Stateful, Window, deferred, div, px,
+    relative, rgb, svg,
 };
 use natizap_protocol::ContentKind;
 use natizap_ui::theme::{LINE, MUTED, PANEL, RAISED, TEXT, glass};
@@ -26,9 +26,10 @@ impl ConversationView {
             .update(cx, |composer, cx| composer.clear(window, cx));
     }
 
-    /// Asks for files and sends them. Text in the composer becomes the first
-    /// file's caption, and a reply being composed applies to it.
-    fn attach(window: &mut Window, cx: &mut Context<Self>) {
+    /// Asks for files and sends them, as documents when `as_document`. Text
+    /// in the composer becomes the first file's caption, and a reply being
+    /// composed applies to it.
+    pub(super) fn attach(as_document: bool, window: &mut Window, cx: &mut Context<Self>) {
         let picking = cx.prompt_for_paths(PathPromptOptions {
             files: true,
             directories: false,
@@ -52,8 +53,9 @@ impl ConversationView {
                         .update(cx, |composer, cx| composer.clear(window, cx));
                 }
                 let reply = this.replying.take().map(|replying| replying.reply);
-                this.log
-                    .update(cx, |log, cx| log.send_files(paths, caption, reply, cx));
+                this.log.update(cx, |log, cx| {
+                    log.send_files(paths, caption, reply, as_document, cx);
+                });
             });
         })
         .detach();
@@ -174,7 +176,10 @@ impl ConversationView {
                             .size(ButtonSize::Large)
                             .round()
                             .tooltip("Attach")
-                            .on_click(cx.listener(|_, _, window, cx| Self::attach(window, cx))),
+                            .on_click(cx.listener(|this, event: &ClickEvent, _, cx| {
+                                this.attach_at = Some(event.position());
+                                cx.notify();
+                            })),
                     )
                     .child(
                         Button::new("emoji")

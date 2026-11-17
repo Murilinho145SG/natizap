@@ -7,10 +7,11 @@ use chrono::Local;
 use gpui::{App, AppContext as _, Context, Entity, EventEmitter, SharedString, Task};
 use natizap_protocol::whatsapp_rust::prelude::Event;
 use natizap_protocol::{
-    Anchor, ChatId, ContentKind, Forward, GroupInfo, Protocol, Quote, Reply, Unread,
+    ActionError, Anchor, ChatId, ContentKind, Extra, Forward, GroupInfo, Protocol, Quote, Reply,
+    Sent, Unread,
 };
 
-use crate::items::{Item, Members};
+use crate::items::{Item, Members, summary};
 use crate::media::{Fetch, PosterJob};
 use crate::message::{Delivery, Message, MessageChange};
 use crate::overview::{self, ChatOverview};
@@ -280,6 +281,39 @@ impl MessageLog {
         });
 
         let sending = self.protocol.read(cx).send_text(&chat, text, reply, cx);
+        self.settle(chat, local_id, sending, cx);
+    }
+
+    /// Sends shared contacts or a poll to the open chat.
+    pub fn send_extra(&mut self, extra: Extra, cx: &mut Context<Self>) {
+        let Some((chat, local_id, sent_at)) = self.next_outgoing() else {
+            return;
+        };
+        let mut message = outgoing_message(&chat, &local_id, sent_at, None);
+        message.kind = match extra {
+            Extra::Cards(_) => ContentKind::Contact,
+            Extra::Poll(_) => ContentKind::Poll,
+        };
+        message.extra = Some(extra.clone());
+        cx.emit(MessageSent {
+            chat: chat.clone(),
+            text: summary(&message),
+            sent_at,
+        });
+        self.send_input(Input::from(MessageChange::Sending(message)));
+        let sending = self.protocol.read(cx).send_extra(&chat, extra, cx);
+        self.settle(chat, local_id, sending, cx);
+    }
+
+    /// Files what becomes of the message sent as `local_id` once WhatsApp
+    /// answers `sending`.
+    fn settle(
+        &self,
+        chat: ChatId,
+        local_id: String,
+        sending: Task<Result<Sent, ActionError>>,
+        cx: &mut Context<Self>,
+    ) {
         let inputs = self.inputs.clone();
         cx.background_spawn(async move {
             let change = match sending.await {

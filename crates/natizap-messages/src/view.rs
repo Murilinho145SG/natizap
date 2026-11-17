@@ -17,11 +17,14 @@ use crate::bubble::render_item;
 use crate::emoji::{EmojiPicked, EmojiPicker};
 use crate::items::{Bubble, Item, MediaView};
 use crate::log::{MessageLog, OpenChat, SoundReady};
+use crate::poll_composer::PollComposer;
 use crate::voice::Voices;
 
+mod attach;
 mod composer;
 mod message_menu;
 
+pub use attach::ContactsRequested;
 use message_menu::MessagePopup;
 
 /// Width of the column a community's announcements read in.
@@ -53,6 +56,10 @@ pub struct ConversationView {
     /// The message being reacted to from the full picker, and where.
     reaction_picker: Option<(SharedString, Point<Pixels>)>,
     reaction_emojis: Entity<EmojiPicker>,
+    /// Where the plus button's menu is open.
+    attach_at: Option<Point<Pixels>>,
+    /// A poll being written.
+    poll_draft: Option<Entity<PollComposer>>,
 }
 
 /// The user clicked the conversation's header to see the chat's profile.
@@ -76,6 +83,8 @@ pub struct ChatRequested {
 }
 
 impl EventEmitter<ChatRequested> for ConversationView {}
+
+impl EventEmitter<ContactsRequested> for ConversationView {}
 
 /// The message the next one will reply to, as the composer shows it.
 #[derive(Debug, Clone)]
@@ -146,6 +155,8 @@ impl ConversationView {
             ticking: false,
             message_popup: None,
             reaction_picker: None,
+            attach_at: None,
+            poll_draft: None,
             reaction_emojis,
         }
     }
@@ -337,7 +348,7 @@ impl ConversationView {
 }
 
 impl Render for ConversationView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let open = self.log.read(cx).open_chat().map(|chat| chat.id.clone());
         let picture = open.and_then(|chat| {
             self.pictures
@@ -437,6 +448,8 @@ impl Render for ConversationView {
             .child(self.composer(cx))
             .children(self.message_popup(cx))
             .children(self.reaction_picker(cx))
+            .children(self.attach_menu(cx))
+            .children(self.poll_dialog(window, cx))
             .into_any_element()
     }
 }

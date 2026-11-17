@@ -20,6 +20,7 @@ impl MessageLog {
         paths: Vec<PathBuf>,
         mut caption: Option<String>,
         mut reply: Option<Reply>,
+        as_document: bool,
         cx: &mut Context<Self>,
     ) {
         for path in paths {
@@ -32,8 +33,8 @@ impl MessageLog {
             cx.spawn(async move |this, cx| {
                 let prepared = cx
                     .background_spawn(async move {
-                        let outgoing =
-                            prepare(&path, caption).map_err(|error| error.to_string())?;
+                        let outgoing = prepare(&path, caption, as_document)
+                            .map_err(|error| error.to_string())?;
                         // The bubble shows and plays this copy, the very
                         // bytes sent, from the start.
                         let kept = Fetch {

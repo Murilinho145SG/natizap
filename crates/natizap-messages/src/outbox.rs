@@ -39,7 +39,9 @@ pub(crate) fn kind_of(path: &Path) -> (ContentKind, &'static str) {
         .and_then(|extension| extension.to_str())
         .map_or_default(str::to_ascii_lowercase);
     match extension.as_str() {
-        "jpg" | "jpeg" | "png" | "webp" => (ContentKind::Photo, "image/jpeg"),
+        "jpg" | "jpeg" => (ContentKind::Photo, "image/jpeg"),
+        "png" => (ContentKind::Photo, "image/png"),
+        "webp" => (ContentKind::Photo, "image/webp"),
         "mp4" | "m4v" => (ContentKind::Video, "video/mp4"),
         "mp3" => (ContentKind::Audio, "audio/mpeg"),
         "m4a" | "aac" => (ContentKind::Audio, "audio/mp4"),
@@ -65,7 +67,8 @@ pub(crate) fn kind_of(path: &Path) -> (ContentKind, &'static str) {
     }
 }
 
-/// Reads `path` and makes it ready to send with `caption`.
+/// Reads `path` and makes it ready to send with `caption`, as a document
+/// when `as_document`, whatever it is, so pictures keep their quality.
 ///
 /// Blocks on file reads and decoding; run it off the UI thread.
 ///
@@ -73,11 +76,20 @@ pub(crate) fn kind_of(path: &Path) -> (ContentKind, &'static str) {
 ///
 /// Fails when the file cannot be read, is too large, or is a photo that
 /// cannot be decoded.
-pub(crate) fn prepare(path: &Path, caption: Option<String>) -> Result<Outgoing, PrepareError> {
+pub(crate) fn prepare(
+    path: &Path,
+    caption: Option<String>,
+    as_document: bool,
+) -> Result<Outgoing, PrepareError> {
     if std::fs::metadata(path)?.len() > MAX_BYTES {
         return Err(PrepareError::TooLarge);
     }
     let (kind, mime) = kind_of(path);
+    let kind = if as_document {
+        ContentKind::Document
+    } else {
+        kind
+    };
     let file_name = path
         .file_name()
         .map(|name| name.to_string_lossy().into_owned());
@@ -102,6 +114,7 @@ pub(crate) fn prepare(path: &Path, caption: Option<String>) -> Result<Outgoing, 
             outgoing.thumbnail = Some(jpeg(&picture.thumbnail(PREVIEW_SIDE, PREVIEW_SIDE), 70)?);
             // WhatsApp shows photos as JPEG; others are converted, as the
             // phone does.
+            "image/jpeg".clone_into(&mut outgoing.mime);
             outgoing.bytes = if image::guess_format(&bytes).ok() == Some(ImageFormat::Jpeg) {
                 bytes
             } else {
@@ -162,7 +175,7 @@ mod tests {
         let path = dir.join("shot.png");
         image::RgbImage::from_pixel(400, 200, image::Rgb([200, 80, 20])).save(&path)?;
 
-        let outgoing = prepare(&path, Some("look".into()))?;
+        let outgoing = prepare(&path, Some("look".into()), false)?;
         assert_eq!(outgoing.kind, ContentKind::Photo);
         assert_eq!(outgoing.mime, "image/jpeg");
         assert_eq!(image::guess_format(&outgoing.bytes)?, ImageFormat::Jpeg);
@@ -179,10 +192,23 @@ mod tests {
         std::fs::create_dir_all(&dir)?;
         let path = dir.join("Nota fiscal.pdf");
         std::fs::write(&path, b"%PDF-1.4")?;
-        let outgoing = prepare(&path, None)?;
+        let outgoing = prepare(&path, None, false)?;
         assert_eq!(outgoing.kind, ContentKind::Document);
         assert_eq!(outgoing.file_name.as_deref(), Some("Nota fiscal.pdf"));
         assert_eq!(outgoing.bytes, b"%PDF-1.4");
+        Ok(())
+    }
+
+    #[test]
+    fn a_picture_sent_as_a_document_stays_untouched() -> TestResult {
+        let dir = std::env::temp_dir().join("natizap-outbox");
+        std::fs::create_dir_all(&dir)?;
+        let path = dir.join("scan.png");
+        image::RgbImage::from_pixel(40, 20, image::Rgb([1, 2, 3])).save(&path)?;
+        let outgoing = prepare(&path, None, true)?;
+        assert_eq!(outgoing.kind, ContentKind::Document);
+        assert_eq!(outgoing.mime, "image/png");
+        assert_eq!(outgoing.bytes, std::fs::read(&path)?);
         Ok(())
     }
 }
