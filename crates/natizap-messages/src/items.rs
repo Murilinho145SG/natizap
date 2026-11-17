@@ -50,6 +50,9 @@ pub(crate) struct Bubble {
     pub(crate) delivery: Delivery,
     /// Starred by this account.
     pub(crate) starred: bool,
+    /// Who wrote it, as message keys name them: only in groups, and only
+    /// for others' messages.
+    pub(crate) participant: Option<ChatId>,
     /// Starts a new burst, so it gets more space above it.
     pub(crate) starts_burst: bool,
 }
@@ -265,6 +268,7 @@ fn bubble(
         time: sent.format("%H:%M").to_string().into(),
         delivery: message.delivery,
         starred: message.starred,
+        participant: message.sender.clone().filter(|_| !message.from_me),
         starts_burst,
     }
 }

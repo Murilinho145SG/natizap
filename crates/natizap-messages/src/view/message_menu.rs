@@ -116,7 +116,7 @@ impl ConversationView {
             let (id, from_me, sender) = (
                 bubble.id.clone(),
                 bubble.from_me,
-                bubble.reply.sender.clone(),
+                bubble.participant.clone(),
             );
             menu = menu.action(
                 Icon::Pin,
@@ -139,7 +139,7 @@ impl ConversationView {
             let (id, from_me, sender, starred) = (
                 bubble.id.to_string(),
                 bubble.from_me,
-                bubble.reply.sender.clone(),
+                bubble.participant.clone(),
                 bubble.starred,
             );
             menu = menu.action(
@@ -185,7 +185,7 @@ impl ConversationView {
         let (id, from_me, sender) = (
             bubble.id.to_string(),
             bubble.from_me,
-            bubble.reply.sender.clone(),
+            bubble.participant.clone(),
         );
         {
             let (view, id) = (view.clone(), id.clone());
@@ -231,7 +231,7 @@ impl ConversationView {
             let (id, from_me, sender) = (
                 bubble.id.to_string(),
                 bubble.from_me,
-                bubble.reply.sender.clone(),
+                bubble.participant.clone(),
             );
             dialog = dialog.action(pin.label(), ButtonVariant::Secondary, move |_, cx| {
                 let _ = view.update(cx, |view, cx| {
