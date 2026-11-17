@@ -68,6 +68,15 @@ pub struct ProfileRequested {
 
 impl EventEmitter<ProfileRequested> for ConversationView {}
 
+/// The user clicked a phone number in a message, to chat with it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChatRequested {
+    /// The number's phone-number address.
+    pub phone: ChatId,
+}
+
+impl EventEmitter<ChatRequested> for ConversationView {}
+
 /// The message the next one will reply to, as the composer shows it.
 #[derive(Debug, Clone)]
 struct Replying {

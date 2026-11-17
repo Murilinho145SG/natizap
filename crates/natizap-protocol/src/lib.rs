@@ -20,7 +20,7 @@ pub use actions::{ActionError, Disappearing, PinFor, Reply, Sent, Unread};
 pub use chat::ChatId;
 pub use content::{Content, ContentKind, Quote};
 pub use group::GroupInfo;
-pub use markup::{Mark, Marked};
+pub use markup::{LinkKind, Mark, Marked};
 pub use media::{HdThumbnail, Media};
 pub use outgoing::{Forward, Outgoing, SentMedia};
 pub use profile::{Business, Profile};

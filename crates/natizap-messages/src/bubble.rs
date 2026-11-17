@@ -2,20 +2,19 @@
 
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, App, Div, FontStyle, FontWeight, HighlightStyle, MouseButton, SharedString,
-    Stateful, StrikethroughStyle, StyledText, WeakEntity, div, px, relative, rgb, rgba, svg,
+    AnyElement, App, Div, FontWeight, MouseButton, SharedString, Stateful, WeakEntity, div, px,
+    relative, rgb, rgba, svg,
 };
-use natizap_protocol::{ContentKind, Mark};
-use natizap_ui::theme::{
-    ALERT, DEEP, LINE, MINT, MUTED, OUTGOING, PANEL, RAISED, SCRIM, TEXT, glass,
-};
+use natizap_protocol::ContentKind;
+use natizap_ui::theme::{ALERT, LINE, MINT, MUTED, OUTGOING, PANEL, RAISED, SCRIM, TEXT, glass};
 use natizap_ui::{Button, ButtonSize, ButtonVariant, Icon, avatar};
 use std::path::PathBuf;
 
-use crate::items::{Body, Bubble, Item, MediaView, Text};
+use crate::items::{Body, Bubble, Item, MediaView};
 use crate::media_view::render_media;
 use crate::message::Delivery;
 use crate::quote::{name_and_phone, quoted};
+use crate::rich_text::rich_text;
 use crate::view::ConversationView;
 use crate::voice::VoiceUi;
 use crate::voice_view::render_voice;
@@ -193,7 +192,7 @@ fn shape(bubble: &Bubble, view: &WeakEntity<ConversationView>, voice: &VoiceUi) 
                     .text_color(rgb(MUTED))
                     .child(media)
             }))
-            .children(text.as_ref().map(styled_text)),
+            .children(text.as_ref().map(|text| rich_text(&bubble.id, text, view))),
     };
 
     padded(bubble)
@@ -240,7 +239,7 @@ fn picture_bubble(
                     .flex_wrap()
                     .items_end()
                     .gap_x_2()
-                    .child(styled_text(text).into_any_element())
+                    .child(rich_text(&bubble.id, text, view))
                     .child(meta.ml_auto().pb(px(1.0))),
             ),
         ),
@@ -457,36 +456,4 @@ fn delivery_mark(delivery: Delivery) -> AnyElement {
         .size(px(15.0))
         .text_color(rgb(color))
         .into_any_element()
-}
-
-fn styled_text(text: &Text) -> StyledText {
-    let highlights = text.marks.iter().map(|(range, mark)| {
-        let style = match mark {
-            Mark::Bold => HighlightStyle {
-                font_weight: Some(FontWeight::BOLD),
-                ..Default::default()
-            },
-            Mark::Italic => HighlightStyle {
-                font_style: Some(FontStyle::Italic),
-                ..Default::default()
-            },
-            Mark::Strikethrough => HighlightStyle {
-                strikethrough: Some(StrikethroughStyle {
-                    thickness: px(1.0),
-                    color: None,
-                }),
-                ..Default::default()
-            },
-            Mark::Code => HighlightStyle {
-                background_color: Some(rgb(DEEP).into()),
-                ..Default::default()
-            },
-            Mark::Quote => HighlightStyle {
-                color: Some(rgb(MUTED).into()),
-                ..Default::default()
-            },
-        };
-        (range.clone(), style)
-    });
-    StyledText::new(text.text.clone()).with_highlights(highlights)
 }
