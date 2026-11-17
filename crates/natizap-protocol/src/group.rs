@@ -22,6 +22,9 @@ pub struct GroupInfo {
     pub community_announcements: bool,
     /// This account is among the admins.
     pub own_admin: bool,
+    /// Each member's phone-number address by their other address, so a
+    /// member writing under a LID still shows a number.
+    pub phones: Vec<(ChatId, ChatId)>,
 }
 
 pub(crate) async fn info(client: Arc<Client>, group: Jid) -> Result<GroupInfo, ActionError> {
@@ -49,6 +52,20 @@ pub(crate) async fn info(client: Arc<Client>, group: Jid) -> Result<GroupInfo, A
         .flatten()
         .map(|jid| ChatId::new(&jid.to_string()))
         .collect();
+    let phones = metadata
+        .participants
+        .iter()
+        .filter_map(|participant| {
+            let phone = ChatId::new(&participant.phone_number.as_ref()?.to_string());
+            Some(
+                [Some(&participant.jid), participant.lid.as_ref()]
+                    .into_iter()
+                    .flatten()
+                    .map(move |address| (ChatId::new(&address.to_string()), phone.clone())),
+            )
+        })
+        .flatten()
+        .collect();
     let own: Vec<ChatId> = [client.pn(), client.lid()]
         .into_iter()
         .flatten()
@@ -59,5 +76,6 @@ pub(crate) async fn info(client: Arc<Client>, group: Jid) -> Result<GroupInfo, A
         admins,
         admins_only: metadata.is_announcement,
         community_announcements: metadata.is_default_sub_group,
+        phones,
     })
 }
