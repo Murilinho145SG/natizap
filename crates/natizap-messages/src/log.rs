@@ -5,7 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use chrono::Local;
 use gpui::{AppContext as _, Context, Entity, EventEmitter, SharedString, Task};
 use natizap_protocol::whatsapp_rust::prelude::Event;
-use natizap_protocol::{ChatId, ContentKind, Protocol, Unread};
+use natizap_protocol::{ChatId, ContentKind, Protocol, Quote, Reply, Unread};
 
 use crate::items::{Item, items};
 use crate::message::{Delivery, Message, MessageChange};
@@ -122,9 +122,9 @@ impl MessageLog {
         cx.notify();
     }
 
-    /// Sends `text` to the open chat. It shows at once and is marked as
-    /// failed if WhatsApp does not accept it.
-    pub fn send(&mut self, text: String, cx: &mut Context<Self>) {
+    /// Sends `text` to the open chat, optionally replying to a message. It
+    /// shows at once and is marked as failed if WhatsApp does not accept it.
+    pub(crate) fn send(&mut self, text: String, reply: Option<Reply>, cx: &mut Context<Self>) {
         let Some(chat) = self.open.as_ref().map(|open| open.id.clone()) else {
             return;
         };
@@ -144,6 +144,11 @@ impl MessageLog {
             edited: false,
             deleted: false,
             delivery: Delivery::Sending,
+            quote: reply.as_ref().map(|reply| Quote {
+                id: reply.id.clone(),
+                sender: reply.sender.clone(),
+                summary: Some(reply.text.clone()),
+            }),
         })));
         cx.emit(MessageSent {
             chat: chat.clone(),
@@ -151,7 +156,7 @@ impl MessageLog {
             sent_at,
         });
 
-        let sending = self.protocol.read(cx).send_text(&chat, text, cx);
+        let sending = self.protocol.read(cx).send_text(&chat, text, reply, cx);
         let inputs = self.inputs.clone();
         cx.background_spawn(async move {
             let change = match sending.await {

@@ -73,6 +73,7 @@ fn live_change(inbound: &InboundMessage) -> Option<MessageChange> {
         sent_at: inbound.info.timestamp.timestamp(),
         kind: content.kind,
         text: content.text,
+        quote: content.quote,
         edited: false,
         deleted: false,
         delivery: Delivery::Sent,
@@ -125,6 +126,7 @@ fn history_message(chat: &ChatId, info: &wa::WebMessageInfo) -> Option<MessageCh
             .unwrap_or(0),
         kind: content.kind,
         text: content.text,
+        quote: content.quote,
         edited: false,
         deleted: false,
         delivery: if from_me {

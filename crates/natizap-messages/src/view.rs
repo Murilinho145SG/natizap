@@ -1,19 +1,15 @@
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, Context, Div, Entity, FocusHandle, Focusable as _, FontStyle, FontWeight,
-    HighlightStyle, ListAlignment, ListState, SharedString, StrikethroughStyle, StyledText, Window,
-    div, list, px, relative, rgb, svg,
+    Context, Div, Entity, FocusHandle, Focusable as _, FontWeight, ListAlignment, ListState,
+    SharedString, Window, div, list, px, rgb, svg,
 };
-use natizap_ui::theme::{
-    ALERT, DEEP, HONEY, HONEY_INK, LINE, MINT, MUTED, OUTGOING, PANE, PANEL, RAISED, TEXT,
-};
-use natizap_ui::{Icon, Submitted, TextInput, avatar};
+use natizap_protocol::Reply;
+use natizap_ui::theme::{HONEY, HONEY_INK, LINE, MUTED, PANE, PANEL, RAISED, TEXT};
+use natizap_ui::{Icon, Submitted, TextInput, avatar, name_color};
 
-use natizap_protocol::Mark;
-
-use crate::items::{Body, Bubble, Item, Text};
+use crate::bubble::{quote_block, render_item};
+use crate::items::Bubble;
 use crate::log::MessageLog;
-use crate::message::Delivery;
 
 /// The conversation pane: header, messages and composer for the open chat,
 /// or a hint to pick one.
@@ -23,6 +19,15 @@ pub struct ConversationView {
     composer: Entity<TextInput>,
     messages: ListState,
     shown_chat: Option<SharedString>,
+    replying: Option<Replying>,
+}
+
+/// The message the next one will reply to, as the composer shows it.
+#[derive(Debug, Clone)]
+struct Replying {
+    reply: Reply,
+    author: SharedString,
+    color: u32,
 }
 
 impl ConversationView {
@@ -42,6 +47,7 @@ impl ConversationView {
             composer,
             messages: ListState::new(0, ListAlignment::Bottom, px(600.0)),
             shown_chat: None,
+            replying: None,
         }
     }
 
@@ -51,7 +57,8 @@ impl ConversationView {
         if text.is_empty() {
             return;
         }
-        self.log.update(cx, |log, cx| log.send(text, cx));
+        let reply = self.replying.take().map(|replying| replying.reply);
+        self.log.update(cx, |log, cx| log.send(text, reply, cx));
         self.composer
             .update(cx, |composer, cx| composer.clear(window, cx));
     }
@@ -66,12 +73,122 @@ impl ConversationView {
         };
         if open != self.shown_chat {
             self.shown_chat = open;
+            self.replying = None;
             // A newly opened chat is where the user is about to type.
             let focus: FocusHandle = self.composer.focus_handle(cx);
             window.focus(&focus, cx);
         }
         self.messages.reset(count);
         cx.notify();
+    }
+}
+
+impl ConversationView {
+    /// Makes the next message a reply to `bubble`'s.
+    pub(crate) fn reply_to(&mut self, bubble: &Bubble, cx: &mut Context<Self>) {
+        let reply = bubble.reply.clone();
+        let (author, color) = match (&reply.sender, &bubble.sender) {
+            (None, _) => ("You".into(), HONEY),
+            (Some(_), Some(group_sender)) => group_sender.clone(),
+            (Some(sender), None) => {
+                let title = self.log.read(cx).open_chat().map(|chat| chat.title.clone());
+                (title.unwrap_or_default(), name_color(sender.as_str()))
+            }
+        };
+        self.replying = Some(Replying {
+            reply,
+            author,
+            color,
+        });
+        cx.notify();
+    }
+
+    fn composer(&self, cx: &mut Context<Self>) -> Div {
+        div()
+            .flex_none()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .px_4()
+            .py_3()
+            .bg(rgb(PANEL))
+            .border_t_1()
+            .border_color(rgb(LINE))
+            .children(self.replying.as_ref().map(|replying| {
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(
+                        quote_block(
+                            replying.author.clone(),
+                            replying.color,
+                            replying.reply.text.clone().into(),
+                        )
+                        .flex_1()
+                        .min_w_0(),
+                    )
+                    .child(
+                        div()
+                            .id("cancel-reply")
+                            .size(px(28.0))
+                            .flex_none()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded_full()
+                            .cursor_pointer()
+                            .hover(|style| style.bg(rgb(RAISED)))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.replying = None;
+                                cx.notify();
+                            }))
+                            .child(
+                                svg()
+                                    .path(Icon::Close.path())
+                                    .size(px(16.0))
+                                    .text_color(rgb(MUTED)),
+                            ),
+                    )
+            }))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_3()
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .px_4()
+                            .py_2p5()
+                            .rounded_full()
+                            .bg(rgb(RAISED))
+                            .text_size(px(14.5))
+                            .text_color(rgb(TEXT))
+                            .child(self.composer.clone()),
+                    )
+                    .child(
+                        div()
+                            .id("send")
+                            .size(px(40.0))
+                            .flex_none()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded_full()
+                            .bg(rgb(HONEY))
+                            .cursor_pointer()
+                            .hover(|style| style.opacity(0.9))
+                            .on_click(cx.listener(|this, _, window, cx| this.send(window, cx)))
+                            .child(
+                                svg()
+                                    .path(Icon::Send.path())
+                                    .size(px(18.0))
+                                    .text_color(rgb(HONEY_INK)),
+                            ),
+                    ),
+            )
     }
 }
 
@@ -82,6 +199,7 @@ impl Render for ConversationView {
             return placeholder().into_any_element();
         };
         let items = log.items().clone();
+        let view = cx.weak_entity();
         let subtitle = if chat.id.is_group() {
             Some("Group".to_owned())
         } else {
@@ -136,231 +254,15 @@ impl Render for ConversationView {
                 list(self.messages.clone(), move |index, _, _| {
                     items
                         .get(index)
-                        .map_or_else(|| div().into_any_element(), render_item)
+                        .map_or_else(|| div().into_any_element(), |item| render_item(item, &view))
                 })
                 .flex_1()
                 .px(px(56.0))
                 .py_3(),
             )
-            .child(composer(&self.composer, cx))
+            .child(self.composer(cx))
             .into_any_element()
     }
-}
-
-fn render_item(item: &Item) -> AnyElement {
-    match item {
-        Item::Day(label) => div()
-            .w_full()
-            .flex()
-            .justify_center()
-            .pt_4()
-            .pb_2()
-            .child(
-                div()
-                    .px_3()
-                    .py_1()
-                    .rounded_full()
-                    .bg(rgb(PANEL))
-                    .text_size(px(12.0))
-                    .text_color(rgb(MUTED))
-                    .child(label.clone()),
-            )
-            .into_any_element(),
-        Item::Bubble(bubble) => render_bubble(bubble),
-    }
-}
-
-fn render_bubble(bubble: &Bubble) -> AnyElement {
-    let meta = div()
-        .flex()
-        .items_center()
-        .justify_end()
-        .gap_1p5()
-        .text_size(px(11.0))
-        .text_color(rgb(MUTED))
-        .when(
-            matches!(bubble.body, Body::Content { edited: true, .. }),
-            |meta| meta.child("edited"),
-        )
-        .child(bubble.time.clone())
-        .when(bubble.from_me, |meta| {
-            meta.child(delivery_mark(bubble.delivery))
-        });
-
-    let body = match &bubble.body {
-        Body::Deleted => div()
-            .italic()
-            .text_color(rgb(MUTED))
-            .child("This message was deleted"),
-        Body::Content { media, text, .. } => div()
-            .flex()
-            .flex_col()
-            .gap_0p5()
-            .children(media.map(|media| {
-                div()
-                    .text_size(px(12.5))
-                    .font_weight(FontWeight::MEDIUM)
-                    .text_color(rgb(MUTED))
-                    .child(media)
-            }))
-            .children(text.as_ref().map(styled_text)),
-    };
-
-    let shape = div()
-        .max_w(relative(0.72))
-        .flex()
-        .flex_col()
-        .gap_0p5()
-        .px(px(10.0))
-        .py(px(6.0))
-        .rounded(px(14.0))
-        .bg(rgb(if bubble.from_me { OUTGOING } else { RAISED }))
-        .text_size(px(14.5))
-        .line_height(relative(1.4))
-        .map(|shape| match (bubble.starts_burst, bubble.from_me) {
-            // The corner nearest the sender stays sharp on a burst's first
-            // bubble, pointing at who said it.
-            (true, true) => shape.rounded_tr(px(4.0)),
-            (true, false) => shape.rounded_tl(px(4.0)),
-            _ => shape,
-        })
-        .children(bubble.author.clone().map(|(name, color)| {
-            div()
-                .text_size(px(13.0))
-                .font_weight(FontWeight::SEMIBOLD)
-                .text_color(rgb(color))
-                .child(name)
-        }))
-        // Time sits beside short text and drops below text that fills the
-        // bubble, as in WhatsApp.
-        .child(
-            div()
-                .flex()
-                .flex_wrap()
-                .items_end()
-                .gap_x_2()
-                // Without a max width the text keeps its unwrapped width and
-                // overflows the bubble.
-                .child(body.min_w_0().max_w_full())
-                .child(meta.ml_auto().pb(px(1.0))),
-        );
-
-    div()
-        .id(bubble.id.clone())
-        .w_full()
-        .flex()
-        .pt(px(if bubble.starts_burst { 8.0 } else { 2.0 }))
-        .when(bubble.from_me, Styled::justify_end)
-        .child(shape)
-        .into_any_element()
-}
-
-/// Where a sent message stands, as WhatsApp shows it: a clock while
-/// sending, one check when sent, two when delivered, tinted once read.
-fn delivery_mark(delivery: Delivery) -> AnyElement {
-    let (icon, color) = match delivery {
-        Delivery::Failed => {
-            return div()
-                .flex()
-                .items_center()
-                .gap_1()
-                .text_color(rgb(ALERT))
-                .child(
-                    svg()
-                        .path(Icon::Alert.path())
-                        .size(px(13.0))
-                        .text_color(rgb(ALERT)),
-                )
-                .child("Not sent")
-                .into_any_element();
-        }
-        Delivery::Sending => (Icon::Clock, MUTED),
-        Delivery::Sent => (Icon::Check, MUTED),
-        Delivery::Delivered => (Icon::Checks, MUTED),
-        Delivery::Read => (Icon::Checks, MINT),
-    };
-    svg()
-        .path(icon.path())
-        .size(px(15.0))
-        .text_color(rgb(color))
-        .into_any_element()
-}
-
-fn styled_text(text: &Text) -> StyledText {
-    let highlights = text.marks.iter().map(|(range, mark)| {
-        let style = match mark {
-            Mark::Bold => HighlightStyle {
-                font_weight: Some(FontWeight::BOLD),
-                ..Default::default()
-            },
-            Mark::Italic => HighlightStyle {
-                font_style: Some(FontStyle::Italic),
-                ..Default::default()
-            },
-            Mark::Strikethrough => HighlightStyle {
-                strikethrough: Some(StrikethroughStyle {
-                    thickness: px(1.0),
-                    color: None,
-                }),
-                ..Default::default()
-            },
-            Mark::Code => HighlightStyle {
-                background_color: Some(rgb(DEEP).into()),
-                ..Default::default()
-            },
-            Mark::Quote => HighlightStyle {
-                color: Some(rgb(MUTED).into()),
-                ..Default::default()
-            },
-        };
-        (range.clone(), style)
-    });
-    StyledText::new(text.text.clone()).with_highlights(highlights)
-}
-
-fn composer(input: &Entity<TextInput>, cx: &mut Context<ConversationView>) -> Div {
-    div()
-        .flex_none()
-        .flex()
-        .items_center()
-        .gap_3()
-        .px_4()
-        .py_3()
-        .bg(rgb(PANEL))
-        .border_t_1()
-        .border_color(rgb(LINE))
-        .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .px_4()
-                .py_2p5()
-                .rounded_full()
-                .bg(rgb(RAISED))
-                .text_size(px(14.5))
-                .text_color(rgb(TEXT))
-                .child(input.clone()),
-        )
-        .child(
-            div()
-                .id("send")
-                .size(px(40.0))
-                .flex_none()
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded_full()
-                .bg(rgb(HONEY))
-                .cursor_pointer()
-                .hover(|style| style.opacity(0.9))
-                .on_click(cx.listener(|this, _, window, cx| this.send(window, cx)))
-                .child(
-                    svg()
-                        .path(Icon::Send.path())
-                        .size(px(18.0))
-                        .text_color(rgb(HONEY_INK)),
-                ),
-        )
 }
 
 fn placeholder() -> Div {

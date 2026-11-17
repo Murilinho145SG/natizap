@@ -4,6 +4,7 @@
 //! [`MessageLog`] stores history and live messages and keeps the open chat
 //! current; [`ConversationView`] renders it with a composer.
 
+mod bubble;
 mod items;
 mod log;
 mod message;

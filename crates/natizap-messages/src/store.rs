@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use natizap_protocol::{ChatId, ContentKind, Unread};
+use natizap_protocol::{ChatId, ContentKind, Quote, Unread};
 use rusqlite::{Connection, Row, params, params_from_iter};
 
 use crate::message::{Delivery, Message, MessageChange};
@@ -8,7 +8,8 @@ use crate::message::{Delivery, Message, MessageChange};
 /// Schema history: `MIGRATIONS[n]` upgrades a store from version `n` to
 /// `n + 1`. Stores are migrated, never rebuilt: WhatsApp sends the history
 /// only once, right after linking, so a dropped store cannot be refilled.
-const MIGRATIONS: &[&str] = &["CREATE TABLE messages (
+const MIGRATIONS: &[&str] = &[
+    "CREATE TABLE messages (
         chat TEXT NOT NULL,
         id TEXT NOT NULL,
         from_me INTEGER NOT NULL,
@@ -22,7 +23,11 @@ const MIGRATIONS: &[&str] = &["CREATE TABLE messages (
         delivery TEXT NOT NULL,
         PRIMARY KEY (chat, id)
     );
-    CREATE INDEX messages_by_time ON messages (chat, sent_at);"];
+    CREATE INDEX messages_by_time ON messages (chat, sent_at);",
+    "ALTER TABLE messages ADD COLUMN quoted_id TEXT;
+    ALTER TABLE messages ADD COLUMN quoted_sender TEXT;
+    ALTER TABLE messages ADD COLUMN quoted_summary TEXT;",
+];
 
 /// Every message natizap has seen, on disk.
 #[derive(Debug)]
@@ -62,9 +67,12 @@ impl MessageStore {
                 // History and live delivery can repeat a message; the first
                 // copy wins, and edits and deletions are applied on top.
                 MessageChange::Received(message) | MessageChange::Sending(message) => {
+                    let quote = message.quote.as_ref();
                     tx.prepare_cached(
-                        "INSERT OR IGNORE INTO messages VALUES
-                         (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                        "INSERT OR IGNORE INTO messages (chat, id, from_me, sender, author, sent_at,
+                         kind, text, edited, deleted, delivery, quoted_id, quoted_sender,
+                         quoted_summary)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
                     )?
                     .execute(params![
                         message.chat.as_str(),
@@ -78,6 +86,9 @@ impl MessageStore {
                         message.edited,
                         message.deleted,
                         message.delivery.name(),
+                        quote.map(|quote| &quote.id),
+                        quote.and_then(|quote| quote.sender.as_ref()).map(ChatId::as_str),
+                        quote.and_then(|quote| quote.summary.as_ref()),
                     ])?;
                 }
                 MessageChange::Edited { chat, id, text } => {
@@ -174,6 +185,18 @@ impl MessageStore {
     }
 }
 
+fn quote_from_row(row: &Row<'_>) -> rusqlite::Result<Option<Quote>> {
+    let Some(id) = row.get::<_, Option<String>>("quoted_id")? else {
+        return Ok(None);
+    };
+    let sender: Option<String> = row.get("quoted_sender")?;
+    Ok(Some(Quote {
+        id,
+        sender: sender.map(|jid| ChatId::new(&jid)),
+        summary: row.get("quoted_summary")?,
+    }))
+}
+
 fn message_from_row(row: &Row<'_>) -> rusqlite::Result<Message> {
     let kind: String = row.get("kind")?;
     let delivery: String = row.get("delivery")?;
@@ -191,6 +214,7 @@ fn message_from_row(row: &Row<'_>) -> rusqlite::Result<Message> {
         edited: row.get("edited")?,
         deleted: row.get("deleted")?,
         delivery: Delivery::from_name(&delivery).unwrap_or(Delivery::Sent),
+        quote: quote_from_row(row)?,
     })
 }
 
@@ -211,6 +235,7 @@ mod tests {
             edited: false,
             deleted: false,
             delivery: Delivery::Sent,
+            quote: None,
         }
     }
 

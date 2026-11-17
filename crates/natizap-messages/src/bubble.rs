@@ -1,0 +1,273 @@
+//! How each row of a conversation looks.
+
+use gpui::prelude::*;
+use gpui::{
+    AnyElement, App, Div, FontStyle, FontWeight, HighlightStyle, MouseButton, SharedString,
+    StrikethroughStyle, StyledText, WeakEntity, div, px, relative, rgb, svg,
+};
+use natizap_protocol::Mark;
+use natizap_ui::Icon;
+use natizap_ui::theme::{ALERT, DEEP, MINT, MUTED, OUTGOING, PANEL, RAISED};
+
+use crate::items::{Body, Bubble, Item, Text};
+use crate::message::Delivery;
+use crate::view::ConversationView;
+
+pub(crate) fn render_item(item: &Item, view: &WeakEntity<ConversationView>) -> AnyElement {
+    match item {
+        Item::Day(label) => div()
+            .w_full()
+            .flex()
+            .justify_center()
+            .pt_4()
+            .pb_2()
+            .child(
+                div()
+                    .px_3()
+                    .py_1()
+                    .rounded_full()
+                    .bg(rgb(PANEL))
+                    .text_size(px(12.0))
+                    .text_color(rgb(MUTED))
+                    .child(label.clone()),
+            )
+            .into_any_element(),
+        Item::Bubble(bubble) => render_bubble(bubble, view),
+    }
+}
+
+fn render_bubble(bubble: &Bubble, view: &WeakEntity<ConversationView>) -> AnyElement {
+    let shape = shape(bubble);
+    let reply_button = reply_button(bubble, view);
+    div()
+        .id(bubble.id.clone())
+        .group("bubble")
+        .w_full()
+        .flex()
+        .items_center()
+        .gap_1()
+        .pt(px(if bubble.starts_burst { 8.0 } else { 2.0 }))
+        .when(bubble.from_me, Styled::justify_end)
+        .on_mouse_down(MouseButton::Right, {
+            let (view, bubble) = (view.clone(), bubble.clone());
+            move |_, _, cx| reply_to(&view, &bubble, cx)
+        })
+        .map(|row| {
+            // The reply button sits on the open side of the bubble.
+            if bubble.from_me {
+                row.child(reply_button).child(shape)
+            } else {
+                row.child(shape).child(reply_button)
+            }
+        })
+        .into_any_element()
+}
+
+/// The bubble itself: author, quote, content and time.
+fn shape(bubble: &Bubble) -> Div {
+    let meta = div()
+        .flex()
+        .items_center()
+        .justify_end()
+        .gap_1p5()
+        .text_size(px(11.0))
+        .text_color(rgb(MUTED))
+        .when(
+            matches!(bubble.body, Body::Content { edited: true, .. }),
+            |meta| meta.child("edited"),
+        )
+        .child(bubble.time.clone())
+        .when(bubble.from_me, |meta| {
+            meta.child(delivery_mark(bubble.delivery))
+        });
+
+    let body = match &bubble.body {
+        Body::Deleted => div()
+            .italic()
+            .text_color(rgb(MUTED))
+            .child("This message was deleted"),
+        Body::Content { media, text, .. } => div()
+            .flex()
+            .flex_col()
+            .gap_0p5()
+            .children(media.map(|media| {
+                div()
+                    .text_size(px(12.5))
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(rgb(MUTED))
+                    .child(media)
+            }))
+            .children(text.as_ref().map(styled_text)),
+    };
+
+    div()
+        .max_w(relative(0.72))
+        .flex()
+        .flex_col()
+        .gap_1()
+        .px(px(10.0))
+        .py(px(6.0))
+        .rounded(px(14.0))
+        .bg(rgb(if bubble.from_me { OUTGOING } else { RAISED }))
+        .text_size(px(14.5))
+        .line_height(relative(1.4))
+        .map(|shape| match (bubble.starts_burst, bubble.from_me) {
+            // The corner nearest the sender stays sharp on a burst's first
+            // bubble, pointing at who said it.
+            (true, true) => shape.rounded_tr(px(4.0)),
+            (true, false) => shape.rounded_tl(px(4.0)),
+            _ => shape,
+        })
+        .children(bubble.author.clone().map(|(name, color)| {
+            div()
+                .text_size(px(13.0))
+                .font_weight(FontWeight::SEMIBOLD)
+                .text_color(rgb(color))
+                .child(name)
+        }))
+        .children(
+            bubble
+                .quote
+                .as_ref()
+                .map(|quote| quote_block(quote.author.clone(), quote.color, quote.text.clone())),
+        )
+        // Time sits beside short text and drops below text that fills the
+        // bubble, as in WhatsApp.
+        .child(
+            div()
+                .flex()
+                .flex_wrap()
+                .items_end()
+                .gap_x_2()
+                // Without a max width the text keeps its unwrapped width and
+                // overflows the bubble.
+                .child(body.min_w_0().max_w_full())
+                .child(meta.ml_auto().pb(px(1.0))),
+        )
+}
+
+fn reply_button(bubble: &Bubble, view: &WeakEntity<ConversationView>) -> impl IntoElement {
+    div()
+        .id("reply")
+        .size(px(28.0))
+        .flex_none()
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded_full()
+        .cursor_pointer()
+        .invisible()
+        .group_hover("bubble", Styled::visible)
+        .hover(|style| style.bg(rgb(RAISED)))
+        .on_click({
+            let (view, bubble) = (view.clone(), bubble.clone());
+            move |_, _, cx| reply_to(&view, &bubble, cx)
+        })
+        .child(
+            svg()
+                .path(Icon::Reply.path())
+                .size(px(16.0))
+                .text_color(rgb(MUTED)),
+        )
+}
+
+fn reply_to(view: &WeakEntity<ConversationView>, bubble: &Bubble, cx: &mut App) {
+    // The view is gone only while the window closes.
+    let _ = view.update(cx, |view, cx| view.reply_to(bubble, cx));
+}
+
+/// A quoted message: who wrote it over one line of what they said, marked
+/// by a bar in their color.
+pub(crate) fn quote_block(author: SharedString, color: u32, text: SharedString) -> Div {
+    div()
+        .flex()
+        .rounded(px(8.0))
+        .overflow_hidden()
+        .bg(rgb(DEEP))
+        .child(div().w(px(3.0)).flex_none().bg(rgb(color)))
+        .child(
+            div()
+                .min_w_0()
+                .flex()
+                .flex_col()
+                .px_2()
+                .py_1()
+                .child(
+                    div()
+                        .text_size(px(12.5))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(rgb(color))
+                        .child(author),
+                )
+                .child(
+                    div()
+                        .truncate()
+                        .text_size(px(13.0))
+                        .text_color(rgb(MUTED))
+                        .child(text),
+                ),
+        )
+}
+
+/// Where a sent message stands, as WhatsApp shows it: a clock while
+/// sending, one check when sent, two when delivered, tinted once read.
+fn delivery_mark(delivery: Delivery) -> AnyElement {
+    let (icon, color) = match delivery {
+        Delivery::Failed => {
+            return div()
+                .flex()
+                .items_center()
+                .gap_1()
+                .text_color(rgb(ALERT))
+                .child(
+                    svg()
+                        .path(Icon::Alert.path())
+                        .size(px(13.0))
+                        .text_color(rgb(ALERT)),
+                )
+                .child("Not sent")
+                .into_any_element();
+        }
+        Delivery::Sending => (Icon::Clock, MUTED),
+        Delivery::Sent => (Icon::Check, MUTED),
+        Delivery::Delivered => (Icon::Checks, MUTED),
+        Delivery::Read => (Icon::Checks, MINT),
+    };
+    svg()
+        .path(icon.path())
+        .size(px(15.0))
+        .text_color(rgb(color))
+        .into_any_element()
+}
+
+fn styled_text(text: &Text) -> StyledText {
+    let highlights = text.marks.iter().map(|(range, mark)| {
+        let style = match mark {
+            Mark::Bold => HighlightStyle {
+                font_weight: Some(FontWeight::BOLD),
+                ..Default::default()
+            },
+            Mark::Italic => HighlightStyle {
+                font_style: Some(FontStyle::Italic),
+                ..Default::default()
+            },
+            Mark::Strikethrough => HighlightStyle {
+                strikethrough: Some(StrikethroughStyle {
+                    thickness: px(1.0),
+                    color: None,
+                }),
+                ..Default::default()
+            },
+            Mark::Code => HighlightStyle {
+                background_color: Some(rgb(DEEP).into()),
+                ..Default::default()
+            },
+            Mark::Quote => HighlightStyle {
+                color: Some(rgb(MUTED).into()),
+                ..Default::default()
+            },
+        };
+        (range.clone(), style)
+    });
+    StyledText::new(text.text.clone()).with_highlights(highlights)
+}

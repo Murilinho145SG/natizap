@@ -1,4 +1,4 @@
-use natizap_protocol::{ChatId, ContentKind};
+use natizap_protocol::{ChatId, ContentKind, Quote};
 
 /// How far a message this account sent has gone. Received messages are
 /// always [`Delivery::Sent`].
@@ -70,6 +70,8 @@ pub(crate) struct Message {
     pub(crate) deleted: bool,
     /// Delivery state of messages sent from here.
     pub(crate) delivery: Delivery,
+    /// The message this one replies to.
+    pub(crate) quote: Option<Quote>,
 }
 
 /// One fact learned about the messages.

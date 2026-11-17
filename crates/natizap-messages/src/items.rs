@@ -1,10 +1,12 @@
 use chrono::{DateTime, Datelike as _, Local, NaiveDate, TimeZone as _};
 use gpui::SharedString;
+use std::collections::HashMap;
 use std::ops::Range;
 use std::sync::Arc;
 
-use natizap_protocol::{ContentKind, Mark, Marked};
+use natizap_protocol::{ChatId, ContentKind, Mark, Marked, Reply};
 use natizap_ui::name_color;
+use natizap_ui::theme::{HONEY, MUTED};
 
 use crate::message::{Delivery, Message};
 
@@ -17,7 +19,7 @@ pub(crate) enum Item {
     /// Separates days: "Today", "Yesterday", a weekday or a date.
     Day(SharedString),
     /// A message.
-    Bubble(Bubble),
+    Bubble(Box<Bubble>),
 }
 
 /// A message, ready to render.
@@ -29,6 +31,12 @@ pub(crate) struct Bubble {
     /// group.
     pub(crate) author: Option<(SharedString, u32)>,
     pub(crate) body: Body,
+    /// The message it replies to.
+    pub(crate) quote: Option<QuotePreview>,
+    /// What to quote when replying to it.
+    pub(crate) reply: Reply,
+    /// Who wrote it and their color, in groups; shown when replying.
+    pub(crate) sender: Option<(SharedString, u32)>,
     pub(crate) time: SharedString,
     pub(crate) delivery: Delivery,
     /// Starts a new burst, so it gets more space above it.
@@ -51,6 +59,14 @@ pub(crate) enum Body {
     },
 }
 
+/// The quoted message shown at the top of a reply.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct QuotePreview {
+    pub(crate) author: SharedString,
+    pub(crate) color: u32,
+    pub(crate) text: SharedString,
+}
+
 /// Message text with its markup read: what to show and how to style it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Text {
@@ -70,6 +86,10 @@ impl Text {
 
 /// Lays out `messages` (oldest first) as rows, with day separators.
 pub(crate) fn items(messages: &[Message], now: DateTime<Local>) -> Vec<Item> {
+    let by_id: HashMap<&str, &Message> = messages
+        .iter()
+        .map(|message| (message.id.as_str(), message))
+        .collect();
     let mut items = Vec::with_capacity(messages.len() + 8);
     let mut previous: Option<(&Message, NaiveDate)> = None;
     for message in messages {
@@ -87,24 +107,63 @@ pub(crate) fn items(messages: &[Message], now: DateTime<Local>) -> Vec<Item> {
                     || previous.sender != message.sender
                     || message.sent_at - previous.sent_at > BURST_GAP_SECONDS
             });
-        items.push(Item::Bubble(bubble(message, sent, starts_burst)));
+        items.push(Item::Bubble(Box::new(bubble(
+            message,
+            sent,
+            starts_burst,
+            &by_id,
+        ))));
         previous = Some((message, day));
     }
     items
 }
 
-fn bubble(message: &Message, sent: DateTime<Local>, starts_burst: bool) -> Bubble {
-    let author = message
-        .sender
+fn bubble(
+    message: &Message,
+    sent: DateTime<Local>,
+    starts_burst: bool,
+    by_id: &HashMap<&str, &Message>,
+) -> Bubble {
+    let sender: Option<(SharedString, u32)> = message.sender.as_ref().map(|sender| {
+        (
+            sender_name(message, sender).into(),
+            name_color(sender.as_str()),
+        )
+    });
+    let author = sender.clone().filter(|_| starts_burst);
+    let quote = message
+        .quote
         .as_ref()
-        .filter(|_| starts_burst)
-        .map(|sender| {
-            let name = message
-                .author
-                .clone()
-                .or_else(|| sender.phone_number())
-                .unwrap_or_else(|| sender.as_str().to_owned());
-            (name.into(), name_color(sender.as_str()))
+        .map(|quote| match by_id.get(quote.id.as_str()) {
+            Some(quoted) => {
+                let (author, color) = if quoted.from_me {
+                    ("You".to_owned(), HONEY)
+                } else {
+                    let sender = quoted.sender.as_ref().unwrap_or(&quoted.chat);
+                    (sender_name(quoted, sender), name_color(sender.as_str()))
+                };
+                QuotePreview {
+                    author: author.into(),
+                    color,
+                    text: summary(quoted).into(),
+                }
+            }
+            // The quoted message is older than what is loaded, or was never
+            // synced: fall back to what the reply carried.
+            None => QuotePreview {
+                author: quote
+                    .sender
+                    .as_ref()
+                    .and_then(ChatId::phone_number)
+                    .unwrap_or_else(|| "Message".to_owned())
+                    .into(),
+                color: MUTED,
+                text: quote
+                    .summary
+                    .as_deref()
+                    .map_or_default(|text| Marked::parse(text).text)
+                    .into(),
+            },
         });
     Bubble {
         id: message.id.clone().into(),
@@ -119,9 +178,40 @@ fn bubble(message: &Message, sent: DateTime<Local>, starts_burst: bool) -> Bubbl
                 edited: message.edited,
             }
         },
+        quote,
+        sender,
+        reply: Reply {
+            id: message.id.clone(),
+            // In 1:1 chats only the other person can be the sender.
+            sender: (!message.from_me).then(|| {
+                message
+                    .sender
+                    .clone()
+                    .unwrap_or_else(|| message.chat.clone())
+            }),
+            text: summary(message),
+        },
         time: sent.format("%H:%M").to_string().into(),
         delivery: message.delivery,
         starts_burst,
+    }
+}
+
+fn sender_name(message: &Message, sender: &ChatId) -> String {
+    message
+        .author
+        .clone()
+        .or_else(|| sender.phone_number())
+        .unwrap_or_else(|| sender.as_str().to_owned())
+}
+
+/// One plain line describing a message.
+fn summary(message: &Message) -> String {
+    let text = message.text.as_deref().map(|text| Marked::parse(text).text);
+    match (text, message.kind) {
+        (Some(text), ContentKind::Text) => text,
+        (Some(caption), kind) => format!("{}: {caption}", kind.label()),
+        (None, kind) => kind.label().to_owned(),
     }
 }
 
@@ -137,8 +227,6 @@ fn day_label(day: NaiveDate, now: DateTime<Local>) -> String {
 
 #[cfg(test)]
 mod tests {
-    use natizap_protocol::ChatId;
-
     use super::*;
 
     fn at(day: u32, hour: u32, minute: u32) -> i64 {
@@ -161,6 +249,7 @@ mod tests {
             edited: false,
             deleted: false,
             delivery: Delivery::Sent,
+            quote: None,
         }
     }
 

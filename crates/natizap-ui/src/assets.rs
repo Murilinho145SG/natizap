@@ -65,6 +65,8 @@ icons! {
     Muted => "muted.svg",
     /// Pinned to the top.
     Pin => "pin.svg",
+    /// Reply to a message.
+    Reply => "reply.svg",
     /// Restore a maximized window.
     Restore => "restore.svg",
     /// Send a message.
