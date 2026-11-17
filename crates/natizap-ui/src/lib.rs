@@ -28,6 +28,7 @@ pub use components::menu::Menu;
 pub use components::progress::progress;
 pub use components::separator::separator;
 pub use components::skeleton::skeleton;
+pub use components::switch::Switch;
 pub use components::tooltip::Tooltip;
 pub use frame::window_frame;
 pub use gallery::Gallery;

@@ -12,6 +12,7 @@ use crate::components::menu::Menu;
 use crate::components::progress::progress;
 use crate::components::separator::separator;
 use crate::components::skeleton::skeleton;
+use crate::components::switch::Switch;
 use crate::theme::{DISPLAY_FONT, MUTED, PANE, TEXT, base_font};
 use crate::{Icon, avatar, window_frame};
 
@@ -19,6 +20,7 @@ use crate::{Icon, avatar, window_frame};
 #[derive(Debug, Default)]
 pub struct Gallery {
     dialog_open: bool,
+    switch_on: bool,
 }
 
 impl Render for Gallery {
@@ -48,6 +50,21 @@ impl Render for Gallery {
                         .round()
                         .tooltip("Reply"),
                 ),
+            ))
+            .child(section(
+                "Switch",
+                row()
+                    .child(Switch::new("switch-demo", self.switch_on).on_toggle({
+                        let gallery = cx.weak_entity();
+                        move |on, _, cx| {
+                            let _ = gallery.update(cx, |gallery, cx| {
+                                gallery.switch_on = on;
+                                cx.notify();
+                            });
+                        }
+                    }))
+                    .child(Switch::new("switch-on", true))
+                    .child(Switch::new("switch-off", false)),
             ))
             .child(section("Avatar", avatars()))
             .child(section("Separator", div().w(px(320.0)).child(separator())))
