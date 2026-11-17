@@ -4,13 +4,11 @@
 use std::rc::Rc;
 
 use gpui::prelude::*;
-use gpui::{
-    App, ClickEvent, FontWeight, SharedString, Window, anchored, deferred, div, point, px, rgb,
-    rgba,
-};
+use gpui::{App, ClickEvent, FontWeight, SharedString, Window, div, px, rgb};
 
 use crate::components::button::{Button, ButtonVariant};
-use crate::theme::{MUTED, PANEL, SCRIM, TEXT, glass};
+use crate::components::dialog::dialog;
+use crate::theme::{MUTED, PANEL, TEXT, glass};
 
 type Handler = Rc<dyn Fn(&mut Window, &mut App)>;
 
@@ -70,7 +68,6 @@ impl AlertDialog {
 impl RenderOnce for AlertDialog {
     fn render(self, window: &mut Window, _: &mut App) -> impl IntoElement {
         let dismiss = Rc::clone(&self.on_dismiss);
-        let viewport = window.viewport_size();
         let panel = div()
             .id("alert-dialog")
             .w(px(380.0))
@@ -109,21 +106,6 @@ impl RenderOnce for AlertDialog {
                         },
                     )),
             );
-        deferred(
-            anchored().position(point(px(0.0), px(0.0))).child(
-                div()
-                    .id("alert-scrim")
-                    .w(viewport.width)
-                    .h(viewport.height)
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .bg(rgba(SCRIM))
-                    .occlude()
-                    .on_click(move |_, window, cx| dismiss(window, cx))
-                    .child(panel),
-            ),
-        )
-        .with_priority(2)
+        dialog(window, panel, move |window, cx| dismiss(window, cx))
     }
 }

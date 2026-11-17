@@ -1,0 +1,33 @@
+//! A modal layer: content centered over the dimmed window.
+
+use gpui::prelude::*;
+use gpui::{App, Window, anchored, deferred, div, point, px, rgba};
+
+use crate::theme::SCRIM;
+
+/// `content` centered over the whole window, dimmed behind it. Pressing the
+/// dimmed part runs `on_dismiss`; `content` should occlude itself so presses
+/// on it do not count.
+pub fn dialog(
+    window: &Window,
+    content: impl IntoElement,
+    on_dismiss: impl Fn(&mut Window, &mut App) + 'static,
+) -> impl IntoElement {
+    let viewport = window.viewport_size();
+    deferred(
+        anchored().position(point(px(0.0), px(0.0))).child(
+            div()
+                .id("dialog-scrim")
+                .w(viewport.width)
+                .h(viewport.height)
+                .flex()
+                .items_center()
+                .justify_center()
+                .bg(rgba(SCRIM))
+                .occlude()
+                .on_click(move |_, window, cx| on_dismiss(window, cx))
+                .child(content),
+        ),
+    )
+    .with_priority(2)
+}
