@@ -7,6 +7,8 @@
 
 mod assets;
 mod avatar;
+mod emoji;
+mod emoji_table;
 mod frame;
 mod input;
 mod input_element;
@@ -14,5 +16,6 @@ pub mod theme;
 
 pub use assets::{Assets, Icon, load_fonts};
 pub use avatar::{avatar, name_color};
+pub use emoji::emoji;
 pub use frame::window_frame;
 pub use input::{Submitted, TextInput, bind_text_input_keys};
