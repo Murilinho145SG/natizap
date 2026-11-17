@@ -76,7 +76,9 @@ Features talk to each other only through the binary: the chat list emits
 `ChatList` it is on screen; `MessageLog` emits `MessageSent`, which the
 binary forwards to the chat list's preview, and `PlayRequested` for videos,
 which the binary answers by showing a `PlayerView`. Voice notes and audio
-files play inside their bubble; both players share `natizap-playback`.
+files play inside their bubble; both players share `natizap-playback`. `MessageLog`
+also emits `ForwardRequested`, which the binary answers with the chats'
+`ChatPicker`, handing the chosen chats back to `MessageLog::forward`.
 
 ## Architecture: one crate per feature
 

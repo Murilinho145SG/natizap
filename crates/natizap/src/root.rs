@@ -1,7 +1,11 @@
 use gpui::prelude::*;
 use gpui::{AnyElement, Context, Div, Entity, FontWeight, Window, div, px, rgb};
-use natizap_chats::{ChatList, ChatListView, ChatSelected};
-use natizap_messages::{ConversationView, MessageLog, MessageSent, OpenChat, PlayRequested};
+use natizap_chats::{
+    ChatList, ChatListView, ChatPicker, ChatSelected, ChatsPicked, PickerDismissed,
+};
+use natizap_messages::{
+    ConversationView, ForwardRequested, MessageLog, MessageSent, OpenChat, PlayRequested,
+};
 use natizap_player::{PlayerClosed, PlayerView};
 use natizap_profiles::ProfilePictures;
 use natizap_session::{PairingView, Session, SessionState};
@@ -18,6 +22,8 @@ pub(crate) struct Root {
     conversation: Entity<ConversationView>,
     /// The video or audio playing over the chats, if any.
     player: Option<Entity<PlayerView>>,
+    /// Choosing chats to forward a message to.
+    forwarding: Option<Entity<ChatPicker>>,
 }
 
 impl Root {
@@ -79,6 +85,39 @@ impl Root {
         )
         .detach();
 
+        let (forward_chats, forward_pictures) = (chats.clone(), pictures.clone());
+        let forward_messages = messages.clone();
+        cx.subscribe_in(
+            messages,
+            window,
+            move |root, _, request: &ForwardRequested, window, cx| {
+                let picker = cx.new(|cx| {
+                    ChatPicker::new(
+                        "Forward to",
+                        forward_chats.clone(),
+                        forward_pictures.clone(),
+                        window,
+                        cx,
+                    )
+                });
+                let (messages, request) = (forward_messages.clone(), request.clone());
+                cx.subscribe(&picker, move |root, _, ChatsPicked(chats), cx| {
+                    messages.update(cx, |log, cx| log.forward(&request, chats.clone(), cx));
+                    root.forwarding = None;
+                    cx.notify();
+                })
+                .detach();
+                cx.subscribe(&picker, |root, _, _: &PickerDismissed, cx| {
+                    root.forwarding = None;
+                    cx.notify();
+                })
+                .detach();
+                root.forwarding = Some(picker);
+                cx.notify();
+            },
+        )
+        .detach();
+
         Self {
             session,
             chats,
@@ -86,6 +125,7 @@ impl Root {
             chat_list,
             conversation,
             player: None,
+            forwarding: None,
         }
     }
 
@@ -121,6 +161,7 @@ impl Root {
                     .child(self.chat_list.clone()),
             )
             .child(div().flex_1().h_full().child(self.conversation.clone()))
+            .children(self.forwarding.clone())
             // Chats stay readable offline, so the news floats over them
             // instead of replacing them.
             .when(reconnecting, |content| {
