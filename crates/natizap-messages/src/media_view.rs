@@ -7,18 +7,18 @@ use std::time::Duration;
 use gpui::prelude::*;
 use gpui::{
     AnyElement, App, Bounds, Div, FontWeight, ImageSource, MouseButton, MouseDownEvent, ObjectFit,
-    Pixels, WeakEntity, canvas, div, img, px, rgb, svg,
+    Pixels, WeakEntity, canvas, div, img, px, relative, rgb, svg,
 };
 use natizap_protocol::ContentKind;
 use natizap_ui::Icon;
-use natizap_ui::theme::{DEEP, MUTED, TEXT};
+use natizap_ui::theme::{DEEP, HONEY, HONEY_INK, MUTED, TEXT};
 
 use crate::items::MediaView;
 use crate::view::ConversationView;
 use crate::voice::VoiceState;
 
-/// Bars drawn for a note whose sender sent no waveform.
-const FLAT_BARS: usize = 48;
+/// Bars a waveform is drawn with.
+const BARS: usize = 36;
 
 /// The attachment of a bubble: an image for photos and stickers, a preview
 /// with a play button for videos, a player for voice notes and audio, and a
@@ -154,27 +154,24 @@ fn render_voice(
             let _ = view.update(cx, |view, cx| view.toggle_voice(&media, cx));
         }
     };
+    let waveform = media
+        .fetch
+        .media
+        .waveform
+        .as_deref()
+        .filter(|levels| !levels.is_empty());
 
     div()
-        .w(px(260.0))
+        .w(px(250.0))
         .flex()
         .items_center()
         .gap_3()
-        .py_1()
-        .child(
-            div()
-                .id("voice-toggle")
-                .flex_none()
-                .cursor_pointer()
-                .when(voice.is_some_and(|voice| voice.loading), |button| {
-                    button.opacity(0.5)
-                })
-                .on_click(toggle)
-                .child(round_icon(
-                    if playing { Icon::Pause } else { Icon::Play },
-                    36.0,
-                )),
-        )
+        .pt_1()
+        .child(voice_button(
+            playing,
+            voice.is_some_and(|voice| voice.loading),
+            toggle,
+        ))
         .child(
             div()
                 .flex_1()
@@ -186,7 +183,7 @@ fn render_voice(
                     div()
                         .id("waveform")
                         .relative()
-                        .h(px(26.0))
+                        .h(px(28.0))
                         .flex()
                         .items_center()
                         .justify_between()
@@ -200,56 +197,139 @@ fn render_voice(
                             .absolute()
                             .size_full(),
                         )
-                        .children(bars(media.fetch.media.waveform.as_deref(), progress)),
+                        .map(|row| match waveform {
+                            Some(levels) => row.children(bars(levels, progress)),
+                            None => row.child(plain_track(progress)),
+                        })
+                        .child(
+                            div()
+                                .absolute()
+                                .top(px(8.0))
+                                .left(relative(progress))
+                                .ml(px(-6.0))
+                                .size(px(12.0))
+                                .rounded_full()
+                                .bg(rgb(TEXT)),
+                        ),
                 )
                 .child(
                     div()
+                        .h(px(18.0))
                         .flex()
                         .items_center()
                         .justify_between()
                         .text_size(px(12.0))
                         .text_color(rgb(MUTED))
                         .child(time)
-                        .children(voice.map(|voice| {
-                            let view = view.clone();
-                            div()
-                                .id("voice-speed")
-                                .px_1p5()
-                                .rounded_full()
-                                .bg(rgb(DEEP))
-                                .text_color(rgb(TEXT))
-                                .font_weight(FontWeight::MEDIUM)
-                                .cursor_pointer()
-                                .on_click(move |_, _, cx| {
-                                    let _ = view.update(cx, ConversationView::cycle_voice_speed);
-                                })
-                                .child(voice.speed.label())
-                        })),
+                        .children(voice.map(|voice| speed_chip(voice, view))),
                 ),
         )
 }
 
-/// One bar per waveform sample; bars before `progress` are lit.
+/// The honey play/pause button, dimmed while the file downloads.
+fn voice_button(
+    playing: bool,
+    loading: bool,
+    toggle: impl Fn(&gpui::ClickEvent, &mut gpui::Window, &mut App) + 'static,
+) -> impl IntoElement {
+    div()
+        .id("voice-toggle")
+        .size(px(40.0))
+        .flex_none()
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded_full()
+        .bg(rgb(HONEY))
+        .cursor_pointer()
+        .hover(|button| button.opacity(0.9))
+        .when(loading, |button| button.opacity(0.5))
+        .on_click(toggle)
+        // Nudged right: a triangle's visual center sits left of its box's.
+        .child(
+            div().when(!playing, |glyph| glyph.pl(px(2.0))).child(
+                svg()
+                    .path(if playing { Icon::Pause } else { Icon::Play }.path())
+                    .size(px(18.0))
+                    .text_color(rgb(HONEY_INK)),
+            ),
+        )
+}
+
+/// Shows the speed and switches to the next one on click.
+fn speed_chip(voice: &VoiceState, view: &WeakEntity<ConversationView>) -> impl IntoElement {
+    let view = view.clone();
+    div()
+        .id("voice-speed")
+        .px_1p5()
+        .rounded_full()
+        .bg(rgb(DEEP))
+        .text_color(rgb(TEXT))
+        .font_weight(FontWeight::MEDIUM)
+        .cursor_pointer()
+        .on_click(move |_, _, cx| {
+            // The view is gone only while the window closes.
+            let _ = view.update(cx, ConversationView::cycle_voice_speed);
+        })
+        .child(voice.speed.label())
+}
+
+/// The waveform as bars; those before `progress` are lit.
 #[expect(
     clippy::cast_precision_loss,
     reason = "bar counts and loudness values are tiny"
 )]
-fn bars(waveform: Option<&[u8]>, progress: f32) -> Vec<Div> {
-    let flat = [20; FLAT_BARS];
-    let levels = waveform
-        .filter(|levels| !levels.is_empty())
-        .unwrap_or(&flat);
-    let count = levels.len() as f32;
-    levels
-        .iter()
+fn bars(levels: &[u8], progress: f32) -> Vec<Div> {
+    let peaks = peaks(levels, BARS);
+    let count = peaks.len() as f32;
+    peaks
+        .into_iter()
         .enumerate()
-        .map(|(index, &level)| {
+        .map(|(index, level)| {
             let lit = (index as f32 + 0.5) / count <= progress;
             div()
-                .w(px(2.0))
-                .h(px(3.0 + f32::from(level.min(100)) * 0.22))
+                .w(px(3.0))
+                .h(px(4.0 + f32::from(level) * 0.2))
                 .rounded_full()
-                .bg(rgb(if lit { TEXT } else { MUTED }))
+                .bg(if lit {
+                    rgb(TEXT)
+                } else {
+                    rgb(MUTED).opacity(0.45)
+                })
+        })
+        .collect()
+}
+
+/// A plain slider for notes sent without a waveform.
+fn plain_track(progress: f32) -> Div {
+    div()
+        .w_full()
+        .h(px(3.0))
+        .rounded_full()
+        .bg(rgb(MUTED).opacity(0.45))
+        .child(
+            div()
+                .h_full()
+                .w(relative(progress))
+                .rounded_full()
+                .bg(rgb(TEXT)),
+        )
+}
+
+/// Squeezes `levels` (0 to 100) into at most `count` bars, keeping each
+/// group's loudest sample so short peaks of speech stay visible.
+fn peaks(levels: &[u8], count: usize) -> Vec<u8> {
+    let count = count.min(levels.len());
+    (0..count)
+        .map(|bar| {
+            let start = bar * levels.len() / count;
+            let end = ((bar + 1) * levels.len() / count).max(start + 1);
+            levels[start..end]
+                .iter()
+                .copied()
+                .max()
+                .unwrap_or(0)
+                .min(100)
         })
         .collect()
 }
@@ -284,5 +364,25 @@ fn open(
     move |_, _, cx| {
         // The view is gone only while the window closes.
         let _ = view.update(cx, |view, cx| view.open_media(&media, cx));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn squeezing_a_waveform_keeps_its_peaks() {
+        let mut levels = [10; 64];
+        levels[5] = 90;
+        let bars = peaks(&levels, 36);
+        assert_eq!(bars.len(), 36);
+        assert_eq!(bars.iter().max(), Some(&90));
+    }
+
+    #[test]
+    fn a_short_waveform_is_not_stretched() {
+        assert_eq!(peaks(&[1, 2, 3], 36), [1, 2, 3]);
+        assert_eq!(peaks(&[200], 36), [100]);
     }
 }
