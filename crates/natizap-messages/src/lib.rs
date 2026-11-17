@@ -22,4 +22,4 @@ mod voice;
 mod voice_view;
 
 pub use log::{ForwardRequested, MessageLog, MessageSent, OpenChat, PlayRequested};
-pub use view::ConversationView;
+pub use view::{ConversationView, ProfileRequested};

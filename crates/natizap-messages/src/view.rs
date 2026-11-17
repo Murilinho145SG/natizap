@@ -3,13 +3,13 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use gpui::{
-    Context, Div, Entity, FocusHandle, Focusable as _, FontWeight, KeyDownEvent, ListAlignment,
-    ListState, MouseButton, Pixels, Point, SharedString, Window, anchored, deferred, div, list, px,
-    rgb, svg,
+    Context, Div, Entity, EventEmitter, FocusHandle, Focusable as _, FontWeight, KeyDownEvent,
+    ListAlignment, ListState, MouseButton, Pixels, Point, SharedString, Window, anchored, deferred,
+    div, list, px, rgb, svg,
 };
 use natizap_playback::Speed;
 use natizap_profiles::ProfilePictures;
-use natizap_protocol::Reply;
+use natizap_protocol::{ChatId, Reply};
 use natizap_ui::theme::{ACCENT, LINE, MUTED, PANE, PANEL};
 use natizap_ui::{Icon, Submitted, TextInput, avatar, name_color};
 
@@ -54,6 +54,17 @@ pub struct ConversationView {
     reaction_picker: Option<(SharedString, Point<Pixels>)>,
     reaction_emojis: Entity<EmojiPicker>,
 }
+
+/// The user clicked the conversation's header to see the chat's profile.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProfileRequested {
+    /// Whose profile.
+    pub chat: ChatId,
+    /// The chat's name, shown until the profile loads.
+    pub title: SharedString,
+}
+
+impl EventEmitter<ProfileRequested> for ConversationView {}
 
 /// The message the next one will reply to, as the composer shows it.
 #[derive(Debug, Clone)]
@@ -347,7 +358,20 @@ impl Render for ConversationView {
                     this.step_back(cx);
                 }
             }))
-            .child(header(chat, picture))
+            .child(
+                header(chat, picture)
+                    .id("chat-header")
+                    .cursor_pointer()
+                    .on_click({
+                        let (chat, title) = (chat.id.clone(), chat.title.clone());
+                        cx.listener(move |_, _, _, cx| {
+                            cx.emit(ProfileRequested {
+                                chat: chat.clone(),
+                                title: title.clone(),
+                            });
+                        })
+                    }),
+            )
             .children(pinned.map(|pinned| self.pinned_bar(pinned, cx)))
             .child(
                 div()
