@@ -104,6 +104,8 @@ icons! {
     Search => "search.svg",
     /// Send a message.
     Send => "send.svg",
+    /// Settings.
+    Settings => "settings.svg",
     /// A starred message.
     Star => "star.svg",
     /// Delete.
