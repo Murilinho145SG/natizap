@@ -78,7 +78,9 @@ binary forwards to the chat list's preview, and `PlayRequested` for videos,
 which the binary answers by showing a `PlayerView`. Voice notes and audio
 files play inside their bubble; both players share `natizap-playback`. `MessageLog`
 also emits `ForwardRequested`, which the binary answers with the chats'
-`ChatPicker`, handing the chosen chats back to `MessageLog::forward`.
+`ChatPicker`, handing the chosen chats back to `MessageLog::forward`. The
+conversation emits `ProfileRequested` from its header, which the binary
+answers by showing the contacts' `ProfilePanel` beside it.
 
 ## Architecture: one crate per feature
 
@@ -116,6 +118,7 @@ organizing rule of the codebase.
 | `natizap-session` | feature | Pairing lifecycle and the pairing screen.                 |
 | `natizap-protocol` | shared  | Owns the WhatsApp client; fans its events out to features. |
 | `natizap-chats`    | feature | Chat list synced from WhatsApp, cached in SQLite, and its view. |
+| `natizap-contacts` | feature | Profiles of people and businesses, and their panel.       |
 | `natizap-messages` | feature | Message store, the open conversation and sending.         |
 | `natizap-playback` | shared | Media engine: static FFmpeg decoding, cpal sound, clock. |
 | `natizap-player`   | feature | The full-window video player.                            |

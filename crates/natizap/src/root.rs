@@ -6,12 +6,14 @@ use gpui::{
 use natizap_chats::{
     ChatList, ChatListView, ChatPicker, ChatRow, ChatSelected, ChatsPicked, PickerDismissed,
 };
+use natizap_contacts::{ProfileClosed, ProfilePanel};
 use natizap_messages::{
     ConversationView, ForwardRequested, MessageLog, MessageSent, OpenChat, PlayRequested,
+    ProfileRequested,
 };
 use natizap_player::{PlayerClosed, PlayerView};
 use natizap_profiles::ProfilePictures;
-use natizap_protocol::ChatId;
+use natizap_protocol::{ChatId, Protocol};
 use natizap_session::{PairingView, Session, SessionState};
 use natizap_ui::theme::{ACCENT, ALERT, DISPLAY_FONT, LINE, MINT, MUTED, TEXT, base_font};
 use natizap_ui::{Alert, AlertTone, window_frame};
@@ -30,6 +32,8 @@ pub(crate) struct Root {
     player: Option<Entity<PlayerView>>,
     /// Choosing chats to forward a message to.
     forwarding: Option<Entity<ChatPicker>>,
+    /// The open chat's profile, beside the conversation.
+    profile: Option<Entity<ProfilePanel>>,
     messages: Entity<MessageLog>,
     /// Chats visited, for the mouse's back and forward buttons.
     history: History<ChatId>,
@@ -41,6 +45,7 @@ impl Root {
         chats: Entity<ChatList>,
         messages: &Entity<MessageLog>,
         pictures: &Entity<ProfilePictures>,
+        protocol: Entity<Protocol>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -120,6 +125,23 @@ impl Root {
         )
         .detach();
 
+        cx.subscribe(
+            &conversation,
+            move |root, _, request: &ProfileRequested, cx| {
+                let panel = cx.new(|cx| {
+                    ProfilePanel::new(&protocol, request.chat.clone(), request.title.clone(), cx)
+                });
+                cx.subscribe(&panel, |root, _, _: &ProfileClosed, cx| {
+                    root.profile = None;
+                    cx.notify();
+                })
+                .detach();
+                root.profile = Some(panel);
+                cx.notify();
+            },
+        )
+        .detach();
+
         Self {
             session,
             chats,
@@ -128,6 +150,7 @@ impl Root {
             conversation,
             player: None,
             forwarding: None,
+            profile: None,
             messages: messages.clone(),
             history: History::default(),
         }
@@ -144,7 +167,9 @@ impl Root {
     }
 
     /// Shows `row`'s chat in the list and the conversation.
-    fn open_chat(&self, row: &ChatRow, cx: &mut Context<Self>) {
+    fn open_chat(&mut self, row: &ChatRow, cx: &mut Context<Self>) {
+        // The profile beside the conversation was of the chat left behind.
+        self.profile = None;
         self.chats.read(cx).open(Some(row.id.clone()));
         let chat = OpenChat {
             id: row.id.clone(),
@@ -161,7 +186,10 @@ impl Root {
     /// player, the chat picker, a menu or the reply being composed), then
     /// goes back to the chat before.
     fn go_back(&mut self, cx: &mut Context<Self>) {
-        if self.player.take().is_some() || self.forwarding.take().is_some() {
+        if self.player.take().is_some()
+            || self.forwarding.take().is_some()
+            || self.profile.take().is_some()
+        {
             cx.notify();
             return;
         }
@@ -219,6 +247,11 @@ impl Root {
                     .child(self.chat_list.clone()),
             )
             .child(div().flex_1().h_full().child(self.conversation.clone()))
+            .children(
+                self.profile
+                    .clone()
+                    .map(|profile| div().w(px(380.0)).h_full().flex_none().child(profile)),
+            )
             .children(self.forwarding.clone())
             // Chats stay readable offline, so the news floats over them
             // instead of replacing them.

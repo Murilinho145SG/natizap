@@ -3686,6 +3686,7 @@ dependencies = [
  "gpui_platform",
  "gpui_tokio",
  "natizap-chats",
+ "natizap-contacts",
  "natizap-messages",
  "natizap-player",
  "natizap-profiles",
@@ -3707,6 +3708,16 @@ dependencies = [
  "natizap-protocol",
  "natizap-ui",
  "rusqlite",
+ "tracing",
+]
+
+[[package]]
+name = "natizap-contacts"
+version = "0.1.0"
+dependencies = [
+ "gpui",
+ "natizap-protocol",
+ "natizap-ui",
  "tracing",
 ]
 

@@ -109,8 +109,8 @@ fn open_main_window(data_dir: &Path, cx: &mut App) -> anyhow::Result<()> {
         });
         let pictures =
             cx.new(|cx| ProfilePictures::new(protocol.clone(), data_dir.join("avatars"), cx));
-        let session = cx.new(|cx| Session::new(protocol, cx));
-        cx.new(|cx| Root::new(session, chats, &messages, &pictures, window, cx))
+        let session = cx.new(|cx| Session::new(protocol.clone(), cx));
+        cx.new(|cx| Root::new(session, chats, &messages, &pictures, protocol, window, cx))
     })?;
     Ok(())
 }

@@ -58,6 +58,7 @@ unicode-segmentation = "1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 natizap-chats = { path = "crates/natizap-chats" }
+natizap-contacts = { path = "crates/natizap-contacts" }
 natizap-messages = { path = "crates/natizap-messages" }
 natizap-playback = { path = "crates/natizap-playback" }
 natizap-profiles = { path = "crates/natizap-profiles" }
