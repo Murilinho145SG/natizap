@@ -64,6 +64,8 @@ icons! {
     Chats => "chats.svg",
     /// Close the window.
     Close => "close.svg",
+    /// A person, e.g. a shared contact.
+    Contact => "contact.svg",
     /// Copy to the clipboard.
     Copy => "copy.svg",
     /// Pick an emoji or react.
@@ -90,6 +92,8 @@ icons! {
     Play => "play.svg",
     /// Add something, e.g. attach a file.
     Plus => "plus.svg",
+    /// A poll.
+    Poll => "poll.svg",
     /// Reply to a message.
     Reply => "reply.svg",
     /// Restore a maximized window.
