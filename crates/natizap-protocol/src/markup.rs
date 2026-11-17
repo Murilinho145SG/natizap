@@ -44,7 +44,7 @@ impl LinkKind {
     #[must_use]
     pub fn target(self, text: &str) -> String {
         match self {
-            Self::Web if text.starts_with("www.") => format!("https://{text}"),
+            Self::Web if !text.contains("://") => format!("https://{text}"),
             Self::Web => text.to_owned(),
             Self::Email => format!("mailto:{text}"),
             Self::Phone | Self::TaxId => text.chars().filter(char::is_ascii_digit).collect(),
@@ -157,7 +157,34 @@ fn link(chars: &[(usize, char)], start: usize) -> Option<(usize, LinkKind)> {
     if chars[start].1.is_ascii_digit() {
         return tax_id(chars, start);
     }
-    email(chars, start, word_end)
+    email(chars, start, word_end).or_else(|| bare_domain(chars, start, word_end))
+}
+
+/// Top-level domains a bare address (`exemplo.com`, `Padaria.bank`)
+/// may end in. A short list on purpose: any word with a dot would otherwise
+/// match, from "ok.tchau" to file names such as `main.rs`.
+const BARE_DOMAINS: &[&str] = &[
+    "ai", "app", "ar", "bank", "biz", "blog", "br", "cloud", "co", "com", "de", "dev", "edu", "es",
+    "fr", "gg", "gov", "info", "io", "it", "link", "me", "mx", "net", "news", "online", "org",
+    "page", "pt", "shop", "site", "store", "tech", "tv", "uk", "us", "xyz",
+];
+
+/// A web address written without `https://` or `www.`.
+fn bare_domain(
+    chars: &[(usize, char)],
+    start: usize,
+    word_end: usize,
+) -> Option<(usize, LinkKind)> {
+    let end = trim_web_end(chars, start, word_end);
+    let word: String = chars[start..end].iter().map(|&(_, c)| c).collect();
+    let host = word.split(['/', '?', '#', ':']).next()?;
+    let labels: Vec<&str> = host.split('.').collect();
+    let well_formed = labels.len() >= 2
+        && labels.iter().all(|label| {
+            !label.is_empty() && label.chars().all(|c| c.is_alphanumeric() || c == '-')
+        });
+    let tld = labels.last()?.to_lowercase();
+    (well_formed && BARE_DOMAINS.contains(&tld.as_str())).then_some((end, LinkKind::Web))
 }
 
 /// Leaves out the punctuation that ends a sentence, and a closing bracket
@@ -377,6 +404,18 @@ mod tests {
                 LinkKind::Web
             )]
         );
+    }
+
+    #[test]
+    fn finds_bare_domains_but_not_words_or_file_names() {
+        assert_eq!(
+            links("fale com Padaria.bank ou exemplo.com.br/app, ok.tchau main.rs"),
+            [
+                ("Padaria.bank", LinkKind::Web),
+                ("exemplo.com.br/app", LinkKind::Web)
+            ]
+        );
+        assert_eq!(LinkKind::Web.target("exemplo.com"), "https://exemplo.com");
     }
 
     #[test]
