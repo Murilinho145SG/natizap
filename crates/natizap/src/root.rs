@@ -1,16 +1,22 @@
 use gpui::prelude::*;
-use gpui::{AnyElement, Context, Div, Entity, FontWeight, Window, div, px, rgb};
+use gpui::{
+    AnyElement, Context, Div, Entity, FontWeight, MouseButton, NavigationDirection, Window, div,
+    px, rgb,
+};
 use natizap_chats::{
-    ChatList, ChatListView, ChatPicker, ChatSelected, ChatsPicked, PickerDismissed,
+    ChatList, ChatListView, ChatPicker, ChatRow, ChatSelected, ChatsPicked, PickerDismissed,
 };
 use natizap_messages::{
     ConversationView, ForwardRequested, MessageLog, MessageSent, OpenChat, PlayRequested,
 };
 use natizap_player::{PlayerClosed, PlayerView};
 use natizap_profiles::ProfilePictures;
+use natizap_protocol::ChatId;
 use natizap_session::{PairingView, Session, SessionState};
 use natizap_ui::theme::{ACCENT, ALERT, DISPLAY_FONT, LINE, MINT, MUTED, TEXT, base_font};
 use natizap_ui::{Alert, AlertTone, window_frame};
+
+use crate::history::History;
 
 /// The main window's content: the pairing screen until this device is linked,
 /// then the chat list beside the conversation pane.
@@ -24,6 +30,9 @@ pub(crate) struct Root {
     player: Option<Entity<PlayerView>>,
     /// Choosing chats to forward a message to.
     forwarding: Option<Entity<ChatPicker>>,
+    messages: Entity<MessageLog>,
+    /// Chats visited, for the mouse's back and forward buttons.
+    history: History<ChatId>,
 }
 
 impl Root {
@@ -49,16 +58,9 @@ impl Root {
         let conversation =
             cx.new(|cx| ConversationView::new(messages.clone(), pictures.clone(), window, cx));
 
-        let (open_messages, open_chats) = (messages.clone(), chats.clone());
-        cx.subscribe(&chat_list, move |_, _, ChatSelected(row), cx| {
-            open_chats.read(cx).open(Some(row.id.clone()));
-            let chat = OpenChat {
-                id: row.id.clone(),
-                addresses: row.addresses.to_vec(),
-                title: row.title.clone(),
-                unread: row.unread,
-            };
-            open_messages.update(cx, |messages, cx| messages.open(chat, cx));
+        cx.subscribe(&chat_list, |root, _, ChatSelected(row), cx| {
+            root.history.visit(row.id.clone());
+            root.open_chat(row, cx);
         })
         .detach();
         let sent_chats = chats.clone();
@@ -126,6 +128,8 @@ impl Root {
             conversation,
             player: None,
             forwarding: None,
+            messages: messages.clone(),
+            history: History::default(),
         }
     }
 
@@ -137,6 +141,60 @@ impl Root {
         session.is_linked()
             || matches!(session.state(), SessionState::Starting)
                 && !self.chats.read(cx).rows().is_empty()
+    }
+
+    /// Shows `row`'s chat in the list and the conversation.
+    fn open_chat(&self, row: &ChatRow, cx: &mut Context<Self>) {
+        self.chats.read(cx).open(Some(row.id.clone()));
+        let chat = OpenChat {
+            id: row.id.clone(),
+            addresses: row.addresses.to_vec(),
+            title: row.title.clone(),
+            unread: row.unread,
+        };
+        self.messages
+            .update(cx, |messages, cx| messages.open(chat, cx));
+        self.chat_list.update(cx, |list, cx| list.show(&row.id, cx));
+    }
+
+    /// Like the phone's back button: closes what is on top first (the
+    /// player, the chat picker, a menu or the reply being composed), then
+    /// goes back to the chat before.
+    fn go_back(&mut self, cx: &mut Context<Self>) {
+        if self.player.take().is_some() || self.forwarding.take().is_some() {
+            cx.notify();
+            return;
+        }
+        if self.conversation.update(cx, ConversationView::step_back) {
+            return;
+        }
+        let Some(chat) = self.history.back().cloned() else {
+            return;
+        };
+        self.show_visited(&chat, cx);
+    }
+
+    /// Returns to the chat last gone back from.
+    fn go_forward(&mut self, cx: &mut Context<Self>) {
+        let Some(chat) = self.history.forward().cloned() else {
+            return;
+        };
+        self.show_visited(&chat, cx);
+    }
+
+    /// Opens a chat from the history; one gone from the list is forgotten.
+    fn show_visited(&mut self, chat: &ChatId, cx: &mut Context<Self>) {
+        let row = self
+            .chats
+            .read(cx)
+            .rows()
+            .iter()
+            .find(|row| row.id == *chat)
+            .cloned();
+        match row {
+            Some(row) => self.open_chat(&row, cx),
+            None => self.history.forget(chat),
+        }
     }
 
     fn content(&self, cx: &Context<Self>) -> AnyElement {
@@ -189,6 +247,14 @@ impl Render for Root {
         let content = self.content(cx);
         div()
             .size_full()
+            .on_mouse_down(
+                MouseButton::Navigate(NavigationDirection::Back),
+                cx.listener(|root, _, _, cx| root.go_back(cx)),
+            )
+            .on_mouse_down(
+                MouseButton::Navigate(NavigationDirection::Forward),
+                cx.listener(|root, _, _, cx| root.go_forward(cx)),
+            )
             .font(base_font())
             .text_color(rgb(TEXT))
             .child(window_frame(window, title, content))

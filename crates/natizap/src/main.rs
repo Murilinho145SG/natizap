@@ -1,6 +1,7 @@
 //! Entry point of the `natizap` binary: opens the main window and wires the
 //! feature crates together.
 
+mod history;
 mod root;
 
 use std::path::{Path, PathBuf};
