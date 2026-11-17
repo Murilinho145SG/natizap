@@ -138,10 +138,22 @@ fn history_delivery(info: &wa::WebMessageInfo) -> Delivery {
 }
 
 fn history_changes(history: &LazyHistorySync) -> Vec<MessageChange> {
+    let (sync_type, request) = (history.sync_type(), history.peer_data_request_session_id());
     let Some(history) = history.get() else {
         tracing::warn!("could not decode a history sync chunk");
         return Vec::new();
     };
+    tracing::info!(
+        sync_type,
+        request,
+        conversations = history.conversations.len(),
+        messages = history
+            .conversations
+            .iter()
+            .map(|conversation| conversation.messages.len())
+            .sum::<usize>(),
+        "history sync arrived"
+    );
     history
         .conversations
         .iter()

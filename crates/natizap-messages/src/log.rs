@@ -441,13 +441,18 @@ impl MessageLog {
                 before,
                 count,
             } => {
+                tracing::info!(
+                    chat = chat.as_str(),
+                    count,
+                    "asking the phone for messages filed without media"
+                );
                 let asking = self
                     .protocol
                     .read(cx)
                     .resend_history(&chat, &before, count, cx);
                 cx.background_spawn(async move {
                     if let Err(error) = asking.await {
-                        tracing::debug!(%error, "could not ask for the chat's history again");
+                        tracing::warn!(%error, "could not ask for the chat's history again");
                     }
                 })
                 .detach();
