@@ -25,6 +25,9 @@ pub struct Media {
     /// A tiny inline preview (JPEG, or PNG for stickers) that needs no
     /// download.
     pub thumbnail: Option<Vec<u8>>,
+    /// Loudness over the length of a voice note: 64 values, 0 to 100, as
+    /// the sender's phone measured it.
+    pub waveform: Option<Vec<u8>>,
     /// Where the encrypted file lives on WhatsApp's servers.
     pub direct_path: String,
     /// Key to decrypt the file.
@@ -69,6 +72,7 @@ impl Media {
         } else if let Some(m) = message.audio_message.as_option() {
             Some(Self {
                 seconds: m.seconds,
+                waveform: m.waveform.clone(),
                 ..locator!(m)
             })
         } else if let Some(m) = message.document_message.as_option() {

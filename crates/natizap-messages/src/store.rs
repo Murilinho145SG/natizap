@@ -47,6 +47,7 @@ const MIGRATIONS: &[&str] = &[
     ALTER TABLE messages ADD COLUMN media_sha256 BLOB;
     ALTER TABLE messages ADD COLUMN media_enc_sha256 BLOB;
     ALTER TABLE messages ADD COLUMN media_file TEXT;",
+    "ALTER TABLE messages ADD COLUMN media_waveform BLOB;",
 ];
 
 /// Every message natizap has seen, on disk.
@@ -244,9 +245,9 @@ fn insert(tx: &rusqlite::Transaction<'_>, message: &Message) -> rusqlite::Result
              kind, text, edited, deleted, delivery, quoted_id, quoted_sender,
              quoted_summary, media_mime, media_name, media_size, media_width,
              media_height, media_seconds, media_thumbnail, media_direct_path,
-             media_key, media_sha256, media_enc_sha256, media_file)
+             media_key, media_sha256, media_enc_sha256, media_file, media_waveform)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14,
-             ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26)",
+             ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27)",
     )?
     .execute(params![
         message.chat.as_str(),
@@ -282,6 +283,7 @@ fn insert(tx: &rusqlite::Transaction<'_>, message: &Message) -> rusqlite::Result
             .media_file
             .as_ref()
             .map(|file| file.to_string_lossy()),
+        media.and_then(|media| media.waveform.as_ref()),
     ])?;
 
     Ok(())
@@ -301,6 +303,7 @@ fn media_from_row(row: &Row<'_>) -> rusqlite::Result<Option<Media>> {
         height: row.get("media_height")?,
         seconds: row.get("media_seconds")?,
         thumbnail: row.get("media_thumbnail")?,
+        waveform: row.get("media_waveform")?,
         direct_path,
         media_key: row
             .get::<_, Option<Vec<u8>>>("media_key")?
@@ -479,6 +482,7 @@ mod tests {
         photo.media = Some(Media {
             width: Some(800),
             thumbnail: Some(vec![0xff, 0xd8]),
+            waveform: Some(vec![0, 50, 100]),
             direct_path: "/v/1".into(),
             media_key: vec![1],
             size: Some(5_000_000_000),
