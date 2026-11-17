@@ -42,6 +42,8 @@ fn main() -> anyhow::Result<()> {
         .with_assets(Assets)
         .run(move |cx: &mut App| {
             gpui_tokio::init(cx);
+            // Names natizap in the system's notifications.
+            cx.set_app_identity("natizap", "natizap");
             bind_text_input_keys(cx);
             cx.bind_keys([KeyBinding::new("ctrl-alt-g", OpenComponents, None)]);
             cx.on_action(|_: &OpenComponents, cx| {

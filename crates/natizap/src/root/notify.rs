@@ -1,20 +1,23 @@
-//! Tells the notifier what the user is looking at and which chats are
-//! muted, so it chimes only for messages elsewhere, and opens its settings.
+//! Tells the notifier what the user is looking at, which chats are muted
+//! and what chats and people are called, opens the chat a notification is
+//! about, and opens the notification settings.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use gpui::prelude::*;
-use gpui::{Context, Entity, Window};
-use natizap_chats::{ChatList, ChatListView, SettingsRequested};
+use gpui::{Context, Entity, SharedString, Window};
+use natizap_chats::{ChatList, ChatListView, ChatRow, SettingsRequested};
 use natizap_messages::MessageLog;
-use natizap_notifications::{NotificationSettings, Notifier, SettingsClosed};
+use natizap_notifications::{NotificationOpened, NotificationSettings, Notifier, SettingsClosed};
 use natizap_protocol::ChatId;
 
 use super::Root;
 
 impl Root {
-    /// Keeps `notifier` told of the window's focus, the open chat and the
-    /// muted chats.
+    /// Keeps `notifier` told of the window's focus, the open chat, the muted
+    /// chats and everyone's names, and opens the chat of a notification
+    /// clicked.
     pub(super) fn feed_notifier(
         notifier: &Entity<Notifier>,
         chats: &Entity<ChatList>,
@@ -44,18 +47,37 @@ impl Root {
         })
         .detach();
 
-        let muted = notifier.clone();
+        let directory = notifier.clone();
         cx.observe(chats, move |_, chats, cx| {
             let chats = chats.read(cx);
-            let addresses: HashSet<ChatId> = chats
-                .rows()
-                .iter()
-                .chain(chats.archived().iter())
-                .filter(|row| row.muted)
-                .flat_map(|row| row.addresses.iter().chain([&row.id]).cloned())
+            let rows = || chats.rows().iter().chain(chats.archived().iter());
+            let muted: HashSet<ChatId> =
+                rows().filter(|row| row.muted).flat_map(addresses).collect();
+            let titles: HashMap<ChatId, SharedString> = rows()
+                .flat_map(|row| addresses(row).map(|id| (id, row.title.clone())))
                 .collect();
-            muted.update(cx, |notifier, _| notifier.set_muted(addresses));
+            let names = Arc::clone(chats.names());
+            directory.update(cx, |notifier, _| {
+                notifier.set_muted(muted);
+                notifier.set_titles(titles);
+                notifier.set_names(names);
+            });
         })
+        .detach();
+
+        cx.subscribe_in(
+            notifier,
+            window,
+            |root, _, NotificationOpened { chat }, window, cx| {
+                window.activate_window();
+                if let Some(chat) = chat {
+                    let title = chat
+                        .phone_number()
+                        .unwrap_or_else(|| chat.as_str().to_owned());
+                    root.chat_with(chat, title.into(), cx);
+                }
+            },
+        )
         .detach();
     }
 
@@ -78,4 +100,9 @@ impl Root {
         })
         .detach();
     }
+}
+
+/// Every address `row`'s chat is known under.
+fn addresses(row: &ChatRow) -> impl Iterator<Item = ChatId> + '_ {
+    row.addresses.iter().chain([&row.id]).cloned()
 }

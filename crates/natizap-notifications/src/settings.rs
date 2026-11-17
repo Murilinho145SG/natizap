@@ -117,6 +117,79 @@ impl NotificationSettings {
     }
 }
 
+impl NotificationSettings {
+    /// A setting that is on or off, with what it does below its name.
+    fn switch_row(setting: Setting, on: bool, cx: &mut Context<Self>) -> Div {
+        let this = cx.weak_entity();
+        let (label, description) = setting.text();
+        div()
+            .flex()
+            .items_center()
+            .gap_3()
+            .px_5()
+            .py_3()
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .flex()
+                    .flex_col()
+                    .gap_0p5()
+                    .child(label)
+                    .child(
+                        div()
+                            .text_size(px(12.5))
+                            .text_color(rgb(MUTED))
+                            .child(description),
+                    ),
+            )
+            .child(
+                Switch::new(setting.text().0, on).on_toggle(move |on, _, cx| {
+                    let _ = this.update(cx, |this, cx| {
+                        this.change(|preferences| *setting.value(preferences) = on, cx);
+                    });
+                }),
+            )
+    }
+}
+
+/// The settings that are only on or off.
+#[derive(Debug, Clone, Copy)]
+enum Setting {
+    OtherChats,
+    Popups,
+    Previews,
+}
+
+impl Setting {
+    /// Its name and what it does.
+    fn text(self) -> (&'static str, &'static str) {
+        match self {
+            Self::OtherChats => (
+                "Sounds for other chats",
+                "While natizap is in use, chime for chats other than the one open.",
+            ),
+            Self::Popups => (
+                "System notifications",
+                "While natizap is in the background, show new messages in the \
+                 system's notifications.",
+            ),
+            Self::Previews => (
+                "Show message preview",
+                "Show what the message says in the notification, not just who sent it.",
+            ),
+        }
+    }
+
+    fn value(self, preferences: &mut Preferences) -> &mut bool {
+        match self {
+            Self::OtherChats => &mut preferences.other_chats,
+            Self::Popups => &mut preferences.popups,
+            Self::Previews => &mut preferences.previews,
+        }
+    }
+}
+
 /// The kinds of message with a sound of their own.
 #[derive(Debug, Clone, Copy)]
 enum Kind {
@@ -147,7 +220,6 @@ impl Kind {
 impl Render for NotificationSettings {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let preferences = self.notifier.read(cx).preferences();
-        let this = cx.weak_entity();
         let panel = div()
             .id("notification-settings")
             .w(px(420.0))
@@ -186,35 +258,20 @@ impl Render for NotificationSettings {
             .child(Self::alert(Kind::Messages, preferences.messages, cx))
             .child(Self::alert(Kind::Groups, preferences.groups, cx))
             .child(div().px_5().py_1().child(separator()))
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_3()
-                    .px_5()
-                    .py_3()
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .flex()
-                            .flex_col()
-                            .gap_0p5()
-                            .child("Sounds for other chats")
-                            .child(div().text_size(px(12.5)).text_color(rgb(MUTED)).child(
-                                "While natizap is in use, chime for chats other than the one open.",
-                            )),
-                    )
-                    .child(
-                        Switch::new("other-chats", preferences.other_chats).on_toggle(
-                            move |on, _, cx| {
-                                let _ = this.update(cx, |this, cx| {
-                                    this.change(|preferences| preferences.other_chats = on, cx);
-                                });
-                            },
-                        ),
-                    ),
-            );
+            .child(Self::switch_row(
+                Setting::OtherChats,
+                preferences.other_chats,
+                cx,
+            ))
+            .child(div().px_5().py_1().child(separator()))
+            .child(Self::switch_row(Setting::Popups, preferences.popups, cx))
+            .when(preferences.popups, |panel| {
+                panel.child(Self::switch_row(
+                    Setting::Previews,
+                    preferences.previews,
+                    cx,
+                ))
+            });
         let settings = cx.weak_entity();
         dialog(window, panel, move |_, cx| {
             let _ = settings.update(cx, |_, cx| cx.emit(SettingsClosed));

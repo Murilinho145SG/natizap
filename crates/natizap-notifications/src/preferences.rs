@@ -12,6 +12,11 @@ pub struct Preferences {
     pub groups: Alert,
     /// Whether messages in other chats chime while natizap is in use.
     pub other_chats: bool,
+    /// Whether messages show in the system's notifications while natizap
+    /// is in the background.
+    pub popups: bool,
+    /// Whether those notifications show what the message says.
+    pub previews: bool,
 }
 
 impl Default for Preferences {
@@ -20,6 +25,8 @@ impl Default for Preferences {
             messages: Alert::default(),
             groups: Alert::default(),
             other_chats: true,
+            popups: true,
+            previews: true,
         }
     }
 }
@@ -61,6 +68,8 @@ impl Preferences {
                 ("messages", Some(on)) => preferences.messages.sound = on,
                 ("groups", Some(on)) => preferences.groups.sound = on,
                 ("other_chats", Some(on)) => preferences.other_chats = on,
+                ("popups", Some(on)) => preferences.popups = on,
+                ("previews", Some(on)) => preferences.previews = on,
                 ("messages_tone", _) => {
                     if let Some(tone) = Tone::from_key(value) {
                         preferences.messages.tone = tone;
@@ -81,12 +90,15 @@ impl Preferences {
     pub(crate) fn format(self) -> String {
         let on = |on: bool| if on { "on" } else { "off" };
         format!(
-            "messages={}\nmessages_tone={}\ngroups={}\ngroups_tone={}\nother_chats={}\n",
+            "messages={}\nmessages_tone={}\ngroups={}\ngroups_tone={}\nother_chats={}\n\
+             popups={}\npreviews={}\n",
             on(self.messages.sound),
             self.messages.tone.key(),
             on(self.groups.sound),
             self.groups.tone.key(),
             on(self.other_chats),
+            on(self.popups),
+            on(self.previews),
         )
     }
 }
@@ -108,6 +120,8 @@ mod tests {
                 tone: Tone::Soft,
             },
             other_chats: false,
+            popups: true,
+            previews: false,
         };
         assert_eq!(Preferences::parse(&preferences.format()), preferences);
     }

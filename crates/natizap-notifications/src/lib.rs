@@ -1,28 +1,33 @@
 //! Notifications: a chime when a message arrives that the user is not
-//! looking at, as the phone sounds for messages outside the open chat, and
-//! the settings that choose when and with what.
+//! looking at, as the phone sounds for messages outside the open chat, a
+//! system notification while natizap is in the background, and the
+//! settings that choose when and how.
 //!
 //! [`Notifier`] hears new messages itself; the binary tells it what is on
-//! screen ([`Notifier::set_focused`], [`Notifier::set_open`]) and which
-//! chats are muted ([`Notifier::set_muted`]). [`NotificationSettings`] is
-//! the dialog that changes its [`Preferences`].
+//! screen ([`Notifier::set_focused`], [`Notifier::set_open`]), which chats
+//! are muted ([`Notifier::set_muted`]) and what chats and people are
+//! called ([`Notifier::set_titles`], [`Notifier::set_names`]).
+//! [`NotificationSettings`] is the dialog that changes its [`Preferences`].
 
+mod heard;
+mod popup;
 mod preferences;
 mod settings;
 mod tone;
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use gpui::prelude::*;
-use gpui::{Context, Entity, Task};
+use gpui::{Context, Entity, EventEmitter, SharedString, Task};
 use natizap_playback::Clip;
-use natizap_protocol::whatsapp_rust::prelude::{Event, EventKind};
-use natizap_protocol::whatsapp_rust::types::events::InboundMessage;
-use natizap_protocol::whatsapp_rust::wacore_binary::JidExt as _;
-use natizap_protocol::{ChatId, Content, Protocol};
+use natizap_protocol::whatsapp_rust::prelude::EventKind;
+use natizap_protocol::{ChatId, PersonName, Protocol};
+
+use crate::heard::{Arrival, Quiet, arrivals};
+use crate::popup::{AWAY_TAG, Directory};
 
 pub use preferences::{Alert, Preferences};
 pub use settings::{NotificationSettings, SettingsClosed};
@@ -31,15 +36,30 @@ pub use tone::Tone;
 /// The shortest gap between two chimes: a burst of messages, such as those
 /// that queued up while offline, chimes once.
 const QUIET_AFTER_CHIME: Duration = Duration::from_millis(1500);
+/// The shortest gap between two notifications about messages queued while
+/// offline, which may arrive over several batches.
+const QUIET_AFTER_AWAY: Duration = Duration::from_secs(60);
 
-/// Sounds a chime for messages that arrive where the user is not looking.
-/// Notifies observers when its preferences change.
+/// The user clicked a system notification.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NotificationOpened {
+    /// The chat it was about; `None` for one about several chats.
+    pub chat: Option<ChatId>,
+}
+
+/// Sounds a chime for messages that arrive where the user is not looking,
+/// and shows them in the system's notifications while natizap is in the
+/// background. Notifies observers when its preferences change, and emits
+/// [`NotificationOpened`].
 pub struct Notifier {
     preferences: Preferences,
     /// Where the preferences are kept.
     path: PathBuf,
     quiet: Quiet,
+    directory: Directory,
     chimed: Option<Instant>,
+    /// When the user was last told of messages queued while offline.
+    told_away: Option<Instant>,
     tones: Vec<(Tone, Arc<[f32]>)>,
     _tasks: [Task<()>; 2],
 }
@@ -53,6 +73,8 @@ impl std::fmt::Debug for Notifier {
     }
 }
 
+impl EventEmitter<NotificationOpened> for Notifier {}
+
 impl Notifier {
     /// Listens for messages arriving through `protocol`, with the
     /// preferences kept at `path`.
@@ -65,7 +87,7 @@ impl Notifier {
                     continue;
                 }
                 if this
-                    .update(cx, |notifier, _| notifier.hear(&arrivals))
+                    .update(cx, |notifier, cx| notifier.hear(&arrivals, cx))
                     .is_err()
                 {
                     break;
@@ -90,11 +112,21 @@ impl Notifier {
                 cx.notify();
             });
         });
+        let opened = cx.weak_entity();
+        // The app has one handler for every notification, and natizap
+        // posts none but these.
+        cx.on_system_notification_response(move |response, cx| {
+            let chat = (response.tag.as_ref() != AWAY_TAG && !response.tag.is_empty())
+                .then(|| ChatId::new(&response.tag));
+            let _ = opened.update(cx, |_, cx| cx.emit(NotificationOpened { chat }));
+        });
         Self {
             preferences: Preferences::default(),
             path,
             quiet: Quiet::default(),
+            directory: Directory::default(),
             chimed: None,
+            told_away: None,
             tones: Tone::ALL
                 .into_iter()
                 .map(|tone| (tone, tone.samples().into()))
@@ -146,7 +178,42 @@ impl Notifier {
         self.quiet.muted = addresses;
     }
 
-    fn hear(&mut self, arrivals: &[Arrival]) {
+    /// Each chat's title, by every address it is known under.
+    pub fn set_titles(&mut self, titles: HashMap<ChatId, SharedString>) {
+        self.directory.titles = titles;
+    }
+
+    /// Everyone's names, by every address they are known under.
+    pub fn set_names(&mut self, names: Arc<HashMap<ChatId, PersonName>>) {
+        self.directory.names = names;
+    }
+
+    fn hear(&mut self, arrivals: &[Arrival], cx: &mut Context<Self>) {
+        self.notify(arrivals, cx);
+        self.chime(arrivals);
+    }
+
+    /// Shows `arrivals` in the system's notifications, as far as they
+    /// deserve it.
+    fn notify(&mut self, arrivals: &[Arrival], cx: &mut Context<Self>) {
+        let (offline, live): (Vec<&Arrival>, Vec<&Arrival>) = arrivals
+            .iter()
+            .filter(|arrival| self.quiet.shows(arrival, self.preferences))
+            .partition(|arrival| arrival.offline);
+        for popup in self.directory.popups(&live, self.preferences.previews) {
+            cx.show_system_notification(popup);
+        }
+        let now = Instant::now();
+        let told = self
+            .told_away
+            .is_some_and(|told| now.duration_since(told) < QUIET_AFTER_AWAY);
+        if !offline.is_empty() && !told {
+            self.told_away = Some(now);
+            cx.show_system_notification(popup::away());
+        }
+    }
+
+    fn chime(&mut self, arrivals: &[Arrival]) {
         let Some(tone) = arrivals
             .iter()
             .find_map(|arrival| self.quiet.tone_for(arrival, self.preferences))
@@ -184,176 +251,5 @@ impl Notifier {
         if let Err(error) = playing {
             tracing::warn!(%error, "could not start the notification chime");
         }
-    }
-}
-
-/// A message someone else sent, by every address its chat is known under.
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct Arrival {
-    chat: Vec<ChatId>,
-    group: bool,
-}
-
-/// The messages in `event` that may deserve a chime: shown messages other
-/// people sent to a chat. The account's own messages, from its other
-/// devices, and status updates and channel posts, which the phone does not
-/// chime for, are left out.
-fn arrivals(event: &Event) -> Vec<Arrival> {
-    event.messages().filter_map(arrival).collect()
-}
-
-fn arrival(inbound: &InboundMessage) -> Option<Arrival> {
-    let source = &inbound.info.source;
-    if source.is_from_me
-        || source.chat.is_status_broadcast()
-        || source.chat.is_newsletter()
-        || Content::of(&inbound.message).is_none()
-    {
-        return None;
-    }
-    let chat = std::iter::once(&source.chat)
-        .chain(source.sender_alt.as_ref().filter(|_| !source.is_group))
-        .map(|jid| ChatId::new(&jid.to_string()))
-        .collect();
-    Some(Arrival {
-        chat,
-        group: source.is_group,
-    })
-}
-
-/// What is on screen and what is muted.
-#[derive(Debug, Default)]
-struct Quiet {
-    focused: bool,
-    open: HashSet<ChatId>,
-    muted: HashSet<ChatId>,
-}
-
-impl Quiet {
-    /// The tone `arrival` chimes with, if any: never in a muted chat or
-    /// the chat the user is looking at, and in other chats while natizap
-    /// is in use only when `preferences` say so.
-    fn tone_for(&self, arrival: &Arrival, preferences: Preferences) -> Option<Tone> {
-        let alert = if arrival.group {
-            preferences.groups
-        } else {
-            preferences.messages
-        };
-        let any_of =
-            |addresses: &HashSet<ChatId>| arrival.chat.iter().any(|id| addresses.contains(id));
-        let silenced = !alert.sound
-            || any_of(&self.muted)
-            || self.focused && (any_of(&self.open) || !preferences.other_chats);
-        (!silenced).then_some(alert.tone)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::collections::HashSet;
-
-    use natizap_protocol::ChatId;
-
-    use super::{Alert, Arrival, Preferences, Quiet, Tone};
-
-    const PERSON: &str = "5511900000001@s.whatsapp.net";
-    const OTHER: &str = "5511900000002@s.whatsapp.net";
-    const GROUP: &str = "120363000000000001@g.us";
-
-    fn arrival(ids: &[&str]) -> Arrival {
-        Arrival {
-            chat: ids.iter().copied().map(ChatId::new).collect(),
-            group: ids.iter().any(|id| id.ends_with("@g.us")),
-        }
-    }
-
-    fn quiet(focused: bool, open: &[&str], muted: &[&str]) -> Quiet {
-        Quiet {
-            focused,
-            open: open.iter().copied().map(ChatId::new).collect(),
-            muted: muted
-                .iter()
-                .copied()
-                .map(ChatId::new)
-                .collect::<HashSet<_>>(),
-        }
-    }
-
-    fn chimes(quiet: &Quiet, ids: &[&str]) -> bool {
-        quiet
-            .tone_for(&arrival(ids), Preferences::default())
-            .is_some()
-    }
-
-    #[test]
-    fn stays_quiet_for_the_chat_on_screen() {
-        assert!(!chimes(&quiet(true, &[PERSON], &[]), &[PERSON]));
-    }
-
-    #[test]
-    fn chimes_for_another_chat() {
-        assert!(chimes(&quiet(true, &[PERSON], &[]), &[OTHER]));
-    }
-
-    #[test]
-    fn chimes_for_the_open_chat_when_the_window_is_not_in_use() {
-        assert!(chimes(&quiet(false, &[PERSON], &[]), &[PERSON]));
-    }
-
-    #[test]
-    fn knows_the_open_chat_by_its_other_address() {
-        assert!(!chimes(
-            &quiet(true, &[PERSON, "1234@lid"], &[]),
-            &["1234@lid"]
-        ));
-    }
-
-    #[test]
-    fn never_chimes_for_a_muted_chat() {
-        assert!(!chimes(&quiet(false, &[], &[GROUP]), &[GROUP]));
-    }
-
-    #[test]
-    fn uses_the_groups_tone_for_groups() {
-        let preferences = Preferences {
-            groups: Alert {
-                sound: true,
-                tone: Tone::Marimba,
-            },
-            ..Preferences::default()
-        };
-        let tone = quiet(false, &[], &[]).tone_for(&arrival(&[GROUP]), preferences);
-        assert_eq!(tone, Some(Tone::Marimba));
-    }
-
-    #[test]
-    fn stays_quiet_for_groups_when_their_sound_is_off() {
-        let preferences = Preferences {
-            groups: Alert {
-                sound: false,
-                ..Alert::default()
-            },
-            ..Preferences::default()
-        };
-        let quiet = quiet(false, &[], &[]);
-        assert_eq!(quiet.tone_for(&arrival(&[GROUP]), preferences), None);
-        assert!(quiet.tone_for(&arrival(&[PERSON]), preferences).is_some());
-    }
-
-    #[test]
-    fn keeps_other_chats_quiet_while_in_use_when_asked() {
-        let preferences = Preferences {
-            other_chats: false,
-            ..Preferences::default()
-        };
-        assert_eq!(
-            quiet(true, &[PERSON], &[]).tone_for(&arrival(&[OTHER]), preferences),
-            None
-        );
-        assert!(
-            quiet(false, &[PERSON], &[])
-                .tone_for(&arrival(&[OTHER]), preferences)
-                .is_some()
-        );
     }
 }
