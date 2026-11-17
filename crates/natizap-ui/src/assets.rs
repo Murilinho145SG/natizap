@@ -48,6 +48,8 @@ icons! {
     Alert => "alert.svg",
     /// Archived chats.
     Archive => "archive.svg",
+    /// Go back to the previous screen.
+    Back => "back.svg",
     /// Sent.
     Check => "check.svg",
     /// Delivered, or read when tinted.
@@ -92,6 +94,8 @@ icons! {
     Reply => "reply.svg",
     /// Restore a maximized window.
     Restore => "restore.svg",
+    /// Search.
+    Search => "search.svg",
     /// Send a message.
     Send => "send.svg",
     /// A starred message.
