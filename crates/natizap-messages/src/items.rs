@@ -1,6 +1,9 @@
 use chrono::{DateTime, Datelike as _, Local, NaiveDate, TimeZone as _};
 use gpui::SharedString;
-use natizap_protocol::ContentKind;
+use std::ops::Range;
+use std::sync::Arc;
+
+use natizap_protocol::{ContentKind, Mark, Marked};
 use natizap_ui::name_color;
 
 use crate::message::{Delivery, Message};
@@ -41,11 +44,28 @@ pub(crate) enum Body {
     Content {
         /// What the media is, for non-text messages.
         media: Option<&'static str>,
-        /// Text or caption.
-        text: Option<SharedString>,
+        /// Text or caption, with its markup applied.
+        text: Option<Text>,
         /// Changed after sending.
         edited: bool,
     },
+}
+
+/// Message text with its markup read: what to show and how to style it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Text {
+    pub(crate) text: SharedString,
+    pub(crate) marks: Arc<[(Range<usize>, Mark)]>,
+}
+
+impl Text {
+    fn parse(source: &str) -> Self {
+        let marked = Marked::parse(source);
+        Self {
+            text: marked.text.into(),
+            marks: marked.marks.into(),
+        }
+    }
 }
 
 /// Lays out `messages` (oldest first) as rows, with day separators.
@@ -95,7 +115,7 @@ fn bubble(message: &Message, sent: DateTime<Local>, starts_burst: bool) -> Bubbl
         } else {
             Body::Content {
                 media: (message.kind != ContentKind::Text).then(|| message.kind.label()),
-                text: message.text.clone().map(Into::into),
+                text: message.text.as_deref().map(Text::parse),
                 edited: message.edited,
             }
         },

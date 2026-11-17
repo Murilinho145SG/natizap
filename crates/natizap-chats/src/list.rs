@@ -6,7 +6,7 @@ use gpui::{AppContext as _, Context, Entity, SharedString, Task};
 use natizap_protocol::Protocol;
 use natizap_protocol::whatsapp_rust::prelude::Event;
 
-use natizap_protocol::ChatId;
+use natizap_protocol::{ChatId, Marked};
 
 use crate::book::{Chat, ChatBook, ChatChange, Preview};
 use crate::store::ChatStore;
@@ -43,6 +43,7 @@ impl ChatRow {
                 (Some(author), false) => format!("{author}: {}", preview.text),
                 (None, false) => preview.text.clone(),
             };
+            let text = Marked::parse(&text).text;
             SharedString::from(first_line(&text).to_owned())
         });
         Self {

@@ -1,14 +1,17 @@
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, Context, Div, Entity, FocusHandle, Focusable as _, FontWeight, ListAlignment,
-    ListState, SharedString, Window, div, list, px, relative, rgb, svg,
+    AnyElement, Context, Div, Entity, FocusHandle, Focusable as _, FontStyle, FontWeight,
+    HighlightStyle, ListAlignment, ListState, SharedString, StrikethroughStyle, StyledText, Window,
+    div, list, px, relative, rgb, svg,
 };
 use natizap_ui::theme::{
-    ALERT, HONEY, HONEY_INK, LINE, MUTED, OUTGOING, PANE, PANEL, RAISED, TEXT,
+    ALERT, DEEP, HONEY, HONEY_INK, LINE, MUTED, OUTGOING, PANE, PANEL, RAISED, TEXT,
 };
 use natizap_ui::{Icon, Submitted, TextInput, avatar};
 
-use crate::items::{Body, Bubble, Item};
+use natizap_protocol::Mark;
+
+use crate::items::{Body, Bubble, Item, Text};
 use crate::log::MessageLog;
 use crate::message::Delivery;
 
@@ -203,7 +206,7 @@ fn render_bubble(bubble: &Bubble) -> AnyElement {
                     .text_color(rgb(MUTED))
                     .child(media)
             }))
-            .children(text.clone()),
+            .children(text.as_ref().map(styled_text)),
     };
 
     let shape = div()
@@ -253,6 +256,38 @@ fn render_bubble(bubble: &Bubble) -> AnyElement {
         .when(bubble.from_me, Styled::justify_end)
         .child(shape)
         .into_any_element()
+}
+
+fn styled_text(text: &Text) -> StyledText {
+    let highlights = text.marks.iter().map(|(range, mark)| {
+        let style = match mark {
+            Mark::Bold => HighlightStyle {
+                font_weight: Some(FontWeight::BOLD),
+                ..Default::default()
+            },
+            Mark::Italic => HighlightStyle {
+                font_style: Some(FontStyle::Italic),
+                ..Default::default()
+            },
+            Mark::Strikethrough => HighlightStyle {
+                strikethrough: Some(StrikethroughStyle {
+                    thickness: px(1.0),
+                    color: None,
+                }),
+                ..Default::default()
+            },
+            Mark::Code => HighlightStyle {
+                background_color: Some(rgb(DEEP).into()),
+                ..Default::default()
+            },
+            Mark::Quote => HighlightStyle {
+                color: Some(rgb(MUTED).into()),
+                ..Default::default()
+            },
+        };
+        (range.clone(), style)
+    });
+    StyledText::new(text.text.clone()).with_highlights(highlights)
 }
 
 fn composer(input: &Entity<TextInput>, cx: &mut Context<ConversationView>) -> Div {
