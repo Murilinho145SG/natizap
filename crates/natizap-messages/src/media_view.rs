@@ -10,18 +10,12 @@ use natizap_ui::theme::{DEEP, MUTED, TEXT};
 
 use crate::items::MediaView;
 use crate::view::ConversationView;
-use crate::voice::VoiceUi;
-use crate::voice_view::render_voice;
 
 /// The attachment of a bubble: an image for photos and stickers, a preview
-/// with a play button for videos, a player for voice notes and audio, and a
-/// row for documents. Videos play over the window, sound plays in the
-/// bubble, and documents open in the system's app for them.
-pub(crate) fn render_media(
-    media: &MediaView,
-    voice: &VoiceUi,
-    view: &WeakEntity<ConversationView>,
-) -> AnyElement {
+/// with a play button for videos, and a row for documents. Videos play over
+/// the window and documents open in the system's app for them; voice notes
+/// get their own player (`voice_view`).
+pub(crate) fn render_media(media: &MediaView, view: &WeakEntity<ConversationView>) -> AnyElement {
     match media.fetch.kind {
         ContentKind::Photo | ContentKind::Sticker => picture(media).into_any_element(),
         ContentKind::Video => picture(media)
@@ -48,9 +42,6 @@ pub(crate) fn render_media(
             .cursor_pointer()
             .on_click(open(media, view))
             .into_any_element(),
-        ContentKind::VoiceMessage | ContentKind::Audio => {
-            render_voice(media, voice, view).into_any_element()
-        }
         kind => div()
             .id("media")
             .min_w(px(220.0))

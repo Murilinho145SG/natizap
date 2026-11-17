@@ -23,17 +23,24 @@ use crate::voice::VoiceUi;
 /// drags can tell how far along they are.
 type TrackBounds = Rc<Cell<Option<Bounds<Pixels>>>>;
 
-/// The player of `media`'s note. `ui` says which note plays, at what speed,
-/// and whose speed menu is open.
+/// The player of `media`'s note, ending in `footer`: the message's time
+/// and ticks. `ui` says which note plays, at what speed, and whose speed
+/// menu is open.
 pub(crate) fn render_voice(
     media: &MediaView,
     ui: &VoiceUi,
+    footer: impl IntoElement,
     view: &WeakEntity<ConversationView>,
 ) -> Div {
     let id = SharedString::from(media.fetch.message_id.clone());
     let voice = ui.playing.as_ref().filter(|voice| voice.message_id == id);
     let progress = voice.map_or(0.0, |voice| voice.progress);
-    let played = voice.map_or(Duration::ZERO, |voice| voice.position);
+    // Time played while this note is the one playing, its length otherwise,
+    // as on the phone.
+    let time: SharedString = match voice {
+        Some(voice) => clock_label(voice.position).into(),
+        None => media.detail.clone().unwrap_or_default(),
+    };
     let toggle = {
         let (media, view) = (media.clone(), view.clone());
         move |_: &gpui::ClickEvent, _: &mut Window, cx: &mut App| {
@@ -79,14 +86,9 @@ pub(crate) fn render_voice(
                                 .size(px(14.0))
                                 .text_color(rgb(MUTED)),
                         )
-                        .child(div().text_color(rgb(TEXT)).child(clock_label(played)))
+                        .child(div().text_color(rgb(TEXT)).child(time))
                         .child(div().flex_1())
-                        .children(
-                            media
-                                .detail
-                                .clone()
-                                .map(|length| div().text_color(rgb(MUTED)).child(length)),
-                        ),
+                        .child(footer),
                 ),
         )
 }

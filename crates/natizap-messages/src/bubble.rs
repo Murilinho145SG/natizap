@@ -5,7 +5,7 @@ use gpui::{
     AnyElement, App, Div, FontStyle, FontWeight, HighlightStyle, MouseButton, SharedString,
     Stateful, StrikethroughStyle, StyledText, WeakEntity, div, px, relative, rgb, svg,
 };
-use natizap_protocol::Mark;
+use natizap_protocol::{ContentKind, Mark};
 use natizap_ui::Icon;
 use natizap_ui::theme::{ALERT, DEEP, LINE, MINT, MUTED, OUTGOING, PANEL, RAISED};
 
@@ -14,6 +14,7 @@ use crate::media_view::render_media;
 use crate::message::Delivery;
 use crate::view::ConversationView;
 use crate::voice::VoiceUi;
+use crate::voice_view::render_voice;
 
 /// Quick reactions offered on every bubble, as in WhatsApp.
 pub(crate) const QUICK_REACTIONS: [&str; 6] = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
@@ -114,6 +115,17 @@ fn shape(bubble: &Bubble, view: &WeakEntity<ConversationView>, voice: &VoiceUi) 
         .when(bubble.from_me, |meta| {
             meta.child(delivery_mark(bubble.delivery))
         });
+    // A voice note carries no text, so its time and ticks sit inside the
+    // player instead of on a line of their own, as on the phone.
+    let voice_note = bubble.media.as_ref().filter(|media| {
+        matches!(
+            media.fetch.kind,
+            ContentKind::VoiceMessage | ContentKind::Audio
+        )
+    });
+    if let Some(media) = voice_note {
+        return frame(bubble).child(render_voice(media, voice, meta, view));
+    }
 
     let body = match &bubble.body {
         Body::Deleted => div()
@@ -134,6 +146,31 @@ fn shape(bubble: &Bubble, view: &WeakEntity<ConversationView>, voice: &VoiceUi) 
             .children(text.as_ref().map(styled_text)),
     };
 
+    frame(bubble)
+        .children(bubble.media.as_ref().map(|media| render_media(media, view)))
+        .children(
+            bubble
+                .quote
+                .as_ref()
+                .map(|quote| quote_block(quote.author.clone(), quote.color, quote.text.clone())),
+        )
+        // Time sits beside short text and drops below text that fills the
+        // bubble, as in WhatsApp.
+        .child(
+            div()
+                .flex()
+                .flex_wrap()
+                .items_end()
+                .gap_x_2()
+                // Without a max width the text keeps its unwrapped width and
+                // overflows the bubble.
+                .child(body.min_w_0().max_w_full())
+                .child(meta.ml_auto().pb(px(1.0))),
+        )
+}
+
+/// The bubble's background and corners, with the author in groups.
+fn frame(bubble: &Bubble) -> Div {
     div()
         .flex()
         .flex_col()
@@ -158,31 +195,6 @@ fn shape(bubble: &Bubble, view: &WeakEntity<ConversationView>, voice: &VoiceUi) 
                 .text_color(rgb(color))
                 .child(name)
         }))
-        .children(
-            bubble
-                .media
-                .as_ref()
-                .map(|media| render_media(media, voice, view)),
-        )
-        .children(
-            bubble
-                .quote
-                .as_ref()
-                .map(|quote| quote_block(quote.author.clone(), quote.color, quote.text.clone())),
-        )
-        // Time sits beside short text and drops below text that fills the
-        // bubble, as in WhatsApp.
-        .child(
-            div()
-                .flex()
-                .flex_wrap()
-                .items_end()
-                .gap_x_2()
-                // Without a max width the text keeps its unwrapped width and
-                // overflows the bubble.
-                .child(body.min_w_0().max_w_full())
-                .child(meta.ml_auto().pb(px(1.0))),
-        )
 }
 
 /// Reply and react buttons, shown while the pointer is over the bubble.
