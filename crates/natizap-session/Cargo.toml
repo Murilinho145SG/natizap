@@ -8,6 +8,7 @@ publish.workspace = true
 [dependencies]
 gpui.workspace = true
 natizap-protocol.workspace = true
+natizap-ui.workspace = true
 qrcode.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
