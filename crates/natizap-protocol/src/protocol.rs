@@ -10,6 +10,7 @@ use crate::ChatId;
 use crate::ContentKind;
 use crate::actions::{self, ActionError, Connection, PinFor, Reply, Sent, Unread};
 use crate::fanout::Fanout;
+use crate::group::{self, GroupInfo};
 use crate::media::{self, Media};
 use crate::outgoing::{self, Forward, Outgoing, SentMedia};
 use crate::profile;
@@ -272,6 +273,16 @@ impl Protocol {
         self.connection.run(cx, move |client| {
             actions::react(client, chat, message_id, sender, emoji)
         })
+    }
+
+    /// Who runs group `chat` and who may write in it.
+    pub fn group_info(&self, chat: &ChatId, cx: &App) -> Task<Result<GroupInfo, ActionError>> {
+        let jid = match actions::jid(chat) {
+            Ok(jid) => jid,
+            Err(error) => return Task::ready(Err(error)),
+        };
+        self.connection
+            .run(cx, move |client| group::info(client, jid))
     }
 
     /// Downloads the small profile picture of `chat`, a person or a group:
