@@ -1,14 +1,14 @@
 //! What a right click on a message offers, and the question deleting asks.
 
 use gpui::prelude::*;
-use gpui::{ClipboardItem, Context, Pixels, Point, SharedString, div, px, rgb, svg};
-use natizap_protocol::PinFor;
+use gpui::{ClipboardItem, Context, Pixels, Point, SharedString, WeakEntity, div, px, rgb, svg};
+use natizap_protocol::{ContentKind, Forward, PinFor};
 use natizap_ui::theme::{LINE, MUTED, PANEL, RAISED, TEXT};
 use natizap_ui::{AlertDialog, ButtonVariant, Icon, Menu};
 
 use super::ConversationView;
 use crate::items::{Body, Bubble, Item};
-use crate::log::Pinned;
+use crate::log::{MessageLog, Pinned};
 
 /// The message a menu or the delete question is about.
 #[derive(Debug, Clone)]
@@ -112,48 +112,9 @@ impl ConversationView {
                     view.toggle_reactions(&id, cx);
                 });
             });
-            let pinning = view.clone();
-            let (id, from_me, sender) = (
-                bubble.id.clone(),
-                bubble.from_me,
-                bubble.participant.clone(),
-            );
-            menu = menu.action(
-                Icon::Pin,
-                if pinned { "Unpin" } else { "Pin" },
-                move |_, cx| {
-                    let _ = pinning.update(cx, |view, cx| {
-                        if pinned {
-                            view.close_message_popup(cx);
-                            view.log.update(cx, |log, cx| {
-                                log.set_pinned(id.to_string(), from_me, sender.as_ref(), None, cx);
-                            });
-                        } else {
-                            view.message_popup = Some(MessagePopup::Pinning(id.clone()));
-                            cx.notify();
-                        }
-                    });
-                },
-            );
-            let starring = view.clone();
-            let (id, from_me, sender, starred) = (
-                bubble.id.to_string(),
-                bubble.from_me,
-                bubble.participant.clone(),
-                bubble.starred,
-            );
-            menu = menu.action(
-                Icon::Star,
-                if starred { "Unstar" } else { "Star" },
-                move |_, cx| {
-                    let _ = starring.update(cx, |view, cx| {
-                        view.close_message_popup(cx);
-                        view.log.update(cx, |log, cx| {
-                            log.set_starred(id.clone(), from_me, sender.as_ref(), !starred, cx);
-                        });
-                    });
-                },
-            );
+            menu = with_forward(menu, bubble, &view);
+            menu = with_pin(menu, bubble, pinned, &view);
+            menu = with_star(menu, bubble, &view);
             menu = menu.separator();
         }
         let id = bubble.id.clone();
@@ -295,4 +256,78 @@ impl ConversationView {
             cx.notify();
         }
     }
+}
+
+/// Forward: asks the app which chats to send the message to.
+fn with_forward(menu: Menu, bubble: &Bubble, view: &WeakEntity<ConversationView>) -> Menu {
+    let view = view.clone();
+    let forward = Forward {
+        kind: bubble
+            .media
+            .as_ref()
+            .map_or(ContentKind::Text, |media| media.fetch.kind),
+        text: bubble.source_text.clone(),
+        media: bubble.media.as_ref().map(|media| media.fetch.media.clone()),
+    };
+    let file = bubble.media.as_ref().and_then(|media| media.file.clone());
+    menu.action(Icon::Forward, "Forward", move |_, cx| {
+        let _ = view.update(cx, |view, cx| {
+            view.close_message_popup(cx);
+            MessageLog::request_forward(&view.log, forward.clone(), file.clone(), cx);
+        });
+    })
+}
+
+/// Pin asks for how long; unpin is immediate.
+fn with_pin(
+    menu: Menu,
+    bubble: &Bubble,
+    pinned: bool,
+    view: &WeakEntity<ConversationView>,
+) -> Menu {
+    let view = view.clone();
+    let (id, from_me, sender) = (
+        bubble.id.clone(),
+        bubble.from_me,
+        bubble.participant.clone(),
+    );
+    menu.action(
+        Icon::Pin,
+        if pinned { "Unpin" } else { "Pin" },
+        move |_, cx| {
+            let _ = view.update(cx, |view, cx| {
+                if pinned {
+                    view.close_message_popup(cx);
+                    view.log.update(cx, |log, cx| {
+                        log.set_pinned(id.to_string(), from_me, sender.as_ref(), None, cx);
+                    });
+                } else {
+                    view.message_popup = Some(MessagePopup::Pinning(id.clone()));
+                    cx.notify();
+                }
+            });
+        },
+    )
+}
+
+fn with_star(menu: Menu, bubble: &Bubble, view: &WeakEntity<ConversationView>) -> Menu {
+    let view = view.clone();
+    let (id, from_me, sender, starred) = (
+        bubble.id.to_string(),
+        bubble.from_me,
+        bubble.participant.clone(),
+        bubble.starred,
+    );
+    menu.action(
+        Icon::Star,
+        if starred { "Unstar" } else { "Star" },
+        move |_, cx| {
+            let _ = view.update(cx, |view, cx| {
+                view.close_message_popup(cx);
+                view.log.update(cx, |log, cx| {
+                    log.set_starred(id.clone(), from_me, sender.as_ref(), !starred, cx);
+                });
+            });
+        },
+    )
 }

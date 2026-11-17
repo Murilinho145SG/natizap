@@ -53,6 +53,8 @@ pub(crate) struct Bubble {
     /// Who wrote it, as message keys name them: only in groups, and only
     /// for others' messages.
     pub(crate) participant: Option<ChatId>,
+    /// The text as written, markup included, for forwarding.
+    pub(crate) source_text: Option<String>,
     /// Starts a new burst, so it gets more space above it.
     pub(crate) starts_burst: bool,
 }
@@ -269,6 +271,7 @@ fn bubble(
         delivery: message.delivery,
         starred: message.starred,
         participant: message.sender.clone().filter(|_| !message.from_me),
+        source_text: message.text.clone(),
         starts_burst,
     }
 }

@@ -20,5 +20,5 @@ mod view;
 mod voice;
 mod voice_view;
 
-pub use log::{MessageLog, MessageSent, OpenChat, PlayRequested};
+pub use log::{ForwardRequested, MessageLog, MessageSent, OpenChat, PlayRequested};
 pub use view::ConversationView;

@@ -6,7 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use chrono::Local;
 use gpui::{AppContext as _, Context, Entity, EventEmitter, SharedString, Task};
 use natizap_protocol::whatsapp_rust::prelude::Event;
-use natizap_protocol::{ChatId, ContentKind, Protocol, Quote, Reply, Unread};
+use natizap_protocol::{ChatId, ContentKind, Forward, Protocol, Quote, Reply, Unread};
 
 use crate::items::{Item, items, summary};
 use crate::media::{Fetch, PosterJob, fetch_on_sight, posters_on_sight};
@@ -95,6 +95,7 @@ pub struct MessageLog {
 impl EventEmitter<MessageSent> for MessageLog {}
 impl EventEmitter<PlayRequested> for MessageLog {}
 impl EventEmitter<SoundReady> for MessageLog {}
+impl EventEmitter<ForwardRequested> for MessageLog {}
 
 /// The user opened a video, now on disk, so the app can play it over the
 /// window.
@@ -111,6 +112,16 @@ pub struct PlayRequested {
 pub(crate) struct Pinned {
     pub(crate) id: SharedString,
     pub(crate) text: SharedString,
+}
+
+/// The user wants to forward a message: the app asks which chats to send
+/// it to, then hands them to [`MessageLog::forward`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ForwardRequested {
+    /// What to send again.
+    pub forward: Forward,
+    /// The file on disk, so forwarded copies show it at once.
+    pub file: Option<PathBuf>,
 }
 
 /// A voice note or audio file asked to play finished downloading.
@@ -230,9 +241,74 @@ impl MessageLog {
     /// be sent; `None` when no chat is open.
     fn next_outgoing(&mut self) -> Option<(ChatId, String, i64)> {
         let chat = self.open.as_ref()?.id.clone();
+        Some((chat, self.next_local_id(), Local::now().timestamp()))
+    }
+
+    /// An id for a message until WhatsApp gives it its own.
+    fn next_local_id(&mut self) -> String {
         self.sent_count += 1;
-        let local_id = format!("local-{}-{}", unix_nanos(), self.sent_count);
-        Some((chat, local_id, Local::now().timestamp()))
+        format!("local-{}-{}", unix_nanos(), self.sent_count)
+    }
+
+    /// Asks the app, through `log`, to pick chats to forward `forward` to.
+    pub(crate) fn request_forward(
+        log: &Entity<Self>,
+        forward: Forward,
+        file: Option<PathBuf>,
+        cx: &mut gpui::App,
+    ) {
+        log.update(cx, |_, cx| cx.emit(ForwardRequested { forward, file }));
+    }
+
+    /// Sends `request` to each of `chats`, marked as forwarded. Each copy
+    /// shows in its chat at once, before WhatsApp has it.
+    pub fn forward(
+        &mut self,
+        request: &ForwardRequested,
+        chats: Vec<ChatId>,
+        cx: &mut Context<Self>,
+    ) {
+        let sent_at = Local::now().timestamp();
+        for chat in chats {
+            let local_id = self.next_local_id();
+            let mut message = outgoing_message(&chat, &local_id, sent_at, None);
+            message.kind = request.forward.kind;
+            message.text.clone_from(&request.forward.text);
+            message.media.clone_from(&request.forward.media);
+            message.media_file.clone_from(&request.file);
+            self.send_input(Input::from(MessageChange::Sending(message)));
+            cx.emit(MessageSent {
+                chat: chat.clone(),
+                text: request
+                    .forward
+                    .text
+                    .clone()
+                    .unwrap_or_else(|| request.forward.kind.label().to_owned()),
+                sent_at,
+            });
+            let sending = self
+                .protocol
+                .read(cx)
+                .forward(&chat, request.forward.clone(), cx);
+            let inputs = self.inputs.clone();
+            cx.background_spawn(async move {
+                let change = match sending.await {
+                    Ok(sent) => MessageChange::Accepted {
+                        chat,
+                        local_id,
+                        id: sent.id,
+                        media: None,
+                    },
+                    Err(error) => {
+                        tracing::warn!(%error, "message not forwarded");
+                        MessageChange::Rejected { chat, local_id }
+                    }
+                };
+                // Only fails while shutting down, when nothing is left to update.
+                let _ = inputs.send(Input::from(change)).await;
+            })
+            .detach();
+        }
     }
 
     fn send_input(&self, input: Input) {
