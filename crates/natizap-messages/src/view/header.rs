@@ -15,10 +15,11 @@ use crate::log::OpenChat;
 pub(super) fn header(
     chat: &OpenChat,
     picture: Option<PathBuf>,
+    members: Option<String>,
     cx: &mut Context<ConversationView>,
 ) -> Stateful<Div> {
     let subtitle = if chat.id.is_group() {
-        Some("Group".to_owned())
+        Some(members.unwrap_or_else(|| "Group".to_owned()))
     } else {
         chat.id
             .phone_number()
@@ -40,6 +41,7 @@ pub(super) fn header(
         .child(avatar(chat.id.as_str(), &chat.title, picture, px(38.0)))
         .child(
             div()
+                .flex_1()
                 .min_w_0()
                 .flex()
                 .flex_col()
@@ -57,6 +59,7 @@ pub(super) fn header(
                 )
                 .children(subtitle.map(|subtitle| {
                     div()
+                        .truncate()
                         .text_size(px(12.5))
                         .text_color(rgb(MUTED))
                         .child(subtitle)

@@ -215,7 +215,8 @@ impl Root {
                 return;
             }
             shared = Some(Arc::clone(names));
-            messages.read(cx).set_names(Arc::clone(names));
+            let names = Arc::clone(names);
+            messages.update(cx, |log, cx| log.set_names(names, cx));
         })
         .detach();
     }

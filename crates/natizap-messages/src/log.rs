@@ -113,6 +113,8 @@ pub struct MessageLog {
     posters: HashSet<String>,
     pinned: Option<Pinned>,
     group: Option<GroupInfo>,
+    /// What people are called, by address.
+    names: Arc<HashMap<ChatId, PersonName>>,
     _tasks: [Task<()>; 3],
 }
 
@@ -197,6 +199,7 @@ impl MessageLog {
             posters: HashSet::new(),
             pinned: None,
             group: None,
+            names: Arc::default(),
             _tasks: [forward, sync, apply],
         }
     }
@@ -437,8 +440,58 @@ impl MessageLog {
     /// Names people by `names`, by address, where their messages do not:
     /// the address book's names, and those people chose that older
     /// messages lack.
-    pub fn set_names(&self, names: Arc<HashMap<ChatId, PersonName>>) {
+    pub fn set_names(&mut self, names: Arc<HashMap<ChatId, PersonName>>, cx: &mut Context<Self>) {
+        self.names = Arc::clone(&names);
         self.send_input(Input::Names(names));
+        cx.notify();
+    }
+
+    /// The open group's members as its header lists them: names saved in
+    /// the address book, then names people chose after a `~`, then
+    /// numbers, each in order, and this account last.
+    pub(crate) fn members_line(&self, cx: &App) -> Option<String> {
+        let group = self.group.as_ref()?;
+        let protocol = self.protocol.read(cx);
+        let mut own = false;
+        let mut listed: Vec<(u8, String)> = Vec::new();
+        for member in &group.members {
+            let addresses = [Some(&member.address), member.phone.as_ref()];
+            if addresses
+                .iter()
+                .flatten()
+                .any(|address| protocol.is_own(address))
+            {
+                own = true;
+                continue;
+            }
+            let known = addresses
+                .iter()
+                .flatten()
+                .find_map(|address| self.names.get(*address));
+            listed.push(match known.and_then(|known| known.saved.clone()) {
+                Some(saved) => (0, saved),
+                None => match known.and_then(|known| known.chosen.clone()) {
+                    Some(chosen) => (1, format!("~ {chosen}")),
+                    None => (
+                        2,
+                        addresses
+                            .iter()
+                            .flatten()
+                            .find_map(|address| address.phone_number())
+                            .unwrap_or_else(|| member.address.as_str().to_owned()),
+                    ),
+                },
+            });
+        }
+        listed.sort_by(|a, b| {
+            a.0.cmp(&b.0)
+                .then_with(|| a.1.to_lowercase().cmp(&b.1.to_lowercase()))
+        });
+        let mut line: Vec<String> = listed.into_iter().map(|(_, name)| name).collect();
+        if own {
+            line.push("You".to_owned());
+        }
+        Some(line.join(", "))
     }
 
     fn send_input(&self, input: Input) {
