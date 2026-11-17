@@ -20,7 +20,7 @@ mod protocol;
 pub use actions::{ActionError, Anchor, Disappearing, PinFor, Reply, Sent, Unread};
 pub use business::{Business, DayHours, Hours};
 pub use chat::ChatId;
-pub use content::{Card, Content, ContentKind, Extra, Poll, Quote};
+pub use content::{Card, Content, ContentKind, Extra, Forwarding, Poll, Quote};
 pub use group::GroupInfo;
 pub use markup::{LinkKind, Mark, Marked};
 pub use media::{HdThumbnail, Media};

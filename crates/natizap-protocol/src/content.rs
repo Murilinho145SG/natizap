@@ -80,6 +80,33 @@ pub struct Content {
     pub media: Option<Media>,
     /// Shared contacts, or a poll.
     pub extra: Option<Extra>,
+    /// The message was forwarded, and how often.
+    pub forwarding: Option<Forwarding>,
+}
+
+/// How far a forwarded message has travelled.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Forwarding {
+    /// Forwarded.
+    Once,
+    /// Forwarded through a chain of at least five chats: "Forwarded many
+    /// times".
+    Often,
+}
+
+impl Forwarding {
+    fn of(message: &wa::Message) -> Option<Self> {
+        let context = context_info(message)?;
+        if context.is_forwarded != Some(true) {
+            return None;
+        }
+        // WhatsApp counts each forward and warns from the fifth on.
+        Some(if context.forwarding_score.unwrap_or_default() >= 5 {
+            Self::Often
+        } else {
+            Self::Once
+        })
+    }
 }
 
 /// What a contact or poll message carries besides text.
@@ -295,6 +322,7 @@ impl Content {
             quote: Quote::of(message),
             media: Media::of(message),
             extra: Extra::of(message),
+            forwarding: Forwarding::of(message),
         })
     }
 
