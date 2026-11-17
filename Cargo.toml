@@ -38,6 +38,7 @@ dirs = "6"
 ffmpeg-next = { version = "9.1", default-features = false, features = [
     "build",
     "codec",
+    "filter",
     "format",
     "software-resampling",
     "software-scaling",

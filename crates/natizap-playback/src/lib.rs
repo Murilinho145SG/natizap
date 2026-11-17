@@ -8,10 +8,13 @@
 mod audio;
 mod clock;
 mod decode;
+mod speed;
 
 use std::path::Path;
 use std::sync::{Arc, mpsc};
 use std::time::Duration;
+
+pub use speed::Speed;
 
 use decode::{Command, Shared};
 
@@ -78,6 +81,11 @@ impl Playback {
     pub fn seek(&self, to: Duration) {
         let to = self.status().duration.map_or(to, |total| to.min(total));
         self.send(Command::Seek(to));
+    }
+
+    /// Plays at `speed`, keeping voices at their pitch.
+    pub fn set_speed(&self, speed: Speed) {
+        self.send(Command::Speed(speed));
     }
 
     /// Where playback is now.

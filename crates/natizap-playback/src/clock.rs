@@ -13,7 +13,7 @@ pub(crate) struct Clock {
     state: Mutex<State>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct State {
     /// Position when counting last restarted (start, seek, resume).
     base: Duration,
@@ -21,6 +21,19 @@ struct State {
     audio_rate: Option<u32>,
     /// When the wall clock last started counting, while playing silently.
     since: Option<Instant>,
+    /// Media seconds per real second.
+    speed: f64,
+}
+
+impl Default for State {
+    fn default() -> Self {
+        Self {
+            base: Duration::ZERO,
+            audio_rate: None,
+            since: None,
+            speed: 1.0,
+        }
+    }
 }
 
 impl Clock {
@@ -32,17 +45,15 @@ impl Clock {
     /// The current position.
     pub(crate) fn position(&self) -> Duration {
         let state = self.lock();
-        match state.audio_rate {
-            Some(rate) => {
-                let played = self.played.load(Ordering::Acquire);
-                let whole = played / u64::from(rate);
-                let rest = played % u64::from(rate);
-                state.base
-                    + Duration::from_secs(whole)
-                    + Duration::from_nanos(rest * 1_000_000_000 / u64::from(rate))
-            }
-            None => state.base + state.since.map_or(Duration::ZERO, |since| since.elapsed()),
-        }
+        let real = if let Some(rate) = state.audio_rate {
+            let played = self.played.load(Ordering::Acquire);
+            let rate = u64::from(rate);
+            Duration::from_secs(played / rate)
+                + Duration::from_nanos(played % rate * 1_000_000_000 / rate)
+        } else {
+            state.since.map_or(Duration::ZERO, |since| since.elapsed())
+        };
+        state.base + real.mul_f64(state.speed)
     }
 
     /// Whether playback is paused.
@@ -64,6 +75,13 @@ impl Clock {
             state.base = position;
             state.since = (!paused).then(Instant::now);
         }
+    }
+
+    /// Plays `speed` times as fast from here on.
+    pub(crate) fn set_speed(&self, speed: f32) {
+        let position = self.position();
+        self.lock().speed = f64::from(speed);
+        self.restart_at(position);
     }
 
     /// Restarts counting from `position`, e.g. after a seek.
@@ -92,6 +110,16 @@ mod tests {
         clock.restart_at(Duration::from_secs(10));
         clock.advance(24_000);
         assert_eq!(clock.position(), Duration::from_millis(10_500));
+    }
+
+    #[test]
+    fn faster_playback_covers_more_media_per_played_frame() {
+        let clock = Clock::default();
+        clock.drive_with_audio(48_000);
+        clock.restart_at(Duration::from_secs(2));
+        clock.set_speed(2.0);
+        clock.advance(48_000);
+        assert_eq!(clock.position(), Duration::from_secs(4));
     }
 
     #[test]

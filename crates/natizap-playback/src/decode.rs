@@ -6,16 +6,16 @@ use std::sync::mpsc::{Receiver, TryRecvError};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
-use ffmpeg::format::{Pixel, Sample, sample};
+use ffmpeg::format::Pixel;
 use ffmpeg::media::Type;
-use ffmpeg::software::{resampling, scaling};
+use ffmpeg::software::scaling;
 use ffmpeg::util::frame;
-use ffmpeg::{ChannelLayout, Rational, codec};
+use ffmpeg::{ChannelLayout, Rational, codec, filter};
 use ffmpeg_next as ffmpeg;
 
 use crate::audio::AudioOutput;
 use crate::clock::Clock;
-use crate::{Picture as Image, PlaybackError, Status};
+use crate::{Picture as Image, PlaybackError, Speed, Status};
 
 /// Widest picture worth decoding to; larger videos are scaled down while
 /// decoding, since the player never shows them bigger than the window.
@@ -32,6 +32,7 @@ const IDLE: Duration = Duration::from_millis(5);
 pub(crate) enum Command {
     Pause(bool),
     Seek(Duration),
+    Speed(Speed),
 }
 
 /// A decoded picture to show at `at`.
@@ -93,32 +94,33 @@ fn play(path: &Path, shared: &Shared, commands: &Receiver<Command>) -> Result<()
     let mut input_done = false;
     let mut skip_before = Duration::ZERO;
     loop {
-        match commands.try_recv() {
+        let seek_to = match commands.try_recv() {
             Ok(Command::Pause(paused)) => {
                 shared.clock.set_paused(paused);
                 if let Some(audio) = &audio {
                     audio.output.set_paused(paused);
                 }
+                None
             }
-            Ok(Command::Seek(to)) => {
-                let micros = i64::try_from(to.as_micros()).unwrap_or(i64::MAX);
-                input.seek(micros, ..micros)?;
-                if let Some(video) = &mut video {
-                    video.decoder.flush();
-                }
+            Ok(Command::Seek(to)) => Some(to),
+            Ok(Command::Speed(speed)) => {
+                // Sound already queued was stretched for the old speed, so
+                // restart from where playback is now.
+                let now = shared.clock.position();
+                shared.clock.set_speed(speed.factor());
                 if let Some(audio) = &mut audio {
-                    audio.decoder.flush();
-                    audio.output.clear();
+                    audio.set_speed(speed)?;
                 }
-                shared.pictures().clear();
-                shared.clock.restart_at(to);
-                shared.status().ended = false;
-                skip_before = to;
-                input_done = false;
-                continue;
+                Some(now)
             }
             Err(TryRecvError::Disconnected) => return Ok(()),
-            Err(TryRecvError::Empty) => {}
+            Err(TryRecvError::Empty) => None,
+        };
+        if let Some(to) = seek_to {
+            seek(&mut input, video.as_mut(), audio.as_mut(), shared, to)?;
+            skip_before = to;
+            input_done = false;
+            continue;
         }
 
         let pictures_full = shared.pictures().len() >= FRAMES_AHEAD;
@@ -147,8 +149,7 @@ fn play(path: &Path, shared: &Shared, commands: &Receiver<Command>) -> Result<()
                     video.drain(shared, skip_before)?;
                 }
                 if let Some(audio) = &mut audio {
-                    audio.decoder.send_eof()?;
-                    audio.drain(skip_before)?;
+                    audio.finish(skip_before)?;
                 }
                 input_done = true;
                 continue;
@@ -163,6 +164,30 @@ fn play(path: &Path, shared: &Shared, commands: &Receiver<Command>) -> Result<()
             audio.drain(skip_before)?;
         }
     }
+}
+
+/// Restarts decoding at `to`, dropping everything decoded for before it.
+fn seek(
+    input: &mut ffmpeg::format::context::Input,
+    video: Option<&mut VideoTrack>,
+    audio: Option<&mut AudioTrack>,
+    shared: &Shared,
+    to: Duration,
+) -> Result<(), PlaybackError> {
+    let micros = i64::try_from(to.as_micros()).unwrap_or(i64::MAX);
+    input.seek(micros, ..micros)?;
+    if let Some(video) = video {
+        video.decoder.flush();
+    }
+    if let Some(audio) = audio {
+        audio.decoder.flush();
+        audio.reset_tempo()?;
+        audio.output.clear();
+    }
+    shared.pictures().clear();
+    shared.clock.restart_at(to);
+    shared.status().ended = false;
+    Ok(())
 }
 
 struct VideoTrack {
@@ -229,7 +254,11 @@ struct AudioTrack {
     index: usize,
     time_base: Rational,
     decoder: ffmpeg::decoder::Audio,
-    resampler: resampling::Context,
+    layout: ChannelLayout,
+    speed: Speed,
+    /// Changes speed without changing pitch (`atempo`) and converts to the
+    /// sound card's format.
+    tempo: filter::Graph,
     output: AudioOutput,
 }
 
@@ -242,26 +271,39 @@ impl AudioTrack {
             .decoder()
             .audio()?;
         let output = AudioOutput::open(clock)?;
-        let source_layout = if decoder.channel_layout().is_empty() {
+        let layout = if decoder.channel_layout().is_empty() {
             ChannelLayout::default(i32::from(decoder.channels()))
         } else {
             decoder.channel_layout()
         };
-        let resampler = resampling::Context::get(
-            decoder.format(),
-            source_layout,
-            decoder.rate(),
-            Sample::F32(sample::Type::Packed),
-            ChannelLayout::default(i32::from(output.channels)),
-            output.rate,
-        )?;
+        let time_base = stream.time_base();
+        let tempo = tempo_graph(&decoder, time_base, &layout, &output, Speed::Normal)?;
         Ok(Self {
             index: stream.index(),
-            time_base: stream.time_base(),
+            time_base,
             decoder,
-            resampler,
+            layout,
+            speed: Speed::Normal,
+            tempo,
             output,
         })
+    }
+
+    fn set_speed(&mut self, speed: Speed) -> Result<(), PlaybackError> {
+        self.speed = speed;
+        self.reset_tempo()
+    }
+
+    /// Rebuilds the tempo graph, dropping sound it still holds.
+    fn reset_tempo(&mut self) -> Result<(), PlaybackError> {
+        self.tempo = tempo_graph(
+            &self.decoder,
+            self.time_base,
+            &self.layout,
+            &self.output,
+            self.speed,
+        )?;
+        Ok(())
     }
 
     fn drain(&mut self, skip_before: Duration) -> Result<(), PlaybackError> {
@@ -270,11 +312,26 @@ impl AudioTrack {
             if seconds(decoded.timestamp(), self.time_base) < skip_before {
                 continue;
             }
-            let mut resampled = frame::Audio::empty();
-            self.resampler.run(&decoded, &mut resampled)?;
-            let count = resampled.samples() * usize::from(self.output.channels);
-            let bytes = &resampled.data(0)[..count * 4];
-            let samples: Vec<f32> = bytes
+            self.graph_node("in")?.source().add(&decoded)?;
+            self.play_filtered()?;
+        }
+        Ok(())
+    }
+
+    /// Feeds what the decoder still holds at the end of the file.
+    fn finish(&mut self, skip_before: Duration) -> Result<(), PlaybackError> {
+        self.decoder.send_eof()?;
+        self.drain(skip_before)?;
+        self.graph_node("in")?.source().flush()?;
+        self.play_filtered()
+    }
+
+    fn play_filtered(&mut self) -> Result<(), PlaybackError> {
+        let channels = usize::from(self.output.channels);
+        let mut filtered = frame::Audio::empty();
+        while self.graph_node("out")?.sink().frame(&mut filtered).is_ok() {
+            let count = filtered.samples() * channels;
+            let samples: Vec<f32> = filtered.data(0)[..count * 4]
                 .as_chunks::<4>()
                 .0
                 .iter()
@@ -284,6 +341,43 @@ impl AudioTrack {
         }
         Ok(())
     }
+
+    fn graph_node(&mut self, name: &str) -> Result<filter::Context, PlaybackError> {
+        self.tempo
+            .get(name)
+            .ok_or(PlaybackError::Media(ffmpeg::Error::FilterNotFound))
+    }
+}
+
+/// `abuffer` → `atempo` → the output's sample format, rate and layout.
+fn tempo_graph(
+    decoder: &ffmpeg::decoder::Audio,
+    time_base: Rational,
+    layout: &ChannelLayout,
+    output: &AudioOutput,
+    speed: Speed,
+) -> Result<filter::Graph, PlaybackError> {
+    let find = |name| filter::find(name).ok_or(ffmpeg::Error::FilterNotFound);
+    let mut graph = filter::Graph::new();
+    let source = format!(
+        "time_base={time_base}:sample_rate={}:sample_fmt={}:channel_layout=0x{:x}",
+        decoder.rate(),
+        decoder.format().name(),
+        layout.bits()
+    );
+    graph.add(&find("abuffer")?, "in", &source)?;
+    graph.add(&find("abuffersink")?, "out", "")?;
+    // The format goes in the chain: this FFmpeg's `abuffersink` ignores the
+    // options `ffmpeg-next` sets on it and hands out planar sound.
+    let chain = format!(
+        "atempo={},aresample={rate},aformat=sample_fmts=flt:sample_rates={rate}:channel_layouts={}c",
+        speed.factor(),
+        output.channels,
+        rate = output.rate,
+    );
+    graph.output("in", 0)?.input("out", 0)?.parse(&chain)?;
+    graph.validate()?;
+    Ok(graph)
 }
 
 /// Scales `width`×`height` down to at most [`MAX_WIDTH`] wide, keeping the
