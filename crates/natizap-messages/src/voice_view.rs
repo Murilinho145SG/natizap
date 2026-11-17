@@ -43,7 +43,7 @@ pub(crate) fn render_voice(
     };
 
     div()
-        .w(px(250.0))
+        .w(px(340.0))
         .flex()
         .items_center()
         .gap_2p5()
