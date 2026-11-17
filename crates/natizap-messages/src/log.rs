@@ -41,6 +41,8 @@ pub struct OpenChat {
     pub title: SharedString,
     /// Unread messages to acknowledge when it opens.
     pub unread: u32,
+    /// Notifications silenced.
+    pub muted: bool,
 }
 
 /// This computer sent a message, so other views can reflect it right away.
@@ -57,6 +59,7 @@ pub struct MessageSent {
 enum Input {
     Event(Arc<Event>),
     Open(OpenChat),
+    Close,
     Apply(Box<MessageChange>),
     /// What the open group says about its members.
     Members(ChatId, Members),
@@ -228,6 +231,26 @@ impl MessageLog {
         self.open = Some(chat.clone());
         self.send_input(Input::Open(chat));
         cx.notify();
+    }
+
+    /// Closes the open chat, leaving none.
+    pub fn close(&mut self, cx: &mut Context<Self>) {
+        if self.open.take().is_none() {
+            return;
+        }
+        self.items = Arc::from([]);
+        self.pinned = None;
+        self.group = None;
+        self.send_input(Input::Close);
+        cx.notify();
+    }
+
+    /// Records that the open chat's notifications were silenced or not.
+    pub fn set_muted(&mut self, muted: bool, cx: &mut Context<Self>) {
+        if let Some(open) = &mut self.open {
+            open.muted = muted;
+            cx.notify();
+        }
     }
 
     /// The media and starred messages of a chat filed under `addresses`,

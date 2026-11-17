@@ -3,9 +3,9 @@
 use std::path::PathBuf;
 
 use gpui::prelude::*;
-use gpui::{Context, Div, FontWeight, Stateful, div, px, rgb};
+use gpui::{App, ClickEvent, Context, Div, FontWeight, Stateful, Window, div, px, rgb};
 use natizap_ui::theme::{LINE, MUTED, PANEL};
-use natizap_ui::{avatar, verified_seal};
+use natizap_ui::{Button, ButtonVariant, Icon, Menu, avatar, verified_seal};
 
 use super::{ConversationView, ProfileRequested};
 use crate::log::OpenChat;
@@ -17,15 +17,6 @@ pub(super) fn header(
     picture: Option<PathBuf>,
     cx: &mut Context<ConversationView>,
 ) -> Stateful<Div> {
-    let (verified, title) = (chat.verified, chat.title.clone());
-    // The phone-number address, when the chat has one: WhatsApp answers
-    // profile questions about a LID with less, and a LID shows no number.
-    let address = chat
-        .addresses
-        .iter()
-        .find(|address| address.phone_number().is_some())
-        .unwrap_or(&chat.id)
-        .clone();
     let subtitle = if chat.id.is_group() {
         Some("Group".to_owned())
     } else {
@@ -36,13 +27,7 @@ pub(super) fn header(
     div()
         .id("chat-header")
         .cursor_pointer()
-        .on_click(cx.listener(move |_, _, _, cx| {
-            cx.emit(ProfileRequested {
-                chat: address.clone(),
-                title: title.clone(),
-                verified,
-            });
-        }))
+        .on_click(cx.listener(|this, _, _, cx| this.request_profile(cx)))
         .h(px(60.0))
         .flex_none()
         .flex()
@@ -77,4 +62,94 @@ pub(super) fn header(
                         .child(subtitle)
                 })),
         )
+        .child(
+            div().ml_auto().child(
+                Button::new("chat-menu")
+                    .icon(Icon::More)
+                    .variant(ButtonVariant::Ghost)
+                    .round()
+                    .tooltip("Menu")
+                    .on_click(cx.listener(|this, event: &ClickEvent, _, cx| {
+                        // The header behind opens the profile.
+                        cx.stop_propagation();
+                        this.chat_menu = Some(event.position());
+                        cx.notify();
+                    })),
+            ),
+        )
+}
+
+/// The user chose to close the open chat.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ChatClosed;
+
+/// The user chose to silence the open chat's notifications (`true`) or let
+/// them through.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MuteRequested(pub bool);
+
+impl ConversationView {
+    /// The header's menu, when open: the chat's info, its notifications,
+    /// and closing it.
+    pub(super) fn chat_menu(&self, cx: &mut Context<Self>) -> Option<impl IntoElement> {
+        let position = self.chat_menu?;
+        let chat = self.log.read(cx).open_chat()?;
+        let (muted, group) = (chat.muted, chat.id.is_group());
+        let view = cx.weak_entity();
+        let act = move |action: fn(&mut ConversationView, &mut Context<ConversationView>)| {
+            let view = view.clone();
+            move |_: &mut Window, cx: &mut App| {
+                let _ = view.update(cx, |this, cx| {
+                    this.chat_menu = None;
+                    action(this, cx);
+                    cx.notify();
+                });
+            }
+        };
+        Some(
+            Menu::new()
+                .action(
+                    Icon::Contact,
+                    if group { "Group info" } else { "Contact info" },
+                    act(ConversationView::request_profile),
+                )
+                .action(
+                    Icon::Muted,
+                    if muted {
+                        "Unmute notifications"
+                    } else {
+                        "Mute notifications"
+                    },
+                    act(if muted {
+                        |_, cx| cx.emit(MuteRequested(false))
+                    } else {
+                        |_, cx| cx.emit(MuteRequested(true))
+                    }),
+                )
+                .separator()
+                .action(Icon::Close, "Close chat", act(|_, cx| cx.emit(ChatClosed)))
+                .on_dismiss(act(|_, _| {}))
+                .at(position),
+        )
+    }
+
+    /// Asks for the open chat's profile, by its phone-number address when it
+    /// has one: WhatsApp answers profile questions about a LID with less,
+    /// and a LID shows no number.
+    pub(super) fn request_profile(&mut self, cx: &mut Context<Self>) {
+        let Some(chat) = self.log.read(cx).open_chat() else {
+            return;
+        };
+        let request = ProfileRequested {
+            chat: chat
+                .addresses
+                .iter()
+                .find(|address| address.phone_number().is_some())
+                .unwrap_or(&chat.id)
+                .clone(),
+            title: chat.title.clone(),
+            verified: chat.verified,
+        };
+        cx.emit(request);
+    }
 }

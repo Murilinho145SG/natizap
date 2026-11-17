@@ -28,6 +28,7 @@ mod viewer;
 
 pub use attach::ContactsRequested;
 use header::header;
+pub use header::{ChatClosed, MuteRequested};
 use message_menu::MessagePopup;
 
 /// Width of the column a community's announcements read in.
@@ -67,6 +68,8 @@ pub struct ConversationView {
     selection: Option<Selection>,
     /// The photo shown large.
     viewing: Option<MediaView>,
+    /// Where the header's menu is open.
+    chat_menu: Option<Point<Pixels>>,
 }
 
 /// The user clicked the conversation's header to see the chat's profile.
@@ -92,6 +95,10 @@ pub struct ChatRequested {
 impl EventEmitter<ChatRequested> for ConversationView {}
 
 impl EventEmitter<ContactsRequested> for ConversationView {}
+
+impl EventEmitter<ChatClosed> for ConversationView {}
+
+impl EventEmitter<MuteRequested> for ConversationView {}
 
 /// The message the next one will reply to, as the composer shows it.
 #[derive(Debug, Clone)]
@@ -166,6 +173,7 @@ impl ConversationView {
             poll_draft: None,
             selection: None,
             viewing: None,
+            chat_menu: None,
             reaction_emojis,
         }
     }
@@ -480,6 +488,7 @@ impl Render for ConversationView {
             .children(self.attach_menu(cx))
             .children(self.poll_dialog(window, cx))
             .children(self.picture_viewer(window, cx))
+            .children(self.chat_menu(cx))
             .into_any_element()
     }
 }

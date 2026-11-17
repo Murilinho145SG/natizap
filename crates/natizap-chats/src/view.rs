@@ -73,9 +73,10 @@ impl ChatListView {
         }
     }
 
-    /// Marks `chat` as the one on screen, e.g. after going back to it.
-    pub fn show(&mut self, chat: &ChatId, cx: &mut Context<Self>) {
-        self.selected = Some(chat.clone());
+    /// Marks `chat` as the one on screen, e.g. after going back to it, or
+    /// none once the chat closes.
+    pub fn show(&mut self, chat: Option<&ChatId>, cx: &mut Context<Self>) {
+        self.selected = chat.cloned();
         cx.notify();
     }
 

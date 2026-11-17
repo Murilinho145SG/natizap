@@ -39,6 +39,7 @@ pub(super) async fn sync(
         let mut next = Some(input);
         while let Some(input) = next.take() {
             match input {
+                Input::Close => open = None,
                 Input::Open(chat) => {
                     open = Some(chat);
                     members = Members {
