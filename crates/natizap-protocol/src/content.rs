@@ -78,6 +78,122 @@ pub struct Content {
     pub quote: Option<Quote>,
     /// The attached photo, video, audio, document or sticker.
     pub media: Option<Media>,
+    /// Shared contacts, or a poll.
+    pub extra: Option<Extra>,
+}
+
+/// What a contact or poll message carries besides text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Extra {
+    /// Shared contacts.
+    Cards(Vec<Card>),
+    /// A poll.
+    Poll(Poll),
+}
+
+/// A shared contact.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Card {
+    /// The name it was shared under.
+    pub name: String,
+    /// Its WhatsApp number, digits only, when it has one.
+    pub phone: Option<String>,
+}
+
+impl Card {
+    fn of(contact: &wa::message::ContactMessage) -> Self {
+        let vcard = contact.vcard.as_deref().unwrap_or_default();
+        Self {
+            name: contact
+                .display_name
+                .clone()
+                .or_else(|| vcard_field(vcard, "FN"))
+                .unwrap_or_default(),
+            phone: vcard_phone(vcard),
+        }
+    }
+}
+
+/// A vCard property's value, e.g. `FN:Ana` for `FN`.
+fn vcard_field(vcard: &str, name: &str) -> Option<String> {
+    vcard.lines().find_map(|line| {
+        let (key, value) = line.split_once(':')?;
+        let key = key.split(';').next()?;
+        key.eq_ignore_ascii_case(name)
+            .then(|| value.trim().to_owned())
+    })
+}
+
+/// The WhatsApp number in a vCard: the `waid` WhatsApp adds to a phone
+/// line, else the first phone line's digits.
+fn vcard_phone(vcard: &str) -> Option<String> {
+    let phones = || {
+        vcard.lines().filter(|line| {
+            line.split([';', ':'])
+                .next()
+                // Grouped lines name the property after a dot: `item1.TEL`.
+                .and_then(|key| key.rsplit('.').next())
+                .is_some_and(|key| key.eq_ignore_ascii_case("TEL"))
+        })
+    };
+    let waid = phones().find_map(|line| {
+        let start = line.find("waid=")? + "waid=".len();
+        let digits: String = line[start..]
+            .chars()
+            .take_while(char::is_ascii_digit)
+            .collect();
+        Some(digits).filter(|digits| !digits.is_empty())
+    });
+    waid.or_else(|| {
+        let line = phones().next()?;
+        let digits: String = line
+            .rsplit(':')
+            .next()?
+            .chars()
+            .filter(char::is_ascii_digit)
+            .collect();
+        Some(digits).filter(|digits| digits.len() >= 8)
+    })
+}
+
+/// A poll's question and choices.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Poll {
+    /// What it asks.
+    pub question: String,
+    /// The answers to choose from.
+    pub options: Vec<String>,
+    /// More than one answer may be chosen.
+    pub multiple: bool,
+}
+
+impl Extra {
+    fn of(message: &wa::Message) -> Option<Self> {
+        if let Some(contact) = message.contact_message.as_option() {
+            return Some(Self::Cards(vec![Card::of(contact)]));
+        }
+        if let Some(contacts) = message.contacts_array_message.as_option() {
+            return Some(Self::Cards(
+                contacts.contacts.iter().map(Card::of).collect(),
+            ));
+        }
+        let poll = [
+            &message.poll_creation_message,
+            &message.poll_creation_message_v2,
+            &message.poll_creation_message_v3,
+        ]
+        .into_iter()
+        .find_map(|poll| poll.as_option())?;
+        Some(Self::Poll(Poll {
+            question: poll.name.clone().unwrap_or_default(),
+            options: poll
+                .options
+                .iter()
+                .filter_map(|option| option.option_name.clone())
+                .collect(),
+            multiple: poll.selectable_options_count.is_none_or(|count| count != 1),
+        }))
+    }
 }
 
 /// A message being replied to.
@@ -161,7 +277,7 @@ impl Content {
             ContentKind::Sticker
         } else if message.location_message.is_set() || message.live_location_message.is_set() {
             ContentKind::Location
-        } else if message.contact_message.is_set() {
+        } else if message.contact_message.is_set() || message.contacts_array_message.is_set() {
             ContentKind::Contact
         } else if message.poll_creation_message.is_set()
             || message.poll_creation_message_v2.is_set()
@@ -178,6 +294,7 @@ impl Content {
             text,
             quote: Quote::of(message),
             media: Media::of(message),
+            extra: Extra::of(message),
         })
     }
 
@@ -197,6 +314,15 @@ mod tests {
     use whatsapp_rust::prelude::{MessageBuilderExt as _, MessageField};
 
     use super::*;
+
+    #[test]
+    fn reads_the_whatsapp_number_of_a_shared_contact() {
+        let vcard = "BEGIN:VCARD\nVERSION:3.0\nFN:Ana Souza\nitem1.TEL;waid=5511912345678:+55 11 91234-5678\nEND:VCARD";
+        assert_eq!(vcard_phone(vcard).as_deref(), Some("5511912345678"));
+        assert_eq!(vcard_field(vcard, "FN").as_deref(), Some("Ana Souza"));
+        let plain = "BEGIN:VCARD\nTEL;TYPE=CELL:+1 (555) 010-9999\nEND:VCARD";
+        assert_eq!(vcard_phone(plain).as_deref(), Some("15550109999"));
+    }
 
     #[test]
     fn reads_text_and_describes_media() {
