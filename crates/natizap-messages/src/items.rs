@@ -5,7 +5,7 @@ use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use natizap_protocol::{ChatId, ContentKind, Extra, Mark, Marked, Reply};
+use natizap_protocol::{ChatId, ContentKind, Extra, Forwarding, Mark, Marked, Reply};
 use natizap_ui::name_color;
 use natizap_ui::theme::{ACCENT, MUTED};
 
@@ -35,6 +35,8 @@ pub(crate) struct Bubble {
     /// Sender name and its color; only on the first bubble of a burst in a
     /// group.
     pub(crate) author: Option<Author>,
+    /// Forwarded, and how often.
+    pub(crate) forwarding: Option<Forwarding>,
     pub(crate) body: Body,
     /// The attachment, shown above the text.
     pub(crate) media: Option<MediaView>,
@@ -253,6 +255,7 @@ fn bubble(
         id: message.id.clone().into(),
         from_me: message.from_me,
         author,
+        forwarding: message.forwarding,
         body: if message.deleted {
             Body::Deleted
         } else {
@@ -457,6 +460,7 @@ mod tests {
             starred: false,
             sender_phone: None,
             extra: None,
+            forwarding: None,
         }
     }
 

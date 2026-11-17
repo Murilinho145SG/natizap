@@ -5,7 +5,7 @@ use gpui::{
     AnyElement, App, Div, FontWeight, MouseButton, SharedString, Stateful, WeakEntity, div, px,
     relative, rgb, rgba, svg,
 };
-use natizap_protocol::ContentKind;
+use natizap_protocol::{ContentKind, Forwarding};
 use natizap_ui::theme::{ALERT, LINE, MINT, MUTED, OUTGOING, PANEL, RAISED, SCRIM, TEXT, glass};
 use natizap_ui::{Button, ButtonSize, ButtonVariant, Icon, avatar};
 use std::path::PathBuf;
@@ -286,6 +286,7 @@ fn picture_bubble(
         .p(px(3.0))
         .gap_1()
         .children(author(bubble).map(|name| name.px(px(7.0)).pt(px(2.0))))
+        .children(forwarded(bubble).map(|line| line.px(px(7.0))))
         .children(bubble.quote.as_ref().map(quoted))
         .child(picture)
         .children(caption)
@@ -298,6 +299,31 @@ fn padded(bubble: &Bubble) -> Div {
         .px(px(10.0))
         .py(px(6.0))
         .children(author(bubble))
+        .children(forwarded(bubble))
+}
+
+/// "Forwarded", or "Forwarded many times", as the phone marks them.
+fn forwarded(bubble: &Bubble) -> Option<Div> {
+    let label = match bubble.forwarding? {
+        Forwarding::Once => "Forwarded",
+        Forwarding::Often => "Forwarded many times",
+    };
+    Some(
+        div()
+            .flex()
+            .items_center()
+            .gap_1()
+            .text_size(px(12.5))
+            .italic()
+            .text_color(rgb(MUTED))
+            .child(
+                svg()
+                    .path(Icon::Forward.path())
+                    .size(px(13.0))
+                    .text_color(rgb(MUTED)),
+            )
+            .child(label),
+    )
 }
 
 /// The bubble's background and corners.

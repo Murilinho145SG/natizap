@@ -172,6 +172,7 @@ mod tests {
             starred: false,
             sender_phone: None,
             extra: None,
+            forwarding: None,
         }
     }
 

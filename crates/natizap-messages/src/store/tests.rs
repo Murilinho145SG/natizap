@@ -20,6 +20,7 @@ fn message(chat: &str, id: &str, sent_at: i64, text: &str) -> Message {
         starred: false,
         sender_phone: None,
         extra: None,
+        forwarding: None,
     }
 }
 

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use natizap_protocol::{ChatId, ContentKind, HdThumbnail, Media, Quote, Unread};
+use natizap_protocol::{ChatId, ContentKind, Forwarding, HdThumbnail, Media, Quote, Unread};
 use rusqlite::{Connection, Row, params, params_from_iter};
 
 use crate::message::{Delivery, Message, MessageChange, Reaction};
@@ -56,6 +56,7 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE messages ADD COLUMN pinned_until INTEGER;",
     "ALTER TABLE messages ADD COLUMN sender_phone TEXT;",
     "ALTER TABLE messages ADD COLUMN extra TEXT;",
+    "ALTER TABLE messages ADD COLUMN forwarding INTEGER;",
 ];
 
 /// Every message natizap has seen, on disk.
@@ -373,10 +374,10 @@ fn insert(tx: &rusqlite::Transaction<'_>, message: &Message) -> rusqlite::Result
              media_height, media_seconds, media_thumbnail, media_direct_path,
              media_key, media_sha256, media_enc_sha256, media_file, media_waveform,
              media_hd_thumbnail_path, media_hd_thumbnail_sha256,
-             media_hd_thumbnail_enc_sha256, sender_phone, extra)
+             media_hd_thumbnail_enc_sha256, sender_phone, extra, forwarding)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14,
              ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28,
-             ?29, ?30, ?31, ?32)
+             ?29, ?30, ?31, ?32, ?33)
              ON CONFLICT (chat, id) DO UPDATE SET
                  media_mime = coalesce(media_mime, excluded.media_mime),
                  media_name = coalesce(media_name, excluded.media_name),
@@ -394,7 +395,8 @@ fn insert(tx: &rusqlite::Transaction<'_>, message: &Message) -> rusqlite::Result
                  media_hd_thumbnail_sha256 = coalesce(media_hd_thumbnail_sha256, excluded.media_hd_thumbnail_sha256),
                  media_hd_thumbnail_enc_sha256 = coalesce(media_hd_thumbnail_enc_sha256, excluded.media_hd_thumbnail_enc_sha256),
                  sender_phone = coalesce(sender_phone, excluded.sender_phone),
-                 extra = coalesce(extra, excluded.extra)",
+                 extra = coalesce(extra, excluded.extra),
+                 forwarding = coalesce(forwarding, excluded.forwarding)",
     )?
     .execute(params![
         message.chat.as_str(),
@@ -436,6 +438,10 @@ fn insert(tx: &rusqlite::Transaction<'_>, message: &Message) -> rusqlite::Result
         hd.map(|hd| &hd.enc_sha256),
         message.sender_phone.as_ref().map(ChatId::as_str),
         message.extra.as_ref().map(extra::encode),
+        message.forwarding.map(|forwarding| match forwarding {
+            Forwarding::Once => 1,
+            Forwarding::Often => 2,
+        }),
     ])?;
 
     Ok(())
@@ -530,6 +536,13 @@ fn message_from_row(row: &Row<'_>) -> rusqlite::Result<Message> {
             .get::<_, Option<String>>("extra")?
             .as_deref()
             .and_then(extra::decode),
+        forwarding: row.get::<_, Option<u8>>("forwarding")?.and_then(
+            |forwarding| match forwarding {
+                1 => Some(Forwarding::Once),
+                2 => Some(Forwarding::Often),
+                _ => None,
+            },
+        ),
     })
 }
 

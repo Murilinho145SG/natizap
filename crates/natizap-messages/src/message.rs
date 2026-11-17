@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use natizap_protocol::{ChatId, ContentKind, Extra, Media, Quote};
+use natizap_protocol::{ChatId, ContentKind, Extra, Forwarding, Media, Quote};
 
 /// How far a message this account sent has gone. Received messages are
 /// always [`Delivery::Sent`].
@@ -92,6 +92,8 @@ pub(crate) struct Message {
     pub(crate) sender_phone: Option<ChatId>,
     /// Shared contacts, or a poll.
     pub(crate) extra: Option<Extra>,
+    /// Forwarded, and how often.
+    pub(crate) forwarding: Option<Forwarding>,
 }
 
 /// One fact learned about the messages.

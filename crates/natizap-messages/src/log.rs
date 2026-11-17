@@ -502,6 +502,7 @@ fn outgoing_message(chat: &ChatId, local_id: &str, sent_at: i64, reply: Option<&
         starred: false,
         sender_phone: None,
         extra: None,
+        forwarding: None,
         quote: reply.map(|reply| Quote {
             id: reply.id.clone(),
             sender: reply.sender.clone(),
