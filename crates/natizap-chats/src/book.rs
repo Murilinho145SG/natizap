@@ -181,6 +181,8 @@ pub(crate) struct Dirty {
 pub(crate) struct ChatBook {
     chats: HashMap<ChatId, Chat>,
     aliases: HashMap<ChatId, ChatId>,
+    /// The chat on screen: what arrives there is read as it arrives.
+    open: Option<ChatId>,
     dirty: Dirty,
 }
 
@@ -196,6 +198,7 @@ impl ChatBook {
                 .map(|chat| (chat.id.clone(), chat))
                 .collect(),
             aliases: aliases.into_iter().collect(),
+            open: None,
             dirty: Dirty::default(),
         }
     }
@@ -227,16 +230,20 @@ impl ChatBook {
                 chat.mute = chat.mute.or(history.mute);
                 chat.archived |= history.archived;
             }),
-            ChatChange::Message(id, preview) => self.update(&id, |chat| {
-                if preview.from_me {
-                    // Replying from any device reads the chat, as on mobile.
-                    chat.unread = 0;
-                    chat.marked_unread = false;
-                } else {
-                    chat.unread += 1;
-                }
-                chat.show(preview);
-            }),
+            ChatChange::Message(id, preview) => {
+                let on_screen = self.open.as_ref() == Some(self.resolve(&id));
+                self.update(&id, |chat| {
+                    if preview.from_me || on_screen {
+                        // Replying from any device, or reading as it arrives,
+                        // reads the chat, as on mobile.
+                        chat.unread = 0;
+                        chat.marked_unread = false;
+                    } else {
+                        chat.unread += 1;
+                    }
+                    chat.show(preview);
+                });
+            }
             ChatChange::ContactName(id, name) => self.update(&id, |chat| {
                 chat.contact_name = Some(name);
             }),
@@ -266,6 +273,21 @@ impl ChatBook {
                 .then_with(|| a.id.cmp(&b.id))
         });
         chats
+    }
+
+    /// Every address of each chat that has more than one, keyed by the
+    /// address the chat is listed under.
+    pub(crate) fn addresses(&self) -> HashMap<&ChatId, Vec<&ChatId>> {
+        let mut addresses: HashMap<&ChatId, Vec<&ChatId>> = HashMap::new();
+        for (alias, chat) in &self.aliases {
+            addresses.entry(chat).or_default().push(alias);
+        }
+        addresses
+    }
+
+    /// Marks `id` as the chat on screen, or none.
+    pub(crate) fn set_open(&mut self, id: Option<&ChatId>) {
+        self.open = id.map(|id| self.resolve(id).clone());
     }
 
     /// How many chats are archived.
@@ -394,6 +416,22 @@ mod tests {
 
         book.apply(ChatChange::Message(chat.clone(), message("reply", 3, true)));
         assert_eq!(book.get(&chat).map(|c| c.unread), Some(0));
+    }
+
+    #[test]
+    fn messages_arriving_in_the_open_chat_are_read() {
+        let mut book = ChatBook::default();
+        let chat = id("a@s.whatsapp.net");
+        book.set_open(Some(&chat));
+        book.apply(ChatChange::Message(chat.clone(), message("hi", 1, false)));
+        assert_eq!(book.get(&chat).map(|c| c.unread), Some(0));
+
+        book.set_open(None);
+        book.apply(ChatChange::Message(
+            chat.clone(),
+            message("again", 2, false),
+        ));
+        assert_eq!(book.get(&chat).map(|c| c.unread), Some(1));
     }
 
     #[test]

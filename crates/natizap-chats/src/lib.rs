@@ -11,4 +11,4 @@ mod sync;
 mod view;
 
 pub use list::{ChatList, ChatRow};
-pub use view::ChatListView;
+pub use view::{ChatListView, ChatSelected};

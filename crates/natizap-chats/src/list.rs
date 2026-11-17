@@ -8,7 +8,7 @@ use natizap_protocol::whatsapp_rust::prelude::Event;
 
 use natizap_protocol::ChatId;
 
-use crate::book::{Chat, ChatBook};
+use crate::book::{Chat, ChatBook, ChatChange, Preview};
 use crate::store::ChatStore;
 use crate::sync::{CHAT_EVENTS, changes};
 
@@ -17,6 +17,8 @@ use crate::sync::{CHAT_EVENTS, changes};
 pub struct ChatRow {
     /// The chat's address.
     pub id: ChatId,
+    /// Every address its messages may be filed under, `id` first.
+    pub addresses: Arc<[ChatId]>,
     /// Name to show.
     pub title: SharedString,
     /// The latest message, prefixed with its author in groups.
@@ -34,7 +36,7 @@ pub struct ChatRow {
 }
 
 impl ChatRow {
-    fn new(chat: &Chat, now: i64) -> Self {
+    fn new(chat: &Chat, aliases: &[&ChatId], now: i64) -> Self {
         let preview = chat.preview.as_ref().map(|preview| {
             let text = match (&preview.author, preview.from_me) {
                 (_, true) => format!("You: {}", preview.text),
@@ -45,6 +47,10 @@ impl ChatRow {
         });
         Self {
             id: chat.id.clone(),
+            addresses: std::iter::once(&chat.id)
+                .chain(aliases.iter().copied())
+                .cloned()
+                .collect(),
             title: chat.title().into(),
             preview,
             sent_at: chat.preview.as_ref().map(|preview| preview.sent_at),
@@ -66,6 +72,13 @@ struct Snapshot {
     archived: usize,
 }
 
+/// Requests to the sync worker, alongside protocol events.
+enum Input {
+    Event(Arc<Event>),
+    Open(Option<ChatId>),
+    Change(ChatChange),
+}
+
 /// The user's chats, kept in sync with WhatsApp and cached on disk.
 ///
 /// Opens the cache immediately, so the list shows before the connection is
@@ -74,16 +87,25 @@ struct Snapshot {
 #[derive(Debug)]
 pub struct ChatList {
     snapshot: Snapshot,
-    _sync: Task<()>,
-    _apply: Task<()>,
+    inputs: async_channel::Sender<Input>,
+    _tasks: [Task<()>; 3],
 }
 
 impl ChatList {
     /// Follows `protocol`'s chat events, caching the list at `cache_path`.
     pub fn new(protocol: &Entity<Protocol>, cache_path: PathBuf, cx: &mut Context<Self>) -> Self {
+        let (inputs_tx, inputs) = async_channel::unbounded();
         let events = protocol.read(cx).subscribe(CHAT_EVENTS);
+        let forward_tx = inputs_tx.clone();
+        let forward = cx.background_spawn(async move {
+            while let Ok(event) = events.recv().await {
+                if forward_tx.send(Input::Event(event)).await.is_err() {
+                    break;
+                }
+            }
+        });
         let (snapshots_tx, snapshots) = async_channel::unbounded();
-        let sync = cx.background_spawn(sync(cache_path, events, snapshots_tx));
+        let sync = cx.background_spawn(sync(cache_path, inputs, snapshots_tx));
         let apply = cx.spawn(async move |this, cx| {
             while let Ok(mut snapshot) = snapshots.recv().await {
                 // Only the newest list matters if several queued up.
@@ -101,8 +123,8 @@ impl ChatList {
         });
         Self {
             snapshot: Snapshot::default(),
-            _sync: sync,
-            _apply: apply,
+            inputs: inputs_tx,
+            _tasks: [forward, sync, apply],
         }
     }
 
@@ -117,13 +139,41 @@ impl ChatList {
     pub fn archived_count(&self) -> usize {
         self.snapshot.archived
     }
+
+    /// Marks `id` as the chat on screen, reading it; messages arriving there
+    /// while it stays open are read too.
+    pub fn open(&self, id: Option<ChatId>) {
+        if let Some(id) = &id {
+            self.send(Input::Change(ChatChange::Read(id.clone(), true)));
+        }
+        self.send(Input::Open(id));
+    }
+
+    /// Reflects a message this computer sent in `chat`, before WhatsApp
+    /// echoes it back.
+    pub fn record_sent(&self, chat: ChatId, text: String, sent_at: i64) {
+        let preview = Preview {
+            text,
+            sent_at,
+            from_me: true,
+            author: None,
+        };
+        self.send(Input::Change(ChatChange::Message(chat, preview)));
+    }
+
+    fn send(&self, input: Input) {
+        // The channel is unbounded and the worker lives as long as `self`.
+        if self.inputs.try_send(input).is_err() {
+            tracing::error!("chat list worker stopped");
+        }
+    }
 }
 
-/// Folds protocol events into the book and the cache, off the UI thread, and
-/// sends a fresh snapshot after each burst of events.
+/// Folds protocol events and requests into the book and the cache, off the
+/// UI thread, and sends a fresh snapshot after each burst.
 async fn sync(
     cache_path: PathBuf,
-    events: async_channel::Receiver<Arc<Event>>,
+    inputs: async_channel::Receiver<Input>,
     snapshots: async_channel::Sender<Snapshot>,
 ) {
     let Some(mut store) = open_store(&cache_path) else {
@@ -137,10 +187,10 @@ async fn sync(
         return;
     }
 
-    while let Ok(event) = events.recv().await {
-        handle(&mut book, &mut store, &event);
-        while let Ok(event) = events.try_recv() {
-            handle(&mut book, &mut store, &event);
+    while let Ok(input) = inputs.recv().await {
+        handle(&mut book, &mut store, input);
+        while let Ok(input) = inputs.try_recv() {
+            handle(&mut book, &mut store, input);
         }
         let dirty = book.take_dirty();
         if let Err(error) = store.save(&book, &dirty) {
@@ -152,17 +202,22 @@ async fn sync(
     }
 }
 
-fn handle(book: &mut ChatBook, store: &mut ChatStore, event: &Event) {
-    if matches!(event, Event::LoggedOut(_)) {
-        // Whoever links next may be a different account.
-        *book = ChatBook::default();
-        if let Err(error) = store.clear() {
-            tracing::error!(%error, "could not clear the chat cache");
+fn handle(book: &mut ChatBook, store: &mut ChatStore, input: Input) {
+    match input {
+        Input::Event(event) if matches!(*event, Event::LoggedOut(_)) => {
+            // Whoever links next may be a different account.
+            *book = ChatBook::default();
+            if let Err(error) = store.clear() {
+                tracing::error!(%error, "could not clear the chat cache");
+            }
         }
-        return;
-    }
-    for change in changes(event) {
-        book.apply(change);
+        Input::Event(event) => {
+            for change in changes(&event) {
+                book.apply(change);
+            }
+        }
+        Input::Open(id) => book.set_open(id.as_ref()),
+        Input::Change(change) => book.apply(change),
     }
 }
 
@@ -180,11 +235,15 @@ fn open_store(path: &Path) -> Option<ChatStore> {
 
 fn snapshot(book: &ChatBook) -> Snapshot {
     let now = unix_now();
+    let addresses = book.addresses();
     Snapshot {
         rows: book
             .listed()
             .into_iter()
-            .map(|chat| ChatRow::new(chat, now))
+            .map(|chat| {
+                let aliases = addresses.get(&chat.id).map_or(&[][..], Vec::as_slice);
+                ChatRow::new(chat, aliases, now)
+            })
             .collect(),
         archived: book.archived_count(),
     }

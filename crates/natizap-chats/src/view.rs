@@ -1,10 +1,13 @@
 use chrono::{DateTime, Datelike as _, Local, TimeZone as _};
 use gpui::prelude::*;
 use gpui::{
-    Context, Div, Entity, FontWeight, Stateful, Window, div, px, relative, rgb, svg, uniform_list,
+    Context, Div, Entity, EventEmitter, FontWeight, Stateful, Window, div, px, relative, rgb, svg,
+    uniform_list,
 };
 use natizap_ui::theme::{DISPLAY_FONT, HONEY, HONEY_INK, LINE, MUTED, PANEL, RAISED, TEXT};
 use natizap_ui::{Icon, avatar};
+
+use natizap_protocol::ChatId;
 
 use crate::list::{ChatList, ChatRow};
 
@@ -15,13 +18,29 @@ const AVATAR_SIZE: f32 = 44.0;
 #[derive(Debug)]
 pub struct ChatListView {
     list: Entity<ChatList>,
+    selected: Option<ChatId>,
 }
+
+/// The user picked a chat in the list.
+#[derive(Debug, Clone)]
+pub struct ChatSelected(pub ChatRow);
+
+impl EventEmitter<ChatSelected> for ChatListView {}
 
 impl ChatListView {
     /// Creates a view that re-renders whenever `list` changes.
     pub fn new(list: Entity<ChatList>, cx: &mut Context<Self>) -> Self {
         cx.observe(&list, |_, _, cx| cx.notify()).detach();
-        Self { list }
+        Self {
+            list,
+            selected: None,
+        }
+    }
+
+    fn select(&mut self, row: ChatRow, cx: &mut Context<Self>) {
+        self.selected = Some(row.id.clone());
+        cx.emit(ChatSelected(row));
+        cx.notify();
     }
 }
 
@@ -42,7 +61,15 @@ impl Render for ChatListView {
                     let now = Local::now();
                     rows[range]
                         .iter()
-                        .map(|row| chat_row(row, now))
+                        .map(|row| {
+                            let selected = this.selected.as_ref() == Some(&row.id);
+                            let clicked = row.clone();
+                            chat_row(row, now)
+                                .when(selected, |row| row.bg(rgb(RAISED)))
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    this.select(clicked.clone(), cx);
+                                }))
+                        })
                         .collect::<Vec<_>>()
                 }),
             )
