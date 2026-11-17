@@ -11,6 +11,7 @@ mod content;
 mod fanout;
 mod markup;
 mod media;
+mod profile;
 mod protocol;
 
 pub use actions::{ActionError, Reply, Sent, Unread};
