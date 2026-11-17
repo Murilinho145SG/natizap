@@ -114,6 +114,16 @@ pub(crate) struct Person {
     pub(crate) verified: bool,
 }
 
+/// What someone is called: the name saved in the phone's address book,
+/// and the one they chose for themselves.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PersonName {
+    /// Saved in the address book.
+    pub saved: Option<String>,
+    /// Chosen by the person.
+    pub chosen: Option<String>,
+}
+
 /// Snapshot of one chat from a history sync. History can arrive after live
 /// messages, so it never replaces newer information.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -357,6 +367,22 @@ impl ChatBook {
             .chain(aliases.iter().copied())
             .filter_map(|address| self.people.get(address))
             .any(|person| person.verified)
+    }
+
+    /// Everyone's names, by each address they are known under.
+    #[must_use]
+    pub(crate) fn names(&self) -> HashMap<ChatId, PersonName> {
+        self.people
+            .iter()
+            .filter(|(_, person)| person.contact_name.is_some() || person.push_name.is_some())
+            .map(|(id, person)| {
+                let name = PersonName {
+                    saved: person.contact_name.clone(),
+                    chosen: person.push_name.clone(),
+                };
+                (id.clone(), name)
+            })
+            .collect()
     }
 
     /// A person's names, for persistence.
@@ -651,5 +677,27 @@ mod tests {
         book.apply(ChatChange::Deleted(id("a@s.whatsapp.net")));
         assert!(book.take_dirty().chats.contains(&id("a@lid")));
         assert_eq!(book.listed().len(), 0);
+    }
+
+    #[test]
+    fn gives_everyones_saved_and_chosen_names() {
+        let mut book = ChatBook::default();
+        let ana = ChatId::new("1@lid");
+        book.apply(ChatChange::ContactName(ana.clone(), "Ana Souza".into()));
+        book.apply(ChatChange::PushName(ana.clone(), "aninha".into()));
+        book.apply(ChatChange::BusinessName(
+            ChatId::new("2@lid"),
+            "Loja".into(),
+            None,
+        ));
+        let names = book.names();
+        assert_eq!(
+            names.get(&ana),
+            Some(&PersonName {
+                saved: Some("Ana Souza".into()),
+                chosen: Some("aninha".into()),
+            })
+        );
+        assert_eq!(names.len(), 1);
     }
 }

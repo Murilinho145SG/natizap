@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -9,7 +9,7 @@ use natizap_protocol::whatsapp_rust::prelude::Event;
 
 use natizap_protocol::{ChatId, Disappearing, Marked};
 
-use crate::book::{Chat, ChatBook, ChatChange, Mute, Preview};
+use crate::book::{Chat, ChatBook, ChatChange, Mute, PersonName, Preview};
 use crate::store::ChatStore;
 use crate::sync::{CHAT_EVENTS, changes};
 
@@ -108,6 +108,7 @@ fn first_line(text: &str) -> &str {
 struct Snapshot {
     rows: Arc<[ChatRow]>,
     archived: Arc<[ChatRow]>,
+    names: Arc<HashMap<ChatId, PersonName>>,
 }
 
 /// Requests to the sync worker, alongside protocol events.
@@ -179,6 +180,13 @@ impl ChatList {
     #[must_use]
     pub fn rows(&self) -> &Arc<[ChatRow]> {
         &self.snapshot.rows
+    }
+
+    /// Everyone's names, by each address they are known under, people
+    /// without a chat included. The same `Arc` until a name changes.
+    #[must_use]
+    pub fn names(&self) -> &Arc<HashMap<ChatId, PersonName>> {
+        &self.snapshot.names
     }
 
     /// Archived chats, in display order.
@@ -327,7 +335,8 @@ async fn sync(
         tracing::error!(%error, "could not read the chat cache; starting empty");
         ChatBook::default()
     });
-    if snapshots.send(snapshot(&book)).await.is_err() {
+    let mut names = Arc::new(book.names());
+    if snapshots.send(snapshot(&book, &names)).await.is_err() {
         return;
     }
 
@@ -340,7 +349,10 @@ async fn sync(
         if let Err(error) = store.save(&book, &dirty) {
             tracing::error!(%error, "could not update the chat cache");
         }
-        if snapshots.send(snapshot(&book)).await.is_err() {
+        if !dirty.people.is_empty() {
+            names = Arc::new(book.names());
+        }
+        if snapshots.send(snapshot(&book, &names)).await.is_err() {
             return;
         }
     }
@@ -377,7 +389,7 @@ fn open_store(path: &Path) -> Option<ChatStore> {
         .ok()
 }
 
-fn snapshot(book: &ChatBook) -> Snapshot {
+fn snapshot(book: &ChatBook, names: &Arc<HashMap<ChatId, PersonName>>) -> Snapshot {
     let now = unix_now();
     let addresses = book.addresses();
     let rows = |chats: Vec<&Chat>| -> Arc<[ChatRow]> {
@@ -392,6 +404,7 @@ fn snapshot(book: &ChatBook) -> Snapshot {
     Snapshot {
         rows: rows(book.listed()),
         archived: rows(book.archived()),
+        names: names.clone(),
     }
 }
 
