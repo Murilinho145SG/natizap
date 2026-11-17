@@ -5,10 +5,32 @@ members = ["crates/*"]
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.98"
+rust-version = "1.100"
 publish = false
 
 [workspace.dependencies]
+# GPUI is not released on a stable cadence; pin Zed to a known-good commit.
+gpui = { git = "https://github.com/zed-industries/zed", rev = "482e76524bd33d8cbdfc352f1fef3eefbf2fad92" }
+gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "482e76524bd33d8cbdfc352f1fef3eefbf2fad92" }
+gpui_tokio = { git = "https://github.com/zed-industries/zed", rev = "482e76524bd33d8cbdfc352f1fef3eefbf2fad92" }
+# Default features minus `simd` (nightly-only) and `signal` (the GUI owns shutdown).
+whatsapp-rust = { version = "0.7", default-features = false, features = [
+    "sqlite-storage",
+    "tokio-native",
+    "tokio-runtime",
+    "tokio-transport",
+    "ureq-client",
+] }
+
+anyhow = "1"
+dirs = "6"
+futures = "0.3"
+qrcode = { version = "0.14", default-features = false }
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+natizap-session = { path = "crates/natizap-session" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
@@ -26,6 +48,14 @@ expect_used = "warn"
 print_stdout = "warn"
 print_stderr = "warn"
 module_name_repetitions = "allow"
+
+# Mirror the patches Zed applies to GPUI's dependencies at the pinned commit;
+# without them GPUI builds against upstream versions it does not expect.
+[patch.crates-io]
+async-process = { git = "https://github.com/zed-industries/async-process.git", rev = "0b6d6713570af61806e1e5cb40e0f757cb93fd9d" }
+async-task = { git = "https://github.com/smol-rs/async-task", rev = "41fd3359c75e221bd8b187a8ee361aa309c1714c" }
+calloop = { git = "https://github.com/zed-industries/calloop", rev = "3759371fee14c40066d64777e2a36b6ffcc22590" }
+khronos-egl = { git = "https://github.com/zed-industries/khronos-egl", rev = "42214b36347b108fd9630ca6254b96dde59e04fe" }
 
 [profile.release]
 lto = "thin"
