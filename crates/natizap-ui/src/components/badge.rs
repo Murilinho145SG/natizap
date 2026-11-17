@@ -1,9 +1,10 @@
 //! A small pill carrying a count or a short label.
 
 use gpui::prelude::*;
-use gpui::{Div, FontWeight, SharedString, Svg, div, px, rgb, svg};
+use gpui::{Div, FontWeight, SharedString, Stateful, div, px, rgb, svg};
 
 use crate::Icon;
+use crate::components::tooltip::Tooltip;
 use crate::theme::{ACCENT, ACCENT_INK, LINE, MINT, MUTED};
 
 /// How loudly a badge speaks.
@@ -40,14 +41,20 @@ pub fn badge(text: impl Into<SharedString>, tone: BadgeTone) -> Div {
         .child(text.into())
 }
 
-/// The seal of a business WhatsApp vouches for, shown beside its name.
+/// The seal of a business WhatsApp vouches for, shown beside its name;
+/// hovering it says what it means.
 #[must_use]
-pub fn verified_seal(size: f32) -> Svg {
-    svg()
-        .path(Icon::Verified.path())
-        .size(px(size))
+pub fn verified_seal(size: f32) -> Stateful<Div> {
+    div()
+        .id("verified-seal")
         .flex_none()
-        .text_color(rgb(MINT))
+        .tooltip(Tooltip::text("Verified business"))
+        .child(
+            svg()
+                .path(Icon::Verified.path())
+                .size(px(size))
+                .text_color(rgb(MINT)),
+        )
 }
 
 /// A count as a badge shows it: past 999 the exact number stops mattering.
