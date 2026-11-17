@@ -1,14 +1,16 @@
 //! The composer under a conversation: attach, emoji, the text field and
 //! send, with the reply being composed above them.
 
+use std::path::PathBuf;
+
 use gpui::prelude::*;
 use gpui::{
-    ClickEvent, Context, Div, MouseButton, PathPromptOptions, Stateful, Window, deferred, div, px,
-    relative, rgb, svg,
+    ClickEvent, Context, Div, Image, ImageFormat, MouseButton, PathPromptOptions, Stateful, Window,
+    deferred, div, px, relative, rgb, svg,
 };
 use natizap_protocol::ContentKind;
 use natizap_ui::theme::{LINE, MUTED, PANEL, RAISED, TEXT, glass};
-use natizap_ui::{Button, ButtonSize, ButtonVariant, Icon};
+use natizap_ui::{Button, ButtonSize, ButtonVariant, FilesPasted, Icon};
 
 use super::ConversationView;
 use crate::quote::quote_block;
@@ -24,6 +26,61 @@ impl ConversationView {
         self.log.update(cx, |log, cx| log.send(text, reply, cx));
         self.composer
             .update(cx, |composer, cx| composer.clear(window, cx));
+    }
+
+    /// Sends files and pictures pasted into the composer, as the phone
+    /// sends shared files: text in the composer becomes the first one's
+    /// caption. Pictures, which have no file, are written to one first.
+    pub(super) fn send_pasted(pasted: &FilesPasted, window: &mut Window, cx: &mut Context<Self>) {
+        let mut paths = pasted.paths.clone();
+        let images = pasted.images.clone();
+        cx.spawn_in(window, async move |this, cx| {
+            let written = cx
+                .background_spawn(async move {
+                    images
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(index, image)| match write_pasted(image, index) {
+                            Ok(path) => Some(path),
+                            Err(error) => {
+                                tracing::warn!(%error, "could not keep a pasted picture");
+                                None
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .await;
+            paths.extend(written);
+            if paths.is_empty() {
+                return;
+            }
+            let _ = this.update_in(cx, |this, window, cx| {
+                this.send_paths(paths, false, window, cx);
+            });
+        })
+        .detach();
+    }
+
+    /// Sends the files at `paths`, as documents when `as_document`, the
+    /// first captioned with the composer's text and replying to the reply
+    /// being composed.
+    fn send_paths(
+        &mut self,
+        paths: Vec<PathBuf>,
+        as_document: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let text = self.composer.read(cx).text().trim().to_owned();
+        let caption = (!text.is_empty()).then_some(text);
+        if caption.is_some() {
+            self.composer
+                .update(cx, |composer, cx| composer.clear(window, cx));
+        }
+        let reply = self.replying.take().map(|replying| replying.reply);
+        self.log.update(cx, |log, cx| {
+            log.send_files(paths, caption, reply, as_document, cx);
+        });
     }
 
     /// Asks for files and sends them, as documents when `as_document`. Text
@@ -46,16 +103,7 @@ impl ConversationView {
                 }
             };
             let _ = this.update_in(cx, |this, window, cx| {
-                let text = this.composer.read(cx).text().trim().to_owned();
-                let caption = (!text.is_empty()).then_some(text);
-                if caption.is_some() {
-                    this.composer
-                        .update(cx, |composer, cx| composer.clear(window, cx));
-                }
-                let reply = this.replying.take().map(|replying| replying.reply);
-                this.log.update(cx, |log, cx| {
-                    log.send_files(paths, caption, reply, as_document, cx);
-                });
+                this.send_paths(paths, as_document, window, cx);
             });
         })
         .detach();
@@ -217,4 +265,25 @@ impl ConversationView {
                     ),
             )
     }
+}
+
+/// Writes a pasted picture to a file of its own, to send like any other.
+fn write_pasted(image: &Image, index: usize) -> std::io::Result<PathBuf> {
+    let extension = match image.format() {
+        ImageFormat::Png => "png",
+        ImageFormat::Jpeg => "jpg",
+        ImageFormat::Webp => "webp",
+        ImageFormat::Gif => "gif",
+        ImageFormat::Bmp => "bmp",
+        ImageFormat::Tiff => "tiff",
+        ImageFormat::Svg => "svg",
+        ImageFormat::Ico => "ico",
+        ImageFormat::Pnm => "pnm",
+    };
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_millis());
+    let path = std::env::temp_dir().join(format!("natizap-pasted-{stamp}-{index}.{extension}"));
+    std::fs::write(&path, image.bytes())?;
+    Ok(path)
 }

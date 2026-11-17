@@ -10,7 +10,7 @@ use natizap_playback::Speed;
 use natizap_profiles::ProfilePictures;
 use natizap_protocol::{ChatId, Reply};
 use natizap_ui::theme::{ACCENT, LINE, MUTED, PANE};
-use natizap_ui::{Icon, Submitted, TextInput, name_color};
+use natizap_ui::{FilesPasted, Icon, Submitted, TextInput, name_color};
 
 use crate::bubble::render_item;
 use crate::emoji::{EmojiPicked, EmojiPicker};
@@ -145,6 +145,14 @@ impl ConversationView {
         cx.subscribe_in(&composer, window, |this, _, _: &Submitted, window, cx| {
             this.send(window, cx);
         })
+        .detach();
+        cx.subscribe_in(
+            &composer,
+            window,
+            |_, _, pasted: &FilesPasted, window, cx| {
+                Self::send_pasted(pasted, window, cx);
+            },
+        )
         .detach();
         cx.observe_in(&log, window, |this, log, window, cx| {
             this.follow(&log, window, cx);
