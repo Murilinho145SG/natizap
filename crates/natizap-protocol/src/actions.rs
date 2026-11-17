@@ -172,6 +172,87 @@ pub(crate) async fn star(
     result.map_err(|error| ActionError::Rejected(error.to_string()))
 }
 
+/// How long new messages last before they disappear, as WhatsApp offers it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Disappearing {
+    /// 24 hours.
+    Day,
+    /// 7 days.
+    Week,
+    /// 90 days.
+    Quarter,
+}
+
+impl Disappearing {
+    /// Every choice, shortest first.
+    pub const ALL: [Self; 3] = [Self::Day, Self::Week, Self::Quarter];
+
+    /// The timer in seconds, as WhatsApp stores it.
+    #[must_use]
+    pub fn seconds(self) -> u32 {
+        match self {
+            Self::Day => 86_400,
+            Self::Week => 7 * 86_400,
+            Self::Quarter => 90 * 86_400,
+        }
+    }
+
+    /// The choice a stored timer stands for, if any.
+    #[must_use]
+    pub fn from_seconds(seconds: u32) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|choice| choice.seconds() == seconds)
+    }
+
+    /// How the choice reads.
+    #[must_use]
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Day => "24 hours",
+            Self::Week => "7 days",
+            Self::Quarter => "90 days",
+        }
+    }
+}
+
+/// Mutes `chat` until unmuted, or unmutes it, on all of this account's
+/// devices.
+pub(crate) async fn mute(client: Arc<Client>, chat: Jid, muted: bool) -> Result<(), ActionError> {
+    let actions = client.chat_actions();
+    let result = if muted {
+        actions.mute_chat(&chat).await
+    } else {
+        actions.unmute_chat(&chat).await
+    };
+    result.map_err(|error| ActionError::Rejected(error.to_string()))
+}
+
+/// Makes new messages in `chat` disappear after `timer`, or stops it.
+pub(crate) async fn set_disappearing(
+    client: Arc<Client>,
+    chat: Jid,
+    timer: Option<Disappearing>,
+) -> Result<(), ActionError> {
+    let seconds = timer.map_or(0, Disappearing::seconds);
+    let rejected = |error: &dyn std::fmt::Display| ActionError::Rejected(error.to_string());
+    // Groups keep their timer on the server; one-to-one chats announce it
+    // in a message.
+    if chat.to_string().ends_with("@g.us") {
+        client
+            .groups()
+            .set_ephemeral(chat, seconds)
+            .await
+            .map_err(|error| rejected(&error))
+    } else {
+        client
+            .set_chat_disappearing_timer(chat, seconds)
+            .await
+            .map(|_| ())
+            .map_err(|error| rejected(&error))
+    }
+}
+
 /// How long a pinned message stays pinned, as WhatsApp offers it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PinFor {
@@ -319,4 +400,17 @@ pub(crate) async fn mark_read(
             .map_err(|error| ActionError::Rejected(error.to_string()))?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reads_back_every_disappearing_timer() {
+        for timer in Disappearing::ALL {
+            assert_eq!(Disappearing::from_seconds(timer.seconds()), Some(timer));
+        }
+        assert_eq!(Disappearing::from_seconds(0), None);
+    }
 }

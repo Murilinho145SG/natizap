@@ -8,7 +8,7 @@ use whatsapp_rust::wacore::store::DevicePropsOverride;
 
 use crate::ChatId;
 use crate::ContentKind;
-use crate::actions::{self, ActionError, Connection, PinFor, Reply, Sent, Unread};
+use crate::actions::{self, ActionError, Connection, Disappearing, PinFor, Reply, Sent, Unread};
 use crate::fanout::Fanout;
 use crate::group::{self, GroupInfo};
 use crate::media::{self, Media};
@@ -210,6 +210,33 @@ impl Protocol {
         self.connection.run(cx, move |client| async move {
             let id = outgoing::forward(client, to, forward).await?;
             Ok(Sent { id })
+        })
+    }
+
+    /// Mutes `chat` until unmuted, or unmutes it, on all of this account's
+    /// devices.
+    pub fn mute(&self, chat: &ChatId, muted: bool, cx: &App) -> Task<Result<(), ActionError>> {
+        let jid = match actions::jid(chat) {
+            Ok(jid) => jid,
+            Err(error) => return Task::ready(Err(error)),
+        };
+        self.connection
+            .run(cx, move |client| actions::mute(client, jid, muted))
+    }
+
+    /// Makes new messages in `chat` disappear after `timer`, or stops it.
+    pub fn set_disappearing(
+        &self,
+        chat: &ChatId,
+        timer: Option<Disappearing>,
+        cx: &App,
+    ) -> Task<Result<(), ActionError>> {
+        let jid = match actions::jid(chat) {
+            Ok(jid) => jid,
+            Err(error) => return Task::ready(Err(error)),
+        };
+        self.connection.run(cx, move |client| {
+            actions::set_disappearing(client, jid, timer)
         })
     }
 
