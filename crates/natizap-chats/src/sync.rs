@@ -1,6 +1,6 @@
 //! Translates protocol events into [`ChatChange`]s.
 
-use natizap_protocol::whatsapp_rust::prelude::{Event, EventKind, wa};
+use natizap_protocol::whatsapp_rust::prelude::{Event, EventKind, MessageExt as _, wa};
 use natizap_protocol::whatsapp_rust::types::events::{InboundMessage, LazyHistorySync};
 use natizap_protocol::{ChatId, Content};
 
@@ -93,6 +93,19 @@ fn message_changes(inbound: &InboundMessage) -> Vec<ChatChange> {
     let source = &inbound.info.source;
     let chat = ChatId::new(&source.chat.to_string());
     let mut changes = Vec::new();
+
+    let setting = inbound
+        .message
+        .get_base_message()
+        .protocol_message
+        .as_option()
+        .filter(|protocol| {
+            protocol.r#type == Some(wa::message::protocol_message::Type::EphemeralSetting)
+        });
+    if let Some(setting) = setting {
+        let seconds = setting.ephemeral_expiration.filter(|&seconds| seconds > 0);
+        changes.push(ChatChange::Disappearing(chat.clone(), seconds));
+    }
 
     if !source.is_group {
         let alternate = if source.is_from_me {
@@ -217,6 +230,9 @@ fn history_chat(conversation: &wa::Conversation, is_group: bool) -> HistoryChat 
         active_at,
         unread: conversation.unread_count.unwrap_or(0),
         marked_unread: conversation.marked_as_unread.unwrap_or(false),
+        disappearing: conversation
+            .ephemeral_expiration
+            .filter(|&seconds| seconds > 0),
         pinned_at: conversation.pinned.filter(|&at| at > 0).map(i64::from),
         mute: conversation
             .mute_end_time

@@ -2,13 +2,13 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use gpui::{AppContext as _, Context, Entity, SharedString, Task};
+use gpui::{App, AppContext as _, Context, Entity, SharedString, Task};
 use natizap_protocol::Protocol;
 use natizap_protocol::whatsapp_rust::prelude::Event;
 
-use natizap_protocol::{ChatId, Marked};
+use natizap_protocol::{ChatId, Disappearing, Marked};
 
-use crate::book::{Chat, ChatBook, ChatChange, Preview};
+use crate::book::{Chat, ChatBook, ChatChange, Mute, Preview};
 use crate::store::ChatStore;
 use crate::sync::{CHAT_EVENTS, changes};
 
@@ -40,6 +40,8 @@ pub struct ChatRow {
     pub muted: bool,
     /// A business WhatsApp vouches for, shown with a seal.
     pub verified: bool,
+    /// How long new messages last, when they disappear.
+    pub disappearing: Option<Disappearing>,
 }
 
 impl ChatRow {
@@ -67,6 +69,7 @@ impl ChatRow {
             pinned: chat.pinned_at.is_some(),
             muted: chat.is_muted(now),
             verified: book.verified(chat, aliases),
+            disappearing: chat.disappearing.and_then(Disappearing::from_seconds),
         }
     }
 }
@@ -95,6 +98,7 @@ enum Input {
 /// the list changes.
 #[derive(Debug)]
 pub struct ChatList {
+    protocol: Entity<Protocol>,
     snapshot: Snapshot,
     inputs: async_channel::Sender<Input>,
     _tasks: [Task<()>; 3],
@@ -131,6 +135,7 @@ impl ChatList {
             }
         });
         Self {
+            protocol: protocol.clone(),
             snapshot: Snapshot::default(),
             inputs: inputs_tx,
             _tasks: [forward, sync, apply],
@@ -168,6 +173,37 @@ impl ChatList {
             author: None,
         };
         self.send(Input::Change(ChatChange::Message(chat, preview)));
+    }
+
+    /// Mutes `chat` until unmuted, or unmutes it, here and on the account's
+    /// other devices.
+    pub fn set_muted(&self, chat: &ChatId, muted: bool, cx: &App) {
+        let mute = muted.then_some(Mute::Forever);
+        self.send(Input::Change(ChatChange::Muted(chat.clone(), mute)));
+        let muting = self.protocol.read(cx).mute(chat, muted, cx);
+        cx.background_spawn(async move {
+            if let Err(error) = muting.await {
+                tracing::warn!(%error, "mute not synced to the other devices");
+            }
+        })
+        .detach();
+    }
+
+    /// Makes new messages in `chat` disappear after `timer`, or stops it,
+    /// for everyone in the chat.
+    pub fn set_disappearing(&self, chat: &ChatId, timer: Option<Disappearing>, cx: &App) {
+        let seconds = timer.map(Disappearing::seconds);
+        self.send(Input::Change(ChatChange::Disappearing(
+            chat.clone(),
+            seconds,
+        )));
+        let setting = self.protocol.read(cx).set_disappearing(chat, timer, cx);
+        cx.background_spawn(async move {
+            if let Err(error) = setting.await {
+                tracing::warn!(%error, "disappearing messages not changed");
+            }
+        })
+        .detach();
     }
 
     fn send(&self, input: Input) {

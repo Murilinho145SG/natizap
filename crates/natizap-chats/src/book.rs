@@ -45,6 +45,8 @@ pub(crate) struct Chat {
     pub(crate) mute: Option<Mute>,
     /// Hidden in the archive.
     pub(crate) archived: bool,
+    /// Seconds new messages last before disappearing, when they do.
+    pub(crate) disappearing: Option<u32>,
 }
 
 impl Chat {
@@ -59,6 +61,7 @@ impl Chat {
             pinned_at: None,
             mute: None,
             archived: false,
+            disappearing: None,
         }
     }
 
@@ -131,6 +134,8 @@ pub(crate) struct HistoryChat {
     pub(crate) mute: Option<Mute>,
     /// Archived.
     pub(crate) archived: bool,
+    /// Seconds new messages last, when they disappear.
+    pub(crate) disappearing: Option<u32>,
 }
 
 /// One fact learned about the chats, from history or live updates.
@@ -154,6 +159,8 @@ pub(crate) enum ChatChange {
     Pinned(ChatId, Option<i64>),
     /// Muted, or unmuted.
     Muted(ChatId, Option<Mute>),
+    /// New messages disappear after this many seconds, or stay.
+    Disappearing(ChatId, Option<u32>),
     /// Archived or unarchived.
     Archived(ChatId, bool),
     /// Read on another device (`true`) or marked as unread (`false`).
@@ -233,6 +240,7 @@ impl ChatBook {
                 chat.pinned_at = chat.pinned_at.or(history.pinned_at);
                 chat.mute = chat.mute.or(history.mute);
                 chat.archived |= history.archived;
+                chat.disappearing = chat.disappearing.or(history.disappearing);
             }),
             ChatChange::Message(id, preview) => {
                 let on_screen = self.open.as_ref() == Some(self.resolve(&id));
@@ -259,6 +267,9 @@ impl ChatBook {
             }
             ChatChange::Pinned(id, at) => self.update(&id, |chat| chat.pinned_at = at),
             ChatChange::Muted(id, mute) => self.update(&id, |chat| chat.mute = mute),
+            ChatChange::Disappearing(id, seconds) => {
+                self.update(&id, |chat| chat.disappearing = seconds);
+            }
             ChatChange::Archived(id, archived) => self.update(&id, |chat| chat.archived = archived),
             ChatChange::Read(id, read) => self.update(&id, |chat| {
                 if read {

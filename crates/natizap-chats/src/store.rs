@@ -44,6 +44,7 @@ const MIGRATIONS: &[&str] = &[
     ALTER TABLE chats DROP COLUMN push_name;",
     "ALTER TABLE people ADD COLUMN business_name TEXT;
     ALTER TABLE people ADD COLUMN verified INTEGER NOT NULL DEFAULT 0;",
+    "ALTER TABLE chats ADD COLUMN disappearing INTEGER;",
 ];
 
 /// `muted_until` value for [`Mute::Forever`].
@@ -120,8 +121,8 @@ impl ChatStore {
             let mut upsert = tx.prepare_cached(
                 "INSERT OR REPLACE INTO chats (id, subject, preview_text, preview_sent_at,
                  preview_from_me, preview_author, active_at, unread, marked_unread, pinned_at,
-                 muted_until, archived)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                 muted_until, archived, disappearing)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
             )?;
             let mut delete = tx.prepare_cached("DELETE FROM chats WHERE id = ?1")?;
             for id in &dirty.chats {
@@ -144,6 +145,7 @@ impl ChatStore {
                                 Mute::Until(until) => until,
                             }),
                             chat.archived,
+                            chat.disappearing,
                         ])?;
                     }
                     None => {
@@ -218,6 +220,7 @@ fn chat_from_row(row: &Row<'_>) -> rusqlite::Result<Chat> {
             }
         }),
         archived: row.get("archived")?,
+        disappearing: row.get("disappearing")?,
     })
 }
 
