@@ -2,26 +2,20 @@ use std::hash::{DefaultHasher, Hash as _, Hasher as _};
 
 use chrono::{DateTime, Datelike as _, Local, TimeZone as _};
 use gpui::prelude::*;
-use gpui::{Context, Div, Entity, FontWeight, Stateful, Window, div, px, rgb, uniform_list};
+use gpui::{
+    Context, Div, Entity, FontWeight, Stateful, Window, div, px, relative, rgb, svg, uniform_list,
+};
+use natizap_ui::Icon;
+use natizap_ui::theme::{
+    AVATAR_TINTS, DISPLAY_FONT, HONEY, HONEY_INK, LINE, MUTED, PANEL, RAISED, TEXT,
+};
 
 use crate::list::{ChatList, ChatRow};
 
-const ROW_HEIGHT: f32 = 72.0;
-const AVATAR_SIZE: f32 = 48.0;
+const ROW_HEIGHT: f32 = 68.0;
+const AVATAR_SIZE: f32 = 44.0;
 
-const PANEL: u32 = 0x11_1b_21;
-const HOVER: u32 = 0x20_2c_33;
-const DIVIDER: u32 = 0x22_2d_34;
-const TEXT: u32 = 0xe9_ed_ef;
-const SECONDARY: u32 = 0x86_96_a0;
-const ACCENT: u32 = 0x00_a8_84;
-
-/// Avatar backgrounds; each chat keeps the same one.
-const AVATAR_COLORS: [u32; 6] = [
-    0x6b_4f_bb, 0x2a_7a_b0, 0x1f_8a_70, 0xb5_6a_2a, 0xa8_3c_5e, 0x5a_6b_7a,
-];
-
-/// The chat list column: header, archive entry and the scrollable chats.
+/// The chat list column: heading, archive entry and the scrollable chats.
 #[derive(Debug)]
 pub struct ChatListView {
     list: Entity<ChatList>,
@@ -42,12 +36,7 @@ impl Render for ChatListView {
         let archived = list.archived_count();
 
         let body = if count == 0 {
-            div()
-                .flex_1()
-                .p_6()
-                .text_color(rgb(SECONDARY))
-                .child("Your chats will appear here once WhatsApp finishes syncing.")
-                .into_any_element()
+            empty_state().into_any_element()
         } else {
             uniform_list(
                 "chats",
@@ -62,6 +51,7 @@ impl Render for ChatListView {
                 }),
             )
             .flex_1()
+            .pb_2()
             .into_any_element()
         };
 
@@ -73,9 +63,11 @@ impl Render for ChatListView {
             .text_color(rgb(TEXT))
             .child(
                 div()
-                    .px_4()
-                    .py_3()
-                    .text_xl()
+                    .px_5()
+                    .pt_5()
+                    .pb_3()
+                    .font_family(DISPLAY_FONT)
+                    .text_size(px(24.0))
                     .font_weight(FontWeight::BOLD)
                     .child("Chats"),
             )
@@ -84,21 +76,57 @@ impl Render for ChatListView {
     }
 }
 
-fn archive_row(count: usize) -> Div {
+fn empty_state() -> Div {
     div()
+        .flex_1()
         .flex()
+        .flex_col()
         .items_center()
-        .gap_4()
-        .px_4()
-        .h(px(48.0))
-        .child(div().w(px(AVATAR_SIZE)).flex().justify_center().child("🗄"))
-        .child(div().flex_1().child("Archived"))
+        .justify_center()
+        .gap_2()
+        .px_8()
+        .pb_16()
+        .child(
+            svg()
+                .path(Icon::Chats.path())
+                .size(px(40.0))
+                .text_color(rgb(LINE)),
+        )
         .child(
             div()
-                .text_sm()
-                .text_color(rgb(ACCENT))
-                .child(count.to_string()),
+                .pt_2()
+                .font_weight(FontWeight::MEDIUM)
+                .child("No chats yet"),
         )
+        .child(
+            div()
+                .text_size(px(13.5))
+                .text_center()
+                .text_color(rgb(MUTED))
+                .child("Messages you send or receive on your phone will show up here."),
+        )
+}
+
+fn archive_row(count: usize) -> Div {
+    div()
+        .mx_2()
+        .px_3()
+        .h(px(44.0))
+        .flex()
+        .items_center()
+        .gap_3()
+        .rounded_xl()
+        .text_color(rgb(MUTED))
+        .child(
+            div().w(px(AVATAR_SIZE)).flex().justify_center().child(
+                svg()
+                    .path(Icon::Archive.path())
+                    .size(px(18.0))
+                    .text_color(rgb(MUTED)),
+            ),
+        )
+        .child(div().flex_1().text_color(rgb(TEXT)).child("Archived"))
+        .child(div().text_size(px(12.5)).child(count.to_string()))
 }
 
 fn chat_row(row: &ChatRow, now: DateTime<Local>) -> Stateful<Div> {
@@ -113,17 +141,22 @@ fn chat_row(row: &ChatRow, now: DateTime<Local>) -> Stateful<Div> {
         } else {
             String::new()
         };
+        let (background, ink) = if row.muted {
+            (LINE, MUTED)
+        } else {
+            (HONEY, HONEY_INK)
+        };
         div()
             .min_w(px(20.0))
             .h(px(20.0))
-            .px_1()
+            .px(px(6.0))
             .flex()
             .items_center()
             .justify_center()
             .rounded_full()
-            .bg(rgb(if row.muted { SECONDARY } else { ACCENT }))
-            .text_color(rgb(PANEL))
-            .text_xs()
+            .bg(rgb(background))
+            .text_color(rgb(ink))
+            .text_size(px(11.5))
             .font_weight(FontWeight::BOLD)
             .child(label)
     });
@@ -131,33 +164,48 @@ fn chat_row(row: &ChatRow, now: DateTime<Local>) -> Stateful<Div> {
     div()
         .id(gpui::SharedString::from(row.id.as_str().to_owned()))
         .h(px(ROW_HEIGHT))
+        .mx_2()
+        .px_3()
         .flex()
         .items_center()
         .gap_3()
-        .px_3()
+        .rounded_xl()
         .cursor_pointer()
-        .hover(|style| style.bg(rgb(HOVER)))
+        .hover(|style| style.bg(rgb(RAISED)))
         .child(avatar(row))
         .child(
             div()
                 .flex_1()
                 .min_w_0()
-                .h_full()
                 .flex()
                 .flex_col()
-                .justify_center()
-                .gap_1()
-                .border_b_1()
-                .border_color(rgb(DIVIDER))
+                .gap(px(3.0))
                 .child(
                     div()
                         .flex()
+                        .items_baseline()
                         .gap_2()
-                        .child(div().flex_1().min_w_0().truncate().child(row.title.clone()))
                         .child(
                             div()
-                                .text_xs()
-                                .text_color(rgb(if has_unread { ACCENT } else { SECONDARY }))
+                                .flex_1()
+                                .min_w_0()
+                                .truncate()
+                                .text_size(px(15.0))
+                                .font_weight(if has_unread {
+                                    FontWeight::SEMIBOLD
+                                } else {
+                                    FontWeight::MEDIUM
+                                })
+                                .child(row.title.clone()),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(12.0))
+                                .text_color(rgb(if has_unread && !row.muted {
+                                    HONEY
+                                } else {
+                                    MUTED
+                                }))
                                 .child(time),
                         ),
                 )
@@ -165,9 +213,10 @@ fn chat_row(row: &ChatRow, now: DateTime<Local>) -> Stateful<Div> {
                     div()
                         .flex()
                         .items_center()
-                        .gap_1()
-                        .text_sm()
-                        .text_color(rgb(SECONDARY))
+                        .gap_1p5()
+                        .text_size(px(13.5))
+                        .line_height(relative(1.3))
+                        .text_color(rgb(MUTED))
                         .child(
                             div()
                                 .flex_1()
@@ -175,18 +224,26 @@ fn chat_row(row: &ChatRow, now: DateTime<Local>) -> Stateful<Div> {
                                 .truncate()
                                 .children(row.preview.clone()),
                         )
-                        .when(row.muted, |line| line.child("🔇"))
-                        .when(row.pinned, |line| line.child("📌"))
+                        .when(row.muted, |line| line.child(status_icon(Icon::Muted)))
+                        .when(row.pinned, |line| line.child(status_icon(Icon::Pin)))
                         .children(badge),
                 ),
         )
 }
 
+fn status_icon(icon: Icon) -> impl IntoElement {
+    svg()
+        .path(icon.path())
+        .size(px(15.0))
+        .flex_none()
+        .text_color(rgb(MUTED))
+}
+
 fn avatar(row: &ChatRow) -> Div {
     let mut hasher = DefaultHasher::new();
     row.id.hash(&mut hasher);
-    let color = AVATAR_COLORS
-        [usize::try_from(hasher.finish() % AVATAR_COLORS.len() as u64).unwrap_or_default()];
+    let tint = AVATAR_TINTS
+        [usize::try_from(hasher.finish() % AVATAR_TINTS.len() as u64).unwrap_or_default()];
     let initial = row
         .title
         .chars()
@@ -199,8 +256,9 @@ fn avatar(row: &ChatRow) -> Div {
         .items_center()
         .justify_center()
         .rounded_full()
-        .bg(rgb(color))
-        .text_lg()
+        .bg(rgb(tint))
+        .font_family(DISPLAY_FONT)
+        .text_size(px(18.0))
         .font_weight(FontWeight::SEMIBOLD)
         .child(initial)
 }

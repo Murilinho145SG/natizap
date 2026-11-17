@@ -10,6 +10,7 @@ async-channel.workspace = true
 chrono.workspace = true
 gpui.workspace = true
 natizap-protocol.workspace = true
+natizap-ui.workspace = true
 rusqlite.workspace = true
 tracing.workspace = true
 
