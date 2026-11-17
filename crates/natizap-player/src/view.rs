@@ -329,11 +329,13 @@ fn play_glyph() -> Div {
     )
 }
 
-/// Two bars, drawn rather than an icon file: it is the only place a pause
-/// symbol appears.
 fn pause_glyph() -> Div {
-    let bar = || div().w(px(4.0)).h(px(16.0)).rounded_sm().bg(rgb(HONEY_INK));
-    div().flex().gap(px(4.0)).child(bar()).child(bar())
+    div().child(
+        svg()
+            .path(Icon::Pause.path())
+            .size(px(20.0))
+            .text_color(rgb(HONEY_INK)),
+    )
 }
 
 fn clock_label(time: Duration) -> String {

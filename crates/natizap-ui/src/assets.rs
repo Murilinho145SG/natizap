@@ -68,6 +68,8 @@ icons! {
     Minimize => "minimize.svg",
     /// Notifications silenced.
     Muted => "muted.svg",
+    /// Pause what is playing.
+    Pause => "pause.svg",
     /// Pinned to the top.
     Pin => "pin.svg",
     /// Play a video or audio.
