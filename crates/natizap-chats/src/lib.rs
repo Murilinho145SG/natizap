@@ -6,9 +6,11 @@
 
 mod book;
 mod list;
+mod picker;
 mod store;
 mod sync;
 mod view;
 
 pub use list::{ChatList, ChatRow};
+pub use picker::{ChatPicker, ChatsPicked, PickerDismissed};
 pub use view::{ChatListView, ChatSelected};
