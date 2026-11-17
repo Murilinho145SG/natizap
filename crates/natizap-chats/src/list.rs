@@ -134,7 +134,7 @@ impl ChatList {
                     snapshot = newer;
                 }
                 let applied = this.update(cx, |list, cx| {
-                    list.snapshot = snapshot;
+                    list.snapshot = list.mark_own(snapshot, cx);
                     list.name_businesses(cx);
                     cx.notify();
                 });
@@ -215,6 +215,26 @@ impl ChatList {
             }
         })
         .detach();
+    }
+
+    /// Names the account's own chat as the phone does, "+55 … (You)".
+    fn mark_own(&self, mut snapshot: Snapshot, cx: &App) -> Snapshot {
+        let protocol = self.protocol.read(cx);
+        let own = |row: &ChatRow| row.addresses.iter().any(|address| protocol.is_own(address));
+        if snapshot.rows.iter().any(own) {
+            snapshot.rows = snapshot
+                .rows
+                .iter()
+                .map(|row| {
+                    let mut row = row.clone();
+                    if own(&row) {
+                        row.title = format!("{} (You)", row.title).into();
+                    }
+                    row
+                })
+                .collect();
+        }
+        snapshot
     }
 
     /// Asks, one at a time, whether chats known only by their number are
