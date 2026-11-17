@@ -3,7 +3,7 @@ use gpui::{AnyElement, Context, Div, Entity, FontWeight, Window, div, px, rgb};
 use natizap_chats::{ChatList, ChatListView, ChatSelected};
 use natizap_messages::{ConversationView, MessageLog, MessageSent, OpenChat};
 use natizap_session::{PairingView, Session, SessionState};
-use natizap_ui::theme::{ALERT, DISPLAY_FONT, HONEY, LINE, MINT, MUTED, TEXT, UI_FONT};
+use natizap_ui::theme::{ALERT, DISPLAY_FONT, HONEY, LINE, MINT, MUTED, TEXT, base_font};
 use natizap_ui::window_frame;
 
 /// The main window's content: the pairing screen until this device is linked,
@@ -96,7 +96,7 @@ impl Render for Root {
         let content = self.content(cx);
         div()
             .size_full()
-            .font_family(UI_FONT)
+            .font(base_font())
             .text_color(rgb(TEXT))
             .child(window_frame(window, title, content))
     }

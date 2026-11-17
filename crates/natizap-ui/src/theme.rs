@@ -39,3 +39,18 @@ pub const NAME_TINTS: [u32; 6] = [
 pub const UI_FONT: &str = "Figtree";
 /// The wordmark and headings only.
 pub const DISPLAY_FONT: &str = "Bricolage Grotesque";
+/// Color emoji: Noto Color Emoji, adapted so GPUI accepts it as a fallback
+/// (see `scripts/build-emoji-font.py`). Without it, emoji that system fonts
+/// such as `DejaVu Sans` also cover render monochrome.
+pub const EMOJI_FONT: &str = "Natizap Emoji";
+
+/// The app's base font: [`UI_FONT`] with [`EMOJI_FONT`] as fallback. Set it
+/// once at the root; children inherit the fallback even when they change the
+/// family or weight.
+#[must_use]
+pub fn base_font() -> gpui::Font {
+    gpui::Font {
+        fallbacks: Some(gpui::FontFallbacks::from_fonts(vec![EMOJI_FONT.to_owned()])),
+        ..gpui::font(UI_FONT)
+    }
+}

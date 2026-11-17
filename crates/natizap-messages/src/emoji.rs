@@ -46,6 +46,7 @@ pub(crate) fn picker(
                 .cursor_pointer()
                 .hover(|style| style.bg(rgb(RAISED)))
                 .on_click(move |_, window, cx| on_pick(emoji, window, cx))
-                .child(natizap_ui::emoji(emoji, px(24.0)))
+                .text_size(px(22.0))
+                .child(emoji)
         }))
 }

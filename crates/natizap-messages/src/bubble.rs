@@ -247,7 +247,8 @@ fn quick_reactions(bubble: &Bubble, view: &WeakEntity<ConversationView>) -> Stat
                         let _ = view.update(cx, |view, cx| view.react(&bubble, emoji, cx));
                     }
                 })
-                .child(natizap_ui::emoji(emoji, px(22.0)))
+                .text_size(px(20.0))
+                .child(emoji)
         }))
 }
 
@@ -266,7 +267,7 @@ fn reaction_chips(bubble: &Bubble) -> Div {
                 .border_1()
                 .border_color(rgb(LINE))
                 .text_size(px(13.0))
-                .child(natizap_ui::emoji(&chip.emoji, px(15.0)))
+                .child(chip.emoji.clone())
                 .when(chip.count > 1, |chip_view| {
                     chip_view.child(div().text_color(rgb(MUTED)).child(chip.count.to_string()))
                 })

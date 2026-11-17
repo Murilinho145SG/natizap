@@ -345,15 +345,10 @@ impl Render for ConversationView {
                             .flex()
                             .flex_col()
                             .child(
-                                // Medium, like the chat list: at heavier weights
-                                // the system's font fallback picks monochrome
-                                // emoji, and GPUI cannot be told to prefer an
-                                // emoji font (it rejects fallbacks without
-                                // Latin glyphs).
                                 div()
                                     .truncate()
                                     .text_size(px(16.0))
-                                    .font_weight(FontWeight::MEDIUM)
+                                    .font_weight(FontWeight::SEMIBOLD)
                                     .child(chat.title.clone()),
                             )
                             .children(subtitle.map(|subtitle| {

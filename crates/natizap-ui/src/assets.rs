@@ -9,6 +9,7 @@ const FONTS: &[&[u8]] = &[
     include_bytes!("../assets/fonts/figtree/Figtree-Bold.ttf"),
     include_bytes!("../assets/fonts/bricolage/BricolageGrotesque-SemiBold.ttf"),
     include_bytes!("../assets/fonts/bricolage/BricolageGrotesque-Bold.ttf"),
+    include_bytes!("../assets/fonts/emoji/NatizapEmoji.ttf"),
 ];
 
 /// Declares the icon set once: the enum, its asset paths and its bytes.
