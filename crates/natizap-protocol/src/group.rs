@@ -7,6 +7,7 @@ use whatsapp_rust::Jid;
 use whatsapp_rust::prelude::Client;
 use whatsapp_rust::wacore::iq::groups::ParticipantType;
 
+use crate::actions;
 use crate::{ActionError, ChatId};
 
 /// A group as its conversation shows it.
@@ -66,11 +67,7 @@ pub(crate) async fn info(client: Arc<Client>, group: Jid) -> Result<GroupInfo, A
         })
         .flatten()
         .collect();
-    let own: Vec<ChatId> = [client.pn(), client.lid()]
-        .into_iter()
-        .flatten()
-        .map(|jid| ChatId::new(&jid.to_string()))
-        .collect();
+    let own = actions::own_addresses(&client);
     Ok(GroupInfo {
         own_admin: own.iter().any(|own| admins.contains(own)),
         admins,

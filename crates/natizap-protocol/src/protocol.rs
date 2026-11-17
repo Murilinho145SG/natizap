@@ -351,6 +351,15 @@ impl Protocol {
             .run(cx, move |client| profile::picture(client, jid, full))
     }
 
+    /// Whether `chat` is this account's own, where people message
+    /// themselves. Unknown, so `false`, until the device is linked.
+    #[must_use]
+    pub fn is_own(&self, chat: &ChatId) -> bool {
+        self.connection
+            .client()
+            .is_ok_and(|client| actions::own_addresses(&client).contains(chat))
+    }
+
     /// What `chat`'s profile shows: their about line, and a business's
     /// public details.
     pub fn profile(&self, chat: &ChatId, cx: &App) -> Task<Result<Profile, ActionError>> {

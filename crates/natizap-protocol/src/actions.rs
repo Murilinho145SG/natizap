@@ -23,7 +23,7 @@ impl Connection {
         *self.0.lock().unwrap_or_else(PoisonError::into_inner) = client;
     }
 
-    fn client(&self) -> Result<Arc<Client>, ActionError> {
+    pub(crate) fn client(&self) -> Result<Arc<Client>, ActionError> {
         self.0
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
@@ -48,6 +48,15 @@ impl Connection {
         let task = Tokio::spawn(cx, action(client));
         cx.background_spawn(async move { task.await.map_err(|_| ActionError::Interrupted)? })
     }
+}
+
+/// This account's own addresses: its phone number and its LID.
+pub(crate) fn own_addresses(client: &Client) -> Vec<ChatId> {
+    [client.pn(), client.lid()]
+        .into_iter()
+        .flatten()
+        .map(|jid| ChatId::new(&jid.to_string()))
+        .collect()
 }
 
 /// Why an action on WhatsApp did not happen.
