@@ -74,6 +74,8 @@ pub(crate) struct MediaView {
     pub(crate) fetch: Fetch,
     /// The downloaded file, once there is one.
     pub(crate) file: Option<PathBuf>,
+    /// A still of a downloaded video.
+    pub(crate) poster: Option<PathBuf>,
     /// The inline preview, shown until the file is downloaded.
     pub(crate) preview: Option<Arc<Image>>,
     /// Display size in pixels, for photos, videos and stickers.
@@ -284,6 +286,10 @@ fn media_view(message: &Message) -> Option<MediaView> {
     });
     Some(MediaView {
         file: message.media_file.clone(),
+        poster: message
+            .media_poster
+            .clone()
+            .filter(|poster| poster.exists()),
         preview,
         size,
         detail: detail.map(Into::into),
@@ -380,6 +386,7 @@ mod tests {
             quote: None,
             media: None,
             media_file: None,
+            media_poster: None,
         }
     }
 

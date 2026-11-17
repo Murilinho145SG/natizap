@@ -5,11 +5,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use chrono::Local;
 use gpui::{AppContext as _, Context, Entity, EventEmitter, SharedString, Task};
+use natizap_playback::save_poster;
 use natizap_protocol::whatsapp_rust::prelude::Event;
 use natizap_protocol::{ChatId, ContentKind, Protocol, Quote, Reply, Unread};
 
 use crate::items::{Item, items};
-use crate::media::{Fetch, fetch_on_sight};
+use crate::media::{Fetch, PosterJob, fetch_on_sight, posters_on_sight};
 use crate::message::{Delivery, Message, MessageChange};
 use crate::store::MessageStore;
 use crate::sync::{MESSAGE_EVENTS, changes};
@@ -58,6 +59,7 @@ enum Output {
         chat: ChatId,
         items: Arc<[Item]>,
         fetch: Vec<Fetch>,
+        posters: Vec<PosterJob>,
     },
     Unread {
         chat: ChatId,
@@ -80,6 +82,8 @@ pub struct MessageLog {
     media_dir: PathBuf,
     /// Attachments being downloaded, by message id.
     fetching: HashSet<String>,
+    /// Videos whose still is being taken, by message id.
+    posters: HashSet<String>,
     _tasks: [Task<()>; 3],
 }
 
@@ -142,6 +146,7 @@ impl MessageLog {
             sent_count: 0,
             media_dir,
             fetching: HashSet::new(),
+            posters: HashSet::new(),
             _tasks: [forward, sync, apply],
         }
     }
@@ -191,6 +196,7 @@ impl MessageLog {
             delivery: Delivery::Sending,
             media: None,
             media_file: None,
+            media_poster: None,
             quote: reply.as_ref().map(|reply| Quote {
                 id: reply.id.clone(),
                 sender: reply.sender.clone(),
@@ -316,6 +322,35 @@ impl MessageLog {
         .detach();
     }
 
+    /// Takes a still from a downloaded video, then records where it went.
+    fn make_poster(&mut self, job: PosterJob, cx: &mut Context<Self>) {
+        // Also keeps a video that cannot be decoded from being retried on
+        // every refresh.
+        if !self.posters.insert(job.fetch.message_id.clone()) {
+            return;
+        }
+        let poster = job.fetch.poster_path_in(&self.media_dir);
+        let message_id = job.fetch.message_id;
+        cx.spawn(async move |this, cx| {
+            let file = poster.clone();
+            let saved = cx
+                .background_spawn(async move { save_poster(&job.video, &file) })
+                .await;
+            match saved {
+                Ok(()) => {
+                    let _ = this.update(cx, |log, _| {
+                        log.send_input(Input::from(MessageChange::PosterSaved {
+                            message_id,
+                            file: poster,
+                        }));
+                    });
+                }
+                Err(error) => tracing::warn!(%error, "could not take a still from a video"),
+            }
+        })
+        .detach();
+    }
+
     fn send_input(&self, input: Input) {
         // The channel is unbounded and the worker lives as long as `self`.
         if self.inputs.try_send(input).is_err() {
@@ -325,11 +360,19 @@ impl MessageLog {
 
     fn receive(&mut self, output: Output, cx: &mut Context<Self>) {
         match output {
-            Output::Thread { chat, items, fetch } => {
+            Output::Thread {
+                chat,
+                items,
+                fetch,
+                posters,
+            } => {
                 if self.open.as_ref().is_some_and(|open| open.id == chat) {
                     self.items = items;
                     for fetch in fetch {
                         self.fetch(fetch, false, cx);
+                    }
+                    for job in posters {
+                        self.make_poster(job, cx);
                     }
                     cx.notify();
                 }
@@ -418,11 +461,13 @@ async fn sync(
             });
             let rows = items(&messages, &reactions, Local::now()).into();
             let fetch = fetch_on_sight(&messages);
+            let posters = posters_on_sight(&messages);
             if outputs
                 .send(Output::Thread {
                     chat: chat.id.clone(),
                     items: rows,
                     fetch,
+                    posters,
                 })
                 .await
                 .is_err()

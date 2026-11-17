@@ -78,6 +78,8 @@ pub(crate) struct Message {
     pub(crate) media: Option<Media>,
     /// Where the attachment was saved once downloaded.
     pub(crate) media_file: Option<PathBuf>,
+    /// A still taken from a downloaded video, shown until it plays.
+    pub(crate) media_poster: Option<PathBuf>,
 }
 
 /// One fact learned about the messages.
@@ -112,6 +114,8 @@ pub(crate) enum MessageChange {
     },
     /// A message's attachment was downloaded to `file`. Matched by id.
     MediaSaved { message_id: String, file: PathBuf },
+    /// A still of a message's video was saved to `file`. Matched by id.
+    PosterSaved { message_id: String, file: PathBuf },
     /// Someone reacted to a message, or took their reaction back (`None`).
     /// `reactor` is `None` for this account. Matched by message id alone.
     Reacted {
@@ -140,7 +144,7 @@ impl MessageChange {
             | Self::Accepted { chat, .. }
             | Self::Rejected { chat, .. }
             | Self::Reacted { chat, .. } => Some(chat),
-            Self::Progressed { .. } | Self::MediaSaved { .. } => None,
+            Self::Progressed { .. } | Self::MediaSaved { .. } | Self::PosterSaved { .. } => None,
         }
     }
 }

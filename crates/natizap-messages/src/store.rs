@@ -48,6 +48,7 @@ const MIGRATIONS: &[&str] = &[
     ALTER TABLE messages ADD COLUMN media_enc_sha256 BLOB;
     ALTER TABLE messages ADD COLUMN media_file TEXT;",
     "ALTER TABLE messages ADD COLUMN media_waveform BLOB;",
+    "ALTER TABLE messages ADD COLUMN media_poster TEXT;",
 ];
 
 /// Every message natizap has seen, on disk.
@@ -128,6 +129,10 @@ impl MessageStore {
                 }
                 MessageChange::MediaSaved { message_id, file } => {
                     tx.prepare_cached("UPDATE messages SET media_file = ?2 WHERE id = ?1")?
+                        .execute(params![message_id, file.to_string_lossy()])?;
+                }
+                MessageChange::PosterSaved { message_id, file } => {
+                    tx.prepare_cached("UPDATE messages SET media_poster = ?2 WHERE id = ?1")?
                         .execute(params![message_id, file.to_string_lossy()])?;
                 }
                 MessageChange::Reacted {
@@ -351,6 +356,9 @@ fn message_from_row(row: &Row<'_>) -> rusqlite::Result<Message> {
         media_file: row
             .get::<_, Option<String>>("media_file")?
             .map(PathBuf::from),
+        media_poster: row
+            .get::<_, Option<String>>("media_poster")?
+            .map(PathBuf::from),
     })
 }
 
@@ -374,6 +382,7 @@ mod tests {
             quote: None,
             media: None,
             media_file: None,
+            media_poster: None,
         }
     }
 
@@ -493,10 +502,18 @@ mod tests {
             message_id: "p".into(),
             file: PathBuf::from("/tmp/p.jpg"),
         }])?;
+        store.apply(&[MessageChange::PosterSaved {
+            message_id: "p".into(),
+            file: PathBuf::from("/tmp/p-poster.jpg"),
+        }])?;
 
         let stored = store.latest(std::slice::from_ref(&chat), 1)?.remove(0);
         assert_eq!(stored.media, photo.media);
         assert_eq!(stored.media_file, Some(PathBuf::from("/tmp/p.jpg")));
+        assert_eq!(
+            stored.media_poster,
+            Some(PathBuf::from("/tmp/p-poster.jpg"))
+        );
         Ok(())
     }
 

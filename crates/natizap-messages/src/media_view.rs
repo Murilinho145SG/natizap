@@ -80,13 +80,14 @@ pub(crate) fn render_media(media: &MediaView, view: &WeakEntity<ConversationView
     }
 }
 
-/// The downloaded image, else the inline preview, else an empty frame. A
-/// video's file is not an image, so videos always show their preview.
+/// The downloaded image, else a video's still, else the inline preview,
+/// else an empty frame. A video's file is not an image, so it never shows.
 fn picture(media: &MediaView) -> Div {
     let (width, height) = media.size;
     let is_image = matches!(media.fetch.kind, ContentKind::Photo | ContentKind::Sticker);
     let source: Option<ImageSource> = match (&media.file, &media.preview) {
         (Some(file), _) if is_image && file.exists() => Some(file.clone().into()),
+        _ if media.poster.is_some() => media.poster.clone().map(Into::into),
         (_, Some(preview)) => Some(preview.clone().into()),
         _ => None,
     };
