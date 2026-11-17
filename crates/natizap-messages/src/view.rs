@@ -15,7 +15,7 @@ use natizap_ui::{
 };
 
 use crate::bubble::{quote_block, render_item};
-use crate::emoji::picker;
+use crate::emoji::{EmojiPicked, EmojiPicker};
 use crate::items::{Bubble, MediaView};
 use crate::log::{MessageLog, SoundReady};
 use crate::voice::Voices;
@@ -37,6 +37,7 @@ pub struct ConversationView {
     /// The bubble whose quick reactions are open.
     reacting: Option<SharedString>,
     picking_emoji: bool,
+    emoji_picker: Entity<EmojiPicker>,
     voices: Voices,
     /// Whether a task is redrawing the playing note.
     ticking: bool,
@@ -60,6 +61,19 @@ impl ConversationView {
     ) -> Self {
         cx.observe(&pictures, |_, _, cx| cx.notify()).detach();
         let composer = cx.new(|cx| TextInput::new("Message", cx));
+        let emoji_picker = cx.new(|_| EmojiPicker::new());
+        cx.subscribe_in(
+            &emoji_picker,
+            window,
+            |this, _, EmojiPicked(emoji), window, cx| {
+                // Keep typing where the emoji went.
+                this.composer.update(cx, |input, cx| {
+                    input.insert(emoji, window, cx);
+                    window.focus(&input.focus_handle(cx), cx);
+                });
+            },
+        )
+        .detach();
         cx.subscribe_in(&composer, window, |this, _, _: &Submitted, window, cx| {
             this.send(window, cx);
         })
@@ -82,6 +96,7 @@ impl ConversationView {
             replying: None,
             reacting: None,
             picking_emoji: false,
+            emoji_picker,
             voices: Voices::default(),
             ticking: false,
         }
@@ -307,7 +322,6 @@ impl ConversationView {
             .border_t_1()
             .border_color(rgb(LINE))
             .when(self.picking_emoji, |composer| {
-                let input = self.composer.downgrade();
                 // Floats above the messages instead of growing the composer,
                 // which pushed the composer out of a tall message list.
                 composer.child(deferred(
@@ -316,15 +330,8 @@ impl ConversationView {
                         .bottom(relative(1.0))
                         .left_4()
                         .mb_2()
-                        .w(px(388.0))
                         .occlude()
-                        .child(picker(move |emoji, window, cx| {
-                            // Keep typing where the emoji went.
-                            let _ = input.update(cx, |input, cx| {
-                                input.insert(emoji, window, cx);
-                                window.focus(&input.focus_handle(cx), cx);
-                            });
-                        })),
+                        .child(self.emoji_picker.clone()),
                 ))
             })
             .children(self.reply_bar(cx))

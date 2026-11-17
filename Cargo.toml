@@ -35,6 +35,7 @@ dirs = "6"
 # FFmpeg compiled from source and linked statically: natizap decodes media
 # itself instead of relying on system libraries or players. Needs nasm and
 # libclang at build time.
+emojis = "0.9"
 ffmpeg-next = { version = "9.1", default-features = false, features = [
     "build",
     "codec",
