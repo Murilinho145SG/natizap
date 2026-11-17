@@ -5,12 +5,14 @@
 //! work, and offsets cross that boundary in UTF-16.
 
 use std::ops::Range;
+use std::rc::Rc;
 
 use gpui::prelude::*;
 use gpui::{
-    App, Bounds, ClipboardItem, Context, CursorStyle, EntityInputHandler, EventEmitter,
-    FocusHandle, Focusable, KeyBinding, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
-    Pixels, Point, ShapedLine, SharedString, UTF16Selection, Window, actions, div, point,
+    Action, App, Bounds, ClipboardItem, Context, CursorStyle, EntityInputHandler, EventEmitter,
+    FocusHandle, Focusable, KeyBinding, KeyBindingContextPredicate, MouseButton, MouseDownEvent,
+    MouseMoveEvent, MouseUpEvent, Pixels, Point, ShapedLine, SharedString, UTF16Selection, Window,
+    actions, div, point,
 };
 use unicode_segmentation::UnicodeSegmentation as _;
 
@@ -40,22 +42,38 @@ const KEY_CONTEXT: &str = "TextInput";
 /// Registers the keyboard shortcuts every [`TextInput`] responds to. Call
 /// once at startup.
 pub fn bind_text_input_keys(cx: &mut App) {
-    let context = Some(KEY_CONTEXT);
-    cx.bind_keys([
-        KeyBinding::new("backspace", Backspace, context),
-        KeyBinding::new("delete", Delete, context),
-        KeyBinding::new("left", Left, context),
-        KeyBinding::new("right", Right, context),
-        KeyBinding::new("shift-left", SelectLeft, context),
-        KeyBinding::new("shift-right", SelectRight, context),
-        KeyBinding::new("secondary-a", SelectAll, context),
-        KeyBinding::new("secondary-v", Paste, context),
-        KeyBinding::new("secondary-c", Copy, context),
-        KeyBinding::new("secondary-x", Cut, context),
-        KeyBinding::new("home", Home, context),
-        KeyBinding::new("end", End, context),
-        KeyBinding::new("enter", Submit, context),
-    ]);
+    let context = match KeyBindingContextPredicate::parse(KEY_CONTEXT) {
+        Ok(context) => Some(Rc::new(context)),
+        Err(error) => {
+            tracing::error!(%error, "invalid text input key context");
+            return;
+        }
+    };
+    let bindings: [(&str, Box<dyn Action>); 13] = [
+        ("backspace", Box::new(Backspace)),
+        ("delete", Box::new(Delete)),
+        ("left", Box::new(Left)),
+        ("right", Box::new(Right)),
+        ("shift-left", Box::new(SelectLeft)),
+        ("shift-right", Box::new(SelectRight)),
+        // `secondary` is Cmd on macOS and Ctrl elsewhere.
+        ("secondary-a", Box::new(SelectAll)),
+        ("secondary-v", Box::new(Paste)),
+        ("secondary-c", Box::new(Copy)),
+        ("secondary-x", Box::new(Cut)),
+        ("home", Box::new(Home)),
+        ("end", Box::new(End)),
+        ("enter", Box::new(Submit)),
+    ];
+    let bindings: Vec<KeyBinding> = bindings
+        .into_iter()
+        .filter_map(|(keys, action)| {
+            KeyBinding::load(keys, action, context.clone(), false, None, cx)
+                .inspect_err(|error| tracing::error!(%error, keys, "invalid key binding"))
+                .ok()
+        })
+        .collect();
+    cx.bind_keys(bindings);
 }
 
 /// The user pressed Enter in a [`TextInput`].
