@@ -39,18 +39,3 @@ pub const NAME_TINTS: [u32; 6] = [
 pub const UI_FONT: &str = "Figtree";
 /// The wordmark and headings only.
 pub const DISPLAY_FONT: &str = "Bricolage Grotesque";
-/// Color emoji. Neither typeface has emoji, and without this the fallback
-/// depends on the weight: bold text picked a monochrome font.
-pub const EMOJI_FONT: &str = "Noto Color Emoji";
-
-/// The app's base font: [`UI_FONT`] with [`EMOJI_FONT`] as fallback. Set it
-/// once at the root; children inherit the fallback even when they change the
-/// family or weight.
-#[must_use]
-pub fn base_font() -> gpui::Font {
-    gpui::Font {
-        family: UI_FONT.into(),
-        fallbacks: Some(gpui::FontFallbacks::from_fonts(vec![EMOJI_FONT.to_owned()])),
-        ..gpui::font(UI_FONT)
-    }
-}
