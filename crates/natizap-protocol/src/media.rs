@@ -30,6 +30,8 @@ pub struct Media {
     /// Loudness over the length of a voice note: 64 values, 0 to 100, as
     /// the sender's phone measured it.
     pub waveform: Option<Vec<u8>>,
+    /// How many pages a document has.
+    pub pages: Option<u32>,
     /// Where the encrypted file lives on WhatsApp's servers.
     pub direct_path: String,
     /// Key to decrypt the file.
@@ -121,6 +123,7 @@ impl Media {
             Some(Self {
                 file_name: m.file_name.clone(),
                 thumbnail: m.jpeg_thumbnail.clone(),
+                pages: m.page_count,
                 ..locator!(m)
             })
         } else if let Some(m) = message.sticker_message.as_option() {

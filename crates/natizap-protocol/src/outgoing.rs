@@ -110,6 +110,7 @@ pub(crate) async fn send(
         thumbnail: outgoing.thumbnail.clone(),
         hd_thumbnail: None,
         waveform: outgoing.waveform.clone(),
+        pages: None,
         direct_path: upload.direct_path.clone(),
         media_key: upload.media_key.to_vec(),
         file_sha256: upload.file_sha256.to_vec(),
