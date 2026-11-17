@@ -5,6 +5,7 @@
 //! current; [`ConversationView`] renders it with a composer and plays voice
 //! notes inside their bubbles.
 
+mod authors;
 mod bubble;
 mod emoji;
 mod extra_view;
