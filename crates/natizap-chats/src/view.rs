@@ -7,6 +7,9 @@ use gpui::{
 use natizap_ui::theme::{ACCENT, DISPLAY_FONT, LINE, MUTED, PANEL, RAISED, TEXT};
 use natizap_ui::{BadgeTone, Icon, avatar, badge, count_label, separator, skeleton};
 
+use std::path::PathBuf;
+
+use natizap_profiles::ProfilePictures;
 use natizap_protocol::ChatId;
 
 use crate::list::{ChatList, ChatRow};
@@ -18,6 +21,7 @@ const AVATAR_SIZE: f32 = 44.0;
 #[derive(Debug)]
 pub struct ChatListView {
     list: Entity<ChatList>,
+    pictures: Entity<ProfilePictures>,
     selected: Option<ChatId>,
     syncing: bool,
 }
@@ -29,11 +33,18 @@ pub struct ChatSelected(pub ChatRow);
 impl EventEmitter<ChatSelected> for ChatListView {}
 
 impl ChatListView {
-    /// Creates a view that re-renders whenever `list` changes.
-    pub fn new(list: Entity<ChatList>, cx: &mut Context<Self>) -> Self {
+    /// Creates a view that re-renders whenever `list` changes or a chat's
+    /// picture arrives.
+    pub fn new(
+        list: Entity<ChatList>,
+        pictures: Entity<ProfilePictures>,
+        cx: &mut Context<Self>,
+    ) -> Self {
         cx.observe(&list, |_, _, cx| cx.notify()).detach();
+        cx.observe(&pictures, |_, _, cx| cx.notify()).detach();
         Self {
             list,
+            pictures,
             selected: None,
             syncing: false,
         }
@@ -77,8 +88,13 @@ impl Render for ChatListView {
                         .map(|row| {
                             let selected = this.selected.as_ref() == Some(&row.id);
                             let clicked = row.clone();
+                            // Only rows on screen ask, so pictures load as
+                            // the list scrolls.
+                            let picture = this
+                                .pictures
+                                .update(cx, |pictures, cx| pictures.picture(&row.id, cx));
                             div().w_full().px_2().child(
-                                chat_row(row, now)
+                                chat_row(row, picture, now)
                                     .when(selected, |row| row.bg(rgb(RAISED)))
                                     .on_click(cx.listener(move |this, _, _, cx| {
                                         this.select(clicked.clone(), cx);
@@ -207,7 +223,7 @@ fn archive_row(count: usize) -> Div {
         .child(div().text_size(px(12.5)).child(count.to_string()))
 }
 
-fn chat_row(row: &ChatRow, now: DateTime<Local>) -> Stateful<Div> {
+fn chat_row(row: &ChatRow, picture: Option<PathBuf>, now: DateTime<Local>) -> Stateful<Div> {
     let has_unread = row.unread > 0 || row.marked_unread;
     let time = row
         .sent_at
@@ -240,7 +256,12 @@ fn chat_row(row: &ChatRow, now: DateTime<Local>) -> Stateful<Div> {
         .rounded_xl()
         .cursor_pointer()
         .hover(|style| style.bg(rgb(RAISED)))
-        .child(avatar(row.id.as_str(), &row.title, px(AVATAR_SIZE)))
+        .child(avatar(
+            row.id.as_str(),
+            &row.title,
+            picture,
+            px(AVATAR_SIZE),
+        ))
         .child(
             div()
                 .flex_1()

@@ -14,6 +14,7 @@ gpui_tokio.workspace = true
 natizap-chats.workspace = true
 natizap-messages.workspace = true
 natizap-player.workspace = true
+natizap-profiles.workspace = true
 natizap-protocol.workspace = true
 natizap-session.workspace = true
 natizap-ui.workspace = true

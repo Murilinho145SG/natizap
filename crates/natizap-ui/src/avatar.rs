@@ -1,14 +1,25 @@
 use std::hash::{DefaultHasher, Hash as _, Hasher as _};
+use std::path::PathBuf;
 
 use gpui::prelude::*;
-use gpui::{Div, FontWeight, Pixels, div, rgb};
+use gpui::{Div, FontWeight, ObjectFit, Pixels, div, img, rgb};
 
 use crate::theme::{AVATAR_TINTS, DISPLAY_FONT, NAME_TINTS};
 
-/// A round avatar showing the first letter of `title` on a tint picked from
-/// `seed`, so a chat keeps its color wherever it appears.
+/// A round avatar: `picture` when there is one, else the first letter of
+/// `title` on a tint picked from `seed`, so a chat keeps its color wherever
+/// it appears.
 #[must_use]
-pub fn avatar(seed: &str, title: &str, size: Pixels) -> Div {
+pub fn avatar(seed: &str, title: &str, picture: Option<PathBuf>, size: Pixels) -> Div {
+    if let Some(picture) = picture {
+        return div()
+            .size(size)
+            .flex_none()
+            .rounded_full()
+            .overflow_hidden()
+            .bg(rgb(AVATAR_TINTS[tint_index(seed)]))
+            .child(img(picture).size_full().object_fit(ObjectFit::Cover));
+    }
     let initial = title
         .chars()
         .find(|c| c.is_alphanumeric())

@@ -59,6 +59,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 natizap-chats = { path = "crates/natizap-chats" }
 natizap-messages = { path = "crates/natizap-messages" }
 natizap-playback = { path = "crates/natizap-playback" }
+natizap-profiles = { path = "crates/natizap-profiles" }
 natizap-player = { path = "crates/natizap-player" }
 natizap-protocol = { path = "crates/natizap-protocol" }
 natizap-ui = { path = "crates/natizap-ui" }

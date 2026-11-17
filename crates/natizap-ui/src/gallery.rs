@@ -151,9 +151,9 @@ fn badges() -> Div {
 
 fn avatars() -> Div {
     row()
-        .child(avatar("a", "Ana", px(28.0)))
-        .child(avatar("b", "Bruno", px(40.0)))
-        .child(avatar("c", "Carla", px(56.0)))
+        .child(avatar("a", "Ana", None, px(28.0)))
+        .child(avatar("b", "Bruno", None, px(40.0)))
+        .child(avatar("c", "Carla", None, px(56.0)))
 }
 
 fn skeleton_row() -> AnyElement {

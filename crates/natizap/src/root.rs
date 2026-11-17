@@ -3,6 +3,7 @@ use gpui::{AnyElement, Context, Div, Entity, FontWeight, Window, div, px, rgb};
 use natizap_chats::{ChatList, ChatListView, ChatSelected};
 use natizap_messages::{ConversationView, MessageLog, MessageSent, OpenChat, PlayRequested};
 use natizap_player::{PlayerClosed, PlayerView};
+use natizap_profiles::ProfilePictures;
 use natizap_session::{PairingView, Session, SessionState};
 use natizap_ui::theme::{ACCENT, ALERT, DISPLAY_FONT, LINE, MINT, MUTED, TEXT, base_font};
 use natizap_ui::{Alert, AlertTone, window_frame};
@@ -24,12 +25,13 @@ impl Root {
         session: Entity<Session>,
         chats: Entity<ChatList>,
         messages: &Entity<MessageLog>,
+        pictures: &Entity<ProfilePictures>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
         cx.observe(&chats, |_, _, cx| cx.notify()).detach();
         let pairing = cx.new(|cx| PairingView::new(session.clone(), cx));
-        let chat_list = cx.new(|cx| ChatListView::new(chats.clone(), cx));
+        let chat_list = cx.new(|cx| ChatListView::new(chats.clone(), pictures.clone(), cx));
         let syncing_list = chat_list.clone();
         cx.observe(&session, move |_, session, cx| {
             // Right after linking the list fills from the first sync.
@@ -38,7 +40,8 @@ impl Root {
             cx.notify();
         })
         .detach();
-        let conversation = cx.new(|cx| ConversationView::new(messages.clone(), window, cx));
+        let conversation =
+            cx.new(|cx| ConversationView::new(messages.clone(), pictures.clone(), window, cx));
 
         let (open_messages, open_chats) = (messages.clone(), chats.clone());
         cx.subscribe(&chat_list, move |_, _, ChatSelected(row), cx| {

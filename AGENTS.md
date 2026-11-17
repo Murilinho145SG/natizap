@@ -117,6 +117,7 @@ organizing rule of the codebase.
 | `natizap-messages` | feature | Message store, the open conversation and sending.         |
 | `natizap-playback` | shared | Media engine: static FFmpeg decoding, cpal sound, clock. |
 | `natizap-player`   | feature | The full-window video player.                            |
+| `natizap-profiles` | shared  | Profile pictures: fetched on sight, cached on disk.        |
 | `natizap-ui`       | shared  | Theme, fonts, icons, window frame and the component library. |
 
 Keep this table current when a crate is added, renamed or removed.

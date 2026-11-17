@@ -7,6 +7,7 @@ use gpui::{
     svg,
 };
 use natizap_playback::Speed;
+use natizap_profiles::ProfilePictures;
 use natizap_protocol::{ContentKind, Reply};
 use natizap_ui::theme::{ACCENT, LINE, MUTED, PANE, PANEL, RAISED, TEXT, glass};
 use natizap_ui::{
@@ -28,6 +29,7 @@ const VOICE_TICK: Duration = Duration::from_millis(50);
 #[derive(Debug)]
 pub struct ConversationView {
     log: Entity<MessageLog>,
+    pictures: Entity<ProfilePictures>,
     composer: Entity<TextInput>,
     messages: ListState,
     shown_chat: Option<SharedString>,
@@ -50,7 +52,13 @@ struct Replying {
 
 impl ConversationView {
     /// Creates a view that follows `log`'s open chat.
-    pub fn new(log: Entity<MessageLog>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        log: Entity<MessageLog>,
+        pictures: Entity<ProfilePictures>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        cx.observe(&pictures, |_, _, cx| cx.notify()).detach();
         let composer = cx.new(|cx| TextInput::new("Message", cx));
         cx.subscribe_in(&composer, window, |this, _, _: &Submitted, window, cx| {
             this.send(window, cx);
@@ -67,6 +75,7 @@ impl ConversationView {
         .detach();
         Self {
             log,
+            pictures,
             composer,
             messages: ListState::new(0, ListAlignment::Bottom, px(600.0)),
             shown_chat: None,
@@ -364,6 +373,11 @@ impl ConversationView {
 
 impl Render for ConversationView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let open = self.log.read(cx).open_chat().map(|chat| chat.id.clone());
+        let picture = open.and_then(|chat| {
+            self.pictures
+                .update(cx, |pictures, cx| pictures.picture(&chat, cx))
+        });
         let log = self.log.read(cx);
         let Some(chat) = log.open_chat() else {
             return placeholder().into_any_element();
@@ -401,7 +415,7 @@ impl Render for ConversationView {
                     .bg(rgb(PANEL))
                     .border_b_1()
                     .border_color(rgb(LINE))
-                    .child(avatar(chat.id.as_str(), &chat.title, px(38.0)))
+                    .child(avatar(chat.id.as_str(), &chat.title, picture, px(38.0)))
                     .child(
                         div()
                             .min_w_0()
