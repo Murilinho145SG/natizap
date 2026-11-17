@@ -6,7 +6,7 @@ use gpui::{AnyElement, Context, Div, FontWeight, SharedString, Window, div, px, 
 
 use crate::components::alert::{Alert, AlertTone};
 use crate::components::alert_dialog::AlertDialog;
-use crate::components::badge::{BadgeTone, badge, count_label};
+use crate::components::badge::{BadgeTone, badge, count_label, verified_seal};
 use crate::components::button::{Button, ButtonSize, ButtonVariant};
 use crate::components::menu::Menu;
 use crate::components::progress::progress;
@@ -186,6 +186,7 @@ fn badges() -> Div {
         .child(badge(count_label(1500), BadgeTone::Accent))
         .child(badge("12", BadgeTone::Muted))
         .child(badge("", BadgeTone::Accent))
+        .child(verified_seal(18.0))
 }
 
 fn avatars() -> Div {

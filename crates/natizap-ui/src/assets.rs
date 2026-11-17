@@ -96,6 +96,8 @@ icons! {
     Star => "star.svg",
     /// Delete.
     Trash => "trash.svg",
+    /// A business WhatsApp vouches for.
+    Verified => "verified.svg",
     /// A video.
     Video => "video.svg",
     /// Sound: marks voice notes.
