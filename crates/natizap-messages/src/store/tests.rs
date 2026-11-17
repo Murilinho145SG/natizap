@@ -293,3 +293,29 @@ fn keeps_which_messages_are_starred() -> rusqlite::Result<()> {
     assert!(!store.latest(std::slice::from_ref(&chat), 1)?[0].starred);
     Ok(())
 }
+
+#[test]
+fn a_resent_copy_fills_in_the_media_the_first_lacked() -> rusqlite::Result<()> {
+    let mut store = MessageStore::in_memory()?;
+    let chat = ChatId::new("1@lid");
+    let mut bare = message("1@lid", "s", 10, "first");
+    bare.kind = ContentKind::Sticker;
+    bare.text = None;
+    let mut resent = bare.clone();
+    resent.text = Some("second".into());
+    resent.media = Some(Media {
+        direct_path: "/v/sticker".into(),
+        media_key: vec![4],
+        ..Media::default()
+    });
+    store.apply(&[MessageChange::Received(bare)])?;
+    store.apply(&[MessageChange::Received(resent)])?;
+
+    let stored = store.latest(std::slice::from_ref(&chat), 1)?.remove(0);
+    assert_eq!(stored.text, None);
+    assert_eq!(
+        stored.media.map(|media| media.direct_path),
+        Some("/v/sticker".to_owned())
+    );
+    Ok(())
+}
