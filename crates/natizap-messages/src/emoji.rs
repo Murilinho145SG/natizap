@@ -29,7 +29,10 @@ pub(crate) fn picker(
         .content_start()
         .gap_0p5()
         .p_2()
-        .max_h(px(220.0))
+        // A fixed height: a scroll container sized only by a maximum can
+        // collapse to nothing, which hid the picker in maximized windows.
+        .h(px(220.0))
+        .flex_none()
         .rounded_xl()
         .bg(rgb(PANEL))
         .border_1()
