@@ -219,6 +219,55 @@ impl MessageLog {
         Some((chat, local_id, Local::now().timestamp()))
     }
 
+    /// Deletes this account's own message in the open chat for everyone.
+    pub(crate) fn delete_for_everyone(&mut self, message_id: String, cx: &mut Context<Self>) {
+        let Some(chat) = self.open.as_ref().map(|open| open.id.clone()) else {
+            return;
+        };
+        let deleting = self
+            .protocol
+            .read(cx)
+            .delete_for_everyone(&chat, message_id.clone(), cx);
+        self.send_input(Input::from(MessageChange::Deleted {
+            chat,
+            id: message_id,
+        }));
+        cx.background_spawn(async move {
+            if let Err(error) = deleting.await {
+                tracing::warn!(%error, "message not deleted for everyone");
+            }
+        })
+        .detach();
+    }
+
+    /// Deletes a message in the open chat from this account's devices.
+    /// `sender` wrote it, in groups, unless `from_me`.
+    pub(crate) fn delete_for_me(
+        &mut self,
+        message_id: String,
+        from_me: bool,
+        sender: Option<&ChatId>,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(chat) = self.open.as_ref().map(|open| open.id.clone()) else {
+            return;
+        };
+        let deleting =
+            self.protocol
+                .read(cx)
+                .delete_for_me(&chat, message_id.clone(), from_me, sender, cx);
+        self.send_input(Input::from(MessageChange::Removed {
+            chat,
+            id: message_id,
+        }));
+        cx.background_spawn(async move {
+            if let Err(error) = deleting.await {
+                tracing::warn!(%error, "message not deleted from the other devices");
+            }
+        })
+        .detach();
+    }
+
     /// Reacts to a message in the open chat with `emoji`, or takes this
     /// account's reaction back when `emoji` is `None`.
     pub(crate) fn react(

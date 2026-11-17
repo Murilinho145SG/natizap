@@ -106,6 +106,12 @@ impl MessageStore {
                     )?
                     .execute(params![chat.as_str(), id])?;
                 }
+                MessageChange::Removed { chat, id } => {
+                    tx.prepare_cached("DELETE FROM messages WHERE chat = ?1 AND id = ?2")?
+                        .execute(params![chat.as_str(), id])?;
+                    tx.prepare_cached("DELETE FROM reactions WHERE message_id = ?1")?
+                        .execute(params![id])?;
+                }
                 MessageChange::Accepted {
                     chat,
                     local_id,
@@ -118,22 +124,7 @@ impl MessageStore {
                     )?
                     .execute(params![chat.as_str(), local_id, id])?;
                     if let Some(media) = media {
-                        // Where the file went: what this account's other
-                        // devices, and a later download, need.
-                        tx.prepare_cached(
-                            "UPDATE messages SET media_direct_path = ?3, media_key = ?4,
-                             media_sha256 = ?5, media_enc_sha256 = ?6, media_size = ?7
-                             WHERE chat = ?1 AND id = ?2",
-                        )?
-                        .execute(params![
-                            chat.as_str(),
-                            id,
-                            media.direct_path,
-                            media.media_key,
-                            media.file_sha256,
-                            media.file_enc_sha256,
-                            media.size.and_then(|size| i64::try_from(size).ok()),
-                        ])?;
+                        record_upload(&tx, chat, id, media)?;
                     }
                 }
                 MessageChange::Progressed { ids, delivery } => {
@@ -265,6 +256,31 @@ impl MessageStore {
     pub(crate) fn clear(&mut self) -> rusqlite::Result<()> {
         self.connection.execute_batch("DELETE FROM messages;")
     }
+}
+
+/// Where a sent file went: what this account's other devices, and a later
+/// download, need.
+fn record_upload(
+    tx: &rusqlite::Transaction<'_>,
+    chat: &ChatId,
+    id: &str,
+    media: &Media,
+) -> rusqlite::Result<()> {
+    tx.prepare_cached(
+        "UPDATE messages SET media_direct_path = ?3, media_key = ?4,
+         media_sha256 = ?5, media_enc_sha256 = ?6, media_size = ?7
+         WHERE chat = ?1 AND id = ?2",
+    )?
+    .execute(params![
+        chat.as_str(),
+        id,
+        media.direct_path,
+        media.media_key,
+        media.file_sha256,
+        media.file_enc_sha256,
+        media.size.and_then(|size| i64::try_from(size).ok()),
+    ])?;
+    Ok(())
 }
 
 /// Files a message unless a copy is already there.

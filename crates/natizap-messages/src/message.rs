@@ -95,6 +95,8 @@ pub(crate) enum MessageChange {
     },
     /// A message was deleted for everyone.
     Deleted { chat: ChatId, id: String },
+    /// A message was deleted from this account's devices only.
+    Removed { chat: ChatId, id: String },
     /// This computer started sending a message under a local id.
     Sending(Message),
     /// WhatsApp accepted a message and gave it its real id; for a file,
@@ -143,6 +145,7 @@ impl MessageChange {
             Self::Received(message) | Self::Sending(message) => Some(&message.chat),
             Self::Edited { chat, .. }
             | Self::Deleted { chat, .. }
+            | Self::Removed { chat, .. }
             | Self::Accepted { chat, .. }
             | Self::Rejected { chat, .. }
             | Self::Reacted { chat, .. } => Some(chat),

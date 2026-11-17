@@ -78,9 +78,18 @@ fn render_bubble(
     } else {
         hover_actions(bubble, view).into_any_element()
     };
+    let menu = {
+        let (view, id) = (view.clone(), bubble.id.clone());
+        move |event: &gpui::MouseDownEvent, _: &mut gpui::Window, cx: &mut App| {
+            let _ = view.update(cx, |view, cx| {
+                view.open_message_menu(id.clone(), event.position, cx);
+            });
+        }
+    };
     div()
         .id(bubble.id.clone())
         .group("bubble")
+        .on_mouse_down(MouseButton::Right, menu)
         .w_full()
         .flex()
         .items_center()

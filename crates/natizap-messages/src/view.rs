@@ -18,6 +18,9 @@ use crate::log::{MessageLog, SoundReady};
 use crate::voice::Voices;
 
 mod composer;
+mod message_menu;
+
+use message_menu::MessagePopup;
 
 /// How often a playing note's bubble is redrawn: often enough for the
 /// waveform and clock, far less than every frame.
@@ -40,6 +43,8 @@ pub struct ConversationView {
     voices: Voices,
     /// Whether a task is redrawing the playing note.
     ticking: bool,
+    /// A message's right-click menu or delete question, when open.
+    message_popup: Option<MessagePopup>,
 }
 
 /// The message the next one will reply to, as the composer shows it.
@@ -98,6 +103,7 @@ impl ConversationView {
             emoji_picker,
             voices: Voices::default(),
             ticking: false,
+            message_popup: None,
         }
     }
 
@@ -216,7 +222,9 @@ impl ConversationView {
     /// Escape backs out of whatever is open, innermost first: popups, then
     /// the reply being composed.
     fn escape(&mut self, cx: &mut Context<Self>) {
-        if self.voices.close_speed_menu() {
+        if self.message_popup.is_some() {
+            self.close_message_popup(cx);
+        } else if self.voices.close_speed_menu() {
             cx.notify();
         } else if self.reacting.is_some() || self.picking_emoji {
             self.close_popups(cx);
@@ -344,6 +352,7 @@ impl Render for ConversationView {
                     ),
             )
             .child(self.composer(cx))
+            .children(self.message_popup(cx))
             .into_any_element()
     }
 }
