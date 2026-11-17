@@ -98,6 +98,17 @@ pub(crate) fn jid(chat: &ChatId) -> Result<Jid, ActionError> {
         .map_err(|_| ActionError::InvalidAddress(chat.clone()))
 }
 
+/// A message history is counted back from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Anchor {
+    /// The message's id.
+    pub id: String,
+    /// This account sent it.
+    pub from_me: bool,
+    /// When it was sent, in Unix seconds.
+    pub sent_at: i64,
+}
+
 /// A message to quote when replying.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Reply {

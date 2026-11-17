@@ -11,7 +11,9 @@ use whatsapp_rust::wacore::appstate::patch_decode::WAPatchName;
 
 use crate::ChatId;
 use crate::ContentKind;
-use crate::actions::{self, ActionError, Connection, Disappearing, PinFor, Reply, Sent, Unread};
+use crate::actions::{
+    self, ActionError, Anchor, Connection, Disappearing, PinFor, Reply, Sent, Unread,
+};
 use crate::fanout::Fanout;
 use crate::group::{self, GroupInfo};
 use crate::media::{self, Media};
@@ -369,6 +371,35 @@ impl Protocol {
         };
         self.connection
             .run(cx, move |client| profile::profile(client, jid))
+    }
+
+    /// Asks the phone to send again the `count` messages of `chat` sent
+    /// before `before`. They arrive as a history sync.
+    pub fn resend_history(
+        &self,
+        chat: &ChatId,
+        before: &Anchor,
+        count: u8,
+        cx: &App,
+    ) -> Task<Result<(), ActionError>> {
+        let jid = match actions::jid(chat) {
+            Ok(jid) => jid,
+            Err(error) => return Task::ready(Err(error)),
+        };
+        let before = before.clone();
+        self.connection.run(cx, move |client| async move {
+            client
+                .fetch_message_history(
+                    &jid,
+                    &before.id,
+                    before.from_me,
+                    before.sent_at.saturating_mul(1000),
+                    i32::from(count),
+                )
+                .await
+                .map(drop)
+                .map_err(|error| ActionError::Rejected(error.to_string()))
+        })
     }
 
     /// Downloads and decrypts `media`, which a message of `kind` carried.

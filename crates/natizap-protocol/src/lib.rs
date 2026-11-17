@@ -17,7 +17,7 @@ mod outgoing;
 mod profile;
 mod protocol;
 
-pub use actions::{ActionError, Disappearing, PinFor, Reply, Sent, Unread};
+pub use actions::{ActionError, Anchor, Disappearing, PinFor, Reply, Sent, Unread};
 pub use business::{Business, DayHours, Hours};
 pub use chat::ChatId;
 pub use content::{Content, ContentKind, Quote};
