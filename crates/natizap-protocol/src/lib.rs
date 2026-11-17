@@ -9,10 +9,12 @@ mod actions;
 mod chat;
 mod content;
 mod fanout;
+mod markup;
 mod protocol;
 
 pub use actions::{ActionError, Sent, Unread};
 pub use chat::ChatId;
 pub use content::{Content, ContentKind};
+pub use markup::{Mark, Marked};
 pub use protocol::{Protocol, StartError};
 pub use whatsapp_rust;
