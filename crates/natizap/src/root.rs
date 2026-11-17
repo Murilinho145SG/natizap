@@ -14,7 +14,7 @@ use natizap_messages::{
     ChatClosed, ChatRequested, ContactsRequested, ConversationView, ForwardRequested, MessageLog,
     MessageSent, MuteRequested, OpenChat, PlayRequested,
 };
-use natizap_notifications::Notifier;
+use natizap_notifications::{NotificationSettings, Notifier};
 use natizap_player::{PlayerClosed, PlayerView};
 use natizap_profiles::ProfilePictures;
 use natizap_protocol::{Card, ChatId, Extra, PersonName, Protocol};
@@ -26,6 +26,16 @@ use crate::history::History;
 
 mod notify;
 mod profiles;
+
+/// The features the main window shows, built by `main`.
+pub(crate) struct Features {
+    pub(crate) session: Entity<Session>,
+    pub(crate) chats: Entity<ChatList>,
+    pub(crate) messages: Entity<MessageLog>,
+    pub(crate) pictures: Entity<ProfilePictures>,
+    pub(crate) protocol: Entity<Protocol>,
+    pub(crate) notifier: Entity<Notifier>,
+}
 
 /// The main window's content: the pairing screen until this device is linked,
 /// then the chat list beside the conversation pane.
@@ -46,19 +56,21 @@ pub(crate) struct Root {
     history: History<ChatId>,
     protocol: Entity<Protocol>,
     pictures: Entity<ProfilePictures>,
-    _notifier: Entity<Notifier>,
+    /// The notification settings, over the chats.
+    settings: Option<Entity<NotificationSettings>>,
 }
 
 impl Root {
-    pub(crate) fn new(
-        session: Entity<Session>,
-        chats: Entity<ChatList>,
-        messages: &Entity<MessageLog>,
-        pictures: &Entity<ProfilePictures>,
-        protocol: Entity<Protocol>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Self {
+    pub(crate) fn new(features: Features, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let Features {
+            session,
+            chats,
+            messages,
+            pictures,
+            protocol,
+            notifier,
+        } = features;
+        let (messages, pictures) = (&messages, &pictures);
         cx.observe(&chats, |_, _, cx| cx.notify()).detach();
         let pairing = cx.new(|cx| PairingView::new(session.clone(), cx));
         let chat_list = cx.new(|cx| ChatListView::new(chats.clone(), pictures.clone(), cx));
@@ -108,8 +120,8 @@ impl Root {
         Self::share_names(&chats, messages, cx);
         Self::follow_chat_menu(&conversation, cx);
         Self::share_contacts(&conversation, messages, &chats, pictures, window, cx);
-        let notifier = cx.new(|cx| Notifier::new(&protocol, cx));
         Self::feed_notifier(&notifier, &chats, messages, window, cx);
+        Self::open_settings(&chat_list, &notifier, cx);
 
         Self {
             session,
@@ -124,7 +136,7 @@ impl Root {
             history: History::default(),
             protocol,
             pictures: pictures.clone(),
-            _notifier: notifier,
+            settings: None,
         }
     }
 
@@ -329,6 +341,7 @@ impl Root {
     fn go_back(&mut self, cx: &mut Context<Self>) {
         if self.player.take().is_some()
             || self.picker.take().is_some()
+            || self.settings.take().is_some()
             || self.profile.take().is_some()
         {
             cx.notify();
@@ -394,6 +407,7 @@ impl Root {
                     .map(|profile| div().w(px(380.0)).h_full().flex_none().child(profile)),
             )
             .children(self.picker.clone())
+            .children(self.settings.clone())
             // Chats stay readable offline, so the news floats over them
             // instead of replacing them.
             .when(reconnecting, |content| {

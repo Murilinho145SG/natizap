@@ -3749,6 +3749,7 @@ dependencies = [
  "gpui",
  "natizap-playback",
  "natizap-protocol",
+ "natizap-ui",
  "tracing",
 ]
 

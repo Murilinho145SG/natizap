@@ -14,4 +14,4 @@ mod view;
 
 pub use list::{ChatList, ChatRow};
 pub use picker::{ChatPicker, ChatsPicked, PickerDismissed};
-pub use view::{ChatListView, ChatSelected};
+pub use view::{ChatListView, ChatSelected, SettingsRequested};

@@ -47,7 +47,8 @@ end-to-end encrypted; keys and history live only on your machine.
 - **Profiles** of people, businesses (seal, hours, banner, links) and groups
   (members and admins), with presence: online, last seen and typing.
 - **Notifications**: a chime for new messages when natizap is in the
-  background or another chat is open; muted chats stay silent.
+  background or another chat is open, with a choice of tones for chats and
+  groups; muted chats stay silent.
 
 ## Not yet
 

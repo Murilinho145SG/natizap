@@ -65,7 +65,8 @@ Each feature crate owns its GPUI views, logic and local cache together
 (colocation); `natizap-ui` holds only components that several features
 share. Local data lives in the platform's per-user data directory, one
 file per owner (`session.db` for protocol keys, `chats.db` for the chat
-list, `messages.db` for messages, `media/` for downloaded attachments).
+list, `messages.db` for messages, `notifications.conf` for notification
+settings, `media/` for downloaded attachments).
 
 Local stores are migrated, never dropped and rebuilt: WhatsApp sends the
 history only once, right after linking, so lost data cannot be synced
@@ -83,7 +84,9 @@ conversation emits `ProfileRequested` from its header, which the binary
 answers by showing the contacts' `ProfilePanel` beside it. `Notifier` hears
 new messages itself; the binary tells it whether the window is focused,
 which chat `MessageLog` has open and which chats `ChatList` has muted, and
-it chimes for messages anywhere else.
+it chimes for messages anywhere else. The chat list's settings button emits
+`SettingsRequested`, which the binary answers with the notifications'
+`NotificationSettings` dialog.
 
 ## Architecture: one crate per feature
 

@@ -40,6 +40,12 @@ pub struct ChatSelected(pub ChatRow);
 
 impl EventEmitter<ChatSelected> for ChatListView {}
 
+/// The user asked for natizap's settings.
+#[derive(Debug, Clone, Copy)]
+pub struct SettingsRequested;
+
+impl EventEmitter<SettingsRequested> for ChatListView {}
+
 impl ChatListView {
     /// Creates a view that re-renders whenever `list` changes or a chat's
     /// picture arrives.
@@ -124,13 +130,28 @@ impl Render for ChatListView {
                 archive_header(cx)
             } else {
                 div()
-                    .px_5()
-                    .pt_5()
-                    .pb_3()
-                    .font_family(DISPLAY_FONT)
-                    .text_size(px(24.0))
-                    .font_weight(FontWeight::BOLD)
-                    .child("Chats")
+                    .flex()
+                    .items_center()
+                    .pl_5()
+                    .pr_3()
+                    .pt_4()
+                    .pb_2()
+                    .child(
+                        div()
+                            .flex_1()
+                            .font_family(DISPLAY_FONT)
+                            .text_size(px(24.0))
+                            .font_weight(FontWeight::BOLD)
+                            .child("Chats"),
+                    )
+                    .child(
+                        Button::new("settings")
+                            .icon(Icon::Settings)
+                            .variant(ButtonVariant::Ghost)
+                            .round()
+                            .tooltip("Settings")
+                            .on_click(cx.listener(|_, _, _, cx| cx.emit(SettingsRequested))),
+                    )
             })
             .child(search_field(&self.search))
             .when(!self.in_archive, |panel| {

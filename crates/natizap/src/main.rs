@@ -13,13 +13,14 @@ use gpui::{
 };
 use natizap_chats::ChatList;
 use natizap_messages::MessageLog;
+use natizap_notifications::Notifier;
 use natizap_profiles::ProfilePictures;
 use natizap_protocol::Protocol;
 use natizap_session::Session;
 use natizap_ui::{Assets, Gallery, bind_text_input_keys, load_fonts};
 use tracing_subscriber::EnvFilter;
 
-use crate::root::Root;
+use crate::root::{Features, Root};
 
 actions!(
     natizap,
@@ -110,7 +111,17 @@ fn open_main_window(data_dir: &Path, cx: &mut App) -> anyhow::Result<()> {
         let pictures =
             cx.new(|cx| ProfilePictures::new(protocol.clone(), data_dir.join("avatars"), cx));
         let session = cx.new(|cx| Session::new(protocol.clone(), cx));
-        cx.new(|cx| Root::new(session, chats, &messages, &pictures, protocol, window, cx))
+        let notifier =
+            cx.new(|cx| Notifier::new(&protocol, data_dir.join("notifications.conf"), cx));
+        let features = Features {
+            session,
+            chats,
+            messages,
+            pictures,
+            protocol,
+            notifier,
+        };
+        cx.new(|cx| Root::new(features, window, cx))
     })?;
     Ok(())
 }
