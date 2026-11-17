@@ -348,7 +348,9 @@ impl Render for ConversationView {
                                 div()
                                     .truncate()
                                     .text_size(px(16.0))
-                                    .font_weight(FontWeight::SEMIBOLD)
+                                    // Medium on purpose: at semibold, symbols such as ♥ render
+                                    // monochrome even with the emoji font as fallback.
+                                    .font_weight(FontWeight::MEDIUM)
                                     .child(chat.title.clone()),
                             )
                             .children(subtitle.map(|subtitle| {
