@@ -3,7 +3,8 @@
 use std::path::PathBuf;
 
 use gpui::{AppContext as _, Context};
-use natizap_protocol::{ChatId, Media, Outgoing, Reply};
+use natizap_playback::{Heard, save_recording};
+use natizap_protocol::{ChatId, ContentKind, Media, Outgoing, Reply};
 
 use super::sending::outgoing_message;
 use super::{Input, MessageLog, MessageSent};
@@ -61,6 +62,54 @@ impl MessageLog {
             })
             .detach();
         }
+    }
+
+    /// Sends what the microphone heard as a voice note to the open chat,
+    /// replying to `reply`. It is encoded off the UI thread.
+    pub(crate) fn send_voice(
+        &mut self,
+        heard: Heard,
+        reply: Option<Reply>,
+        cx: &mut Context<Self>,
+    ) {
+        let Some((chat, local_id, sent_at)) = self.next_outgoing() else {
+            return;
+        };
+        let media_dir = self.media_dir.clone();
+        let id = local_id.clone();
+        cx.spawn(async move |this, cx| {
+            let prepared = cx
+                .background_spawn(async move {
+                    std::fs::create_dir_all(&media_dir).map_err(|error| error.to_string())?;
+                    let recorded = media_dir.join(format!("{id}.ogg"));
+                    let recording =
+                        save_recording(&heard, &recorded).map_err(|error| error.to_string())?;
+                    let bytes = std::fs::read(&recorded).map_err(|error| error.to_string())?;
+                    let outgoing = Outgoing {
+                        kind: ContentKind::VoiceMessage,
+                        bytes,
+                        mime: "audio/ogg; codecs=opus".to_owned(),
+                        file_name: None,
+                        caption: None,
+                        thumbnail: None,
+                        width: None,
+                        height: None,
+                        seconds: Some(recording.seconds),
+                        waveform: Some(recording.waveform),
+                    };
+                    Ok::<_, String>((outgoing, recorded))
+                })
+                .await;
+            match prepared {
+                Ok((outgoing, kept)) => {
+                    let _ = this.update(cx, |log, cx| {
+                        log.send_prepared(chat, local_id, sent_at, reply, outgoing, kept, cx);
+                    });
+                }
+                Err(error) => tracing::warn!(%error, "could not send a voice note"),
+            }
+        })
+        .detach();
     }
 
     #[expect(

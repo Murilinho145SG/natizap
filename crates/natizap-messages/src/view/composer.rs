@@ -212,58 +212,59 @@ impl ConversationView {
                 ))
             })
             .children(self.reply_bar(cx))
+            .when(self.recording(), |composer| {
+                composer.child(self.recording_bar(cx))
+            })
+            .when(!self.recording(), |composer| {
+                composer.child(self.writing_bar(cx))
+            })
+    }
+
+    /// Attach, emoji, the text field, and send or record.
+    fn writing_bar(&self, cx: &mut Context<Self>) -> Div {
+        div()
+            .flex()
+            .items_center()
+            .gap_3()
+            .child(
+                Button::new("attach")
+                    .icon(Icon::Plus)
+                    .variant(ButtonVariant::Ghost)
+                    .size(ButtonSize::Large)
+                    .round()
+                    .tooltip("Attach")
+                    .on_click(cx.listener(|this, event: &ClickEvent, _, cx| {
+                        this.attach_at = Some(event.position());
+                        cx.notify();
+                    })),
+            )
+            .child(
+                Button::new("emoji")
+                    .icon(Icon::Emoji)
+                    .variant(ButtonVariant::Ghost)
+                    .size(ButtonSize::Large)
+                    .round()
+                    .selected(self.picking_emoji)
+                    .tooltip("Emoji")
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.picking_emoji = !this.picking_emoji;
+                        cx.notify();
+                    })),
+            )
             .child(
                 div()
-                    .flex()
-                    .items_center()
-                    .gap_3()
-                    .child(
-                        Button::new("attach")
-                            .icon(Icon::Plus)
-                            .variant(ButtonVariant::Ghost)
-                            .size(ButtonSize::Large)
-                            .round()
-                            .tooltip("Attach")
-                            .on_click(cx.listener(|this, event: &ClickEvent, _, cx| {
-                                this.attach_at = Some(event.position());
-                                cx.notify();
-                            })),
-                    )
-                    .child(
-                        Button::new("emoji")
-                            .icon(Icon::Emoji)
-                            .variant(ButtonVariant::Ghost)
-                            .size(ButtonSize::Large)
-                            .round()
-                            .selected(self.picking_emoji)
-                            .tooltip("Emoji")
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.picking_emoji = !this.picking_emoji;
-                                cx.notify();
-                            })),
-                    )
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .px_4()
-                            .py_2p5()
-                            .rounded_full()
-                            .bg(rgb(RAISED))
-                            .map(glass)
-                            .text_size(px(14.5))
-                            .text_color(rgb(TEXT))
-                            .child(self.composer.clone()),
-                    )
-                    .child(
-                        Button::new("send")
-                            .icon(Icon::Send)
-                            .size(ButtonSize::Large)
-                            .round()
-                            .tooltip("Send")
-                            .on_click(cx.listener(|this, _, window, cx| this.send(window, cx))),
-                    ),
+                    .flex_1()
+                    .min_w_0()
+                    .px_4()
+                    .py_2p5()
+                    .rounded_full()
+                    .bg(rgb(RAISED))
+                    .map(glass)
+                    .text_size(px(14.5))
+                    .text_color(rgb(TEXT))
+                    .child(self.composer.clone()),
             )
+            .child(self.send_or_record(cx))
     }
 }
 

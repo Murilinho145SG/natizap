@@ -6,7 +6,7 @@ use gpui::{
     KeyDownEvent, ListAlignment, ListState, MouseButton, Pixels, Point, SharedString, Window,
     anchored, deferred, div, list, px, rgb, svg,
 };
-use natizap_playback::Speed;
+use natizap_playback::{Recorder, Speed};
 use natizap_profiles::ProfilePictures;
 use natizap_protocol::{ChatId, Reply};
 use natizap_ui::theme::{ACCENT, LINE, MUTED, PANE};
@@ -24,6 +24,7 @@ mod attach;
 mod composer;
 mod header;
 mod message_menu;
+mod recorder;
 mod viewer;
 
 pub use attach::ContactsRequested;
@@ -70,6 +71,8 @@ pub struct ConversationView {
     viewing: Option<MediaView>,
     /// Where the header's menu is open.
     chat_menu: Option<Point<Pixels>>,
+    /// A voice note being recorded.
+    recorder: Option<Recorder>,
 }
 
 /// The user clicked the conversation's header to see the chat's profile.
@@ -142,6 +145,8 @@ impl ConversationView {
             },
         )
         .detach();
+        // The send button turns into a microphone when the field empties.
+        cx.observe(&composer, |_, _, cx| cx.notify()).detach();
         cx.subscribe_in(&composer, window, |this, _, _: &Submitted, window, cx| {
             this.send(window, cx);
         })
@@ -182,6 +187,7 @@ impl ConversationView {
             selection: None,
             viewing: None,
             chat_menu: None,
+            recorder: None,
             reaction_emojis,
         }
     }
