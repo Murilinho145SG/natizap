@@ -12,8 +12,8 @@ use gpui::{
     SharedString, WeakEntity, Window, canvas, deferred, div, px, relative, rgb, svg,
 };
 use natizap_playback::Speed;
-use natizap_ui::Icon;
 use natizap_ui::theme::{ACCENT, ACCENT_INK, DEEP, LINE, MUTED, PANEL, RAISED, TEXT, glass};
+use natizap_ui::{Icon, progress};
 
 use crate::items::MediaView;
 use crate::view::ConversationView;
@@ -121,15 +121,11 @@ fn play_button(
                 .hover(|button| button.opacity(0.9))
                 .when(loading, |button| button.opacity(0.5))
                 .on_click(toggle)
-                // Nudged right: a triangle's visual center sits left of its
-                // box's.
                 .child(
-                    div().when(!playing, |glyph| glyph.pl(px(1.5))).child(
-                        svg()
-                            .path(if playing { Icon::Pause } else { Icon::Play }.path())
-                            .size(px(14.0))
-                            .text_color(rgb(ACCENT_INK)),
-                    ),
+                    svg()
+                        .path(if playing { Icon::Pause } else { Icon::Play }.path())
+                        .size(px(14.0))
+                        .text_color(rgb(ACCENT_INK)),
                 ),
         )
 }
@@ -138,7 +134,7 @@ fn play_button(
 /// jumps there.
 fn track(
     id: &SharedString,
-    progress: f32,
+    fraction: f32,
     view: &WeakEntity<ConversationView>,
 ) -> impl IntoElement {
     let bounds: TrackBounds = Rc::default();
@@ -175,25 +171,12 @@ fn track(
                 .absolute()
                 .size_full(),
         )
-        .child(
-            div()
-                .w_full()
-                .h(px(4.0))
-                .rounded_full()
-                .bg(rgb(LINE))
-                .child(
-                    div()
-                        .h_full()
-                        .w(relative(progress))
-                        .rounded_full()
-                        .bg(rgb(ACCENT)),
-                ),
-        )
+        .child(progress(fraction))
         .child(
             div()
                 .absolute()
                 .top(px(3.0))
-                .left(relative(progress))
+                .left(relative(fraction))
                 .ml(px(-6.0))
                 .size(px(12.0))
                 .rounded_full()

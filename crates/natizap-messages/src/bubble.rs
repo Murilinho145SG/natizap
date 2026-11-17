@@ -6,10 +6,10 @@ use gpui::{
     Stateful, StrikethroughStyle, StyledText, WeakEntity, div, px, relative, rgb, rgba, svg,
 };
 use natizap_protocol::{ContentKind, Mark};
-use natizap_ui::Icon;
 use natizap_ui::theme::{
     ALERT, DEEP, LINE, MINT, MUTED, OUTGOING, PANEL, RAISED, SCRIM, TEXT, glass,
 };
+use natizap_ui::{Button, ButtonSize, ButtonVariant, Icon};
 
 use crate::items::{Body, Bubble, Item, MediaView, Text};
 use crate::media_view::render_media;
@@ -281,35 +281,25 @@ fn hover_actions(bubble: &Bubble, view: &WeakEntity<ConversationView>) -> Div {
         .flex()
         .invisible()
         .group_hover("bubble", Styled::visible)
-        .child(round_button("react", Icon::Emoji).on_click({
+        .child(hover_button("react", Icon::Emoji, "React").on_click({
             let (view, id) = (view.clone(), bubble.id.clone());
             move |_, _, cx| {
                 let _ = view.update(cx, |view, cx| view.toggle_reactions(&id, cx));
             }
         }))
-        .child(round_button("reply", Icon::Reply).on_click({
+        .child(hover_button("reply", Icon::Reply, "Reply").on_click({
             let (view, bubble) = (view.clone(), bubble.clone());
             move |_, _, cx| reply_to(&view, &bubble, cx)
         }))
 }
 
-fn round_button(id: &'static str, icon: Icon) -> Stateful<Div> {
-    div()
-        .id(id)
-        .size(px(28.0))
-        .flex_none()
-        .flex()
-        .items_center()
-        .justify_center()
-        .rounded_full()
-        .cursor_pointer()
-        .hover(|style| style.bg(rgb(RAISED)))
-        .child(
-            svg()
-                .path(icon.path())
-                .size(px(16.0))
-                .text_color(rgb(MUTED)),
-        )
+fn hover_button(id: &'static str, icon: Icon, name: &'static str) -> Button {
+    Button::new(id)
+        .icon(icon)
+        .variant(ButtonVariant::Ghost)
+        .size(ButtonSize::Small)
+        .round()
+        .tooltip(name)
 }
 
 /// The quick reaction strip; this account's current reaction is

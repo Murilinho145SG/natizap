@@ -8,8 +8,10 @@ use gpui::{
 };
 use natizap_playback::Speed;
 use natizap_protocol::Reply;
-use natizap_ui::theme::{ACCENT, ACCENT_INK, LINE, MUTED, PANE, PANEL, RAISED, TEXT, glass};
-use natizap_ui::{Icon, Submitted, TextInput, avatar, name_color};
+use natizap_ui::theme::{ACCENT, LINE, MUTED, PANE, PANEL, RAISED, TEXT, glass};
+use natizap_ui::{
+    Button, ButtonSize, ButtonVariant, Icon, Submitted, TextInput, avatar, name_color,
+};
 
 use crate::bubble::{quote_block, render_item};
 use crate::emoji::picker;
@@ -321,27 +323,17 @@ impl ConversationView {
                     .items_center()
                     .gap_3()
                     .child(
-                        div()
-                            .id("emoji")
-                            .size(px(40.0))
-                            .flex_none()
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .rounded_full()
-                            .cursor_pointer()
-                            .when(self.picking_emoji, |button| button.bg(rgb(RAISED)))
-                            .hover(|style| style.bg(rgb(RAISED)))
+                        Button::new("emoji")
+                            .icon(Icon::Emoji)
+                            .variant(ButtonVariant::Ghost)
+                            .size(ButtonSize::Large)
+                            .round()
+                            .selected(self.picking_emoji)
+                            .tooltip("Emoji")
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.picking_emoji = !this.picking_emoji;
                                 cx.notify();
-                            }))
-                            .child(
-                                svg()
-                                    .path(Icon::Emoji.path())
-                                    .size(px(20.0))
-                                    .text_color(rgb(MUTED)),
-                            ),
+                            })),
                     )
                     .child(
                         div()
@@ -357,24 +349,12 @@ impl ConversationView {
                             .child(self.composer.clone()),
                     )
                     .child(
-                        div()
-                            .id("send")
-                            .size(px(40.0))
-                            .flex_none()
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .rounded_full()
-                            .bg(rgb(ACCENT))
-                            .cursor_pointer()
-                            .hover(|style| style.opacity(0.9))
-                            .on_click(cx.listener(|this, _, window, cx| this.send(window, cx)))
-                            .child(
-                                svg()
-                                    .path(Icon::Send.path())
-                                    .size(px(18.0))
-                                    .text_color(rgb(ACCENT_INK)),
-                            ),
+                        Button::new("send")
+                            .icon(Icon::Send)
+                            .size(ButtonSize::Large)
+                            .round()
+                            .tooltip("Send")
+                            .on_click(cx.listener(|this, _, window, cx| this.send(window, cx))),
                     ),
             )
     }
