@@ -1,8 +1,8 @@
 use chrono::{DateTime, Datelike as _, Local, NaiveDate, TimeZone as _};
-use gpui::{Image, ImageFormat, SharedString};
+use gpui::{Image, SharedString};
 use std::collections::HashMap;
 use std::ops::Range;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use natizap_protocol::{ChatId, ContentKind, Mark, Marked, Reply};
@@ -11,6 +11,7 @@ use natizap_ui::theme::{ACCENT, MUTED};
 
 use crate::media::Fetch;
 use crate::message::{Delivery, Message, Reaction};
+use crate::preview::preview;
 
 /// Messages from the same side closer than this read as one burst.
 const BURST_GAP_SECONDS: i64 = 5 * 60;
@@ -276,20 +277,24 @@ fn media_view(message: &Message) -> Option<MediaView> {
         ),
         _ => None,
     };
-    let preview = media.thumbnail.clone().map(|bytes| {
-        let format = if bytes.starts_with(b"\x89PNG") {
-            ImageFormat::Png
-        } else {
-            ImageFormat::Jpeg
-        };
-        Arc::new(Image::from_bytes(format, bytes))
-    });
+    let file = message.media_file.clone();
+    let poster = message
+        .media_poster
+        .clone()
+        .filter(|poster| poster.exists());
+    // Softening costs a decode and an encode; skip it when the file or a
+    // still shows instead.
+    let shown_instead = poster.is_some()
+        || matches!(message.kind, ContentKind::Photo | ContentKind::Sticker)
+            && file.as_deref().is_some_and(Path::exists);
+    let preview = media
+        .thumbnail
+        .clone()
+        .filter(|_| !shown_instead)
+        .map(|bytes| preview(message.kind, bytes));
     Some(MediaView {
-        file: message.media_file.clone(),
-        poster: message
-            .media_poster
-            .clone()
-            .filter(|poster| poster.exists()),
+        file,
+        poster,
         preview,
         size,
         detail: detail.map(Into::into),
