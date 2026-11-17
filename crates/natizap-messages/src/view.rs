@@ -204,9 +204,9 @@ fn render_bubble(bubble: &Bubble) -> AnyElement {
         .max_w(relative(0.72))
         .flex()
         .flex_col()
-        .gap_1()
-        .px_3()
-        .py_2()
+        .gap_0p5()
+        .px(px(10.0))
+        .py(px(6.0))
         .rounded(px(14.0))
         .bg(rgb(if bubble.from_me { OUTGOING } else { RAISED }))
         .text_size(px(14.5))
@@ -225,8 +225,17 @@ fn render_bubble(bubble: &Bubble) -> AnyElement {
                 .text_color(rgb(color))
                 .child(name)
         }))
-        .child(body)
-        .child(meta);
+        // Time sits beside short text and drops below text that fills the
+        // bubble, as in WhatsApp.
+        .child(
+            div()
+                .flex()
+                .flex_wrap()
+                .items_end()
+                .gap_x_2()
+                .child(body)
+                .child(meta.ml_auto().pb(px(1.0))),
+        );
 
     div()
         .id(bubble.id.clone())
