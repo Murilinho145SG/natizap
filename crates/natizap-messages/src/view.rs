@@ -58,7 +58,7 @@ pub struct ConversationView {
 /// The user clicked the conversation's header to see the chat's profile.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProfileRequested {
-    /// Whose profile.
+    /// Whose profile: the chat's phone-number address when it has one.
     pub chat: ChatId,
     /// The chat's name, shown until the profile loads.
     pub title: SharedString,
@@ -366,7 +366,15 @@ impl Render for ConversationView {
                     .cursor_pointer()
                     .on_click({
                         let (verified, title) = (chat.verified, chat.title.clone());
-                        let chat = chat.id.clone();
+                        // The phone-number address, when the chat has one:
+                        // WhatsApp answers profile questions about a LID
+                        // with less, and a LID shows no number.
+                        let chat = chat
+                            .addresses
+                            .iter()
+                            .find(|address| address.phone_number().is_some())
+                            .unwrap_or(&chat.id)
+                            .clone();
                         cx.listener(move |_, _, _, cx| {
                             cx.emit(ProfileRequested {
                                 chat: chat.clone(),

@@ -6,7 +6,7 @@ use gpui::{
     Window, div, img, px, rgb,
 };
 use natizap_protocol::{ChatId, Profile, Protocol};
-use natizap_ui::theme::{DISPLAY_FONT, LINE, MUTED, PANEL, TEXT};
+use natizap_ui::theme::{LINE, MUTED, PANEL, TEXT};
 use natizap_ui::{Button, ButtonVariant, Icon, avatar, separator, skeleton, verified_seal};
 
 /// Size of the picture at the top of the panel.
@@ -148,9 +148,12 @@ impl Render for ProfilePanel {
                         div()
                             .pt_4()
                             .text_center()
-                            .font_family(DISPLAY_FONT)
                             .text_size(px(22.0))
-                            .font_weight(FontWeight::SEMIBOLD)
+                            // The interface font at medium weight: the display
+                            // font and heavier weights draw symbols such as ♥
+                            // in their own monochrome glyphs instead of the
+                            // emoji font's.
+                            .font_weight(FontWeight::MEDIUM)
                             .flex()
                             .items_center()
                             .gap_2()
