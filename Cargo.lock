@@ -3413,6 +3413,7 @@ dependencies = [
  "natizap-chats",
  "natizap-protocol",
  "natizap-session",
+ "natizap-ui",
  "tracing",
  "tracing-subscriber",
 ]
@@ -3425,6 +3426,7 @@ dependencies = [
  "chrono",
  "gpui",
  "natizap-protocol",
+ "natizap-ui",
  "rusqlite",
  "tracing",
 ]
@@ -3449,9 +3451,18 @@ version = "0.1.0"
 dependencies = [
  "gpui",
  "natizap-protocol",
+ "natizap-ui",
  "qrcode",
  "thiserror 2.0.21",
  "tracing",
+]
+
+[[package]]
+name = "natizap-ui"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "gpui",
 ]
 
 [[package]]

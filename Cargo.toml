@@ -41,6 +41,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 natizap-chats = { path = "crates/natizap-chats" }
 natizap-protocol = { path = "crates/natizap-protocol" }
+natizap-ui = { path = "crates/natizap-ui" }
 natizap-session = { path = "crates/natizap-session" }
 
 [workspace.lints.rust]
