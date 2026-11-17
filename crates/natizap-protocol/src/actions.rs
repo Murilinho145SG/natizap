@@ -108,16 +108,7 @@ pub(crate) async fn send_text(
 ) -> Result<Sent, ActionError> {
     let mut message = wa::Message::text(text);
     if let Some(reply) = reply {
-        let participant = match &reply.sender {
-            Some(sender) => Some(jid(sender)?),
-            None => client.pn(),
-        };
-        message.set_context_info(wa::ContextInfo {
-            stanza_id: Some(reply.id),
-            participant: participant.map(|jid| jid.to_string()),
-            quoted_message: MessageField::some(wa::Message::text(reply.text)),
-            ..Default::default()
-        });
+        message.set_context_info(reply_context(&client, reply)?);
     }
     let sent = client
         .send_message(to, message)
@@ -125,6 +116,20 @@ pub(crate) async fn send_text(
         .map_err(|error| ActionError::Rejected(error.to_string()))?;
     Ok(Sent {
         id: sent.message_id,
+    })
+}
+
+/// What makes a message a reply to `reply`.
+pub(crate) fn reply_context(client: &Client, reply: Reply) -> Result<wa::ContextInfo, ActionError> {
+    let participant = match &reply.sender {
+        Some(sender) => Some(jid(sender)?),
+        None => client.pn(),
+    };
+    Ok(wa::ContextInfo {
+        stanza_id: Some(reply.id),
+        participant: participant.map(|jid| jid.to_string()),
+        quoted_message: MessageField::some(wa::Message::text(reply.text)),
+        ..Default::default()
     })
 }
 

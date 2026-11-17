@@ -11,6 +11,7 @@ use crate::ContentKind;
 use crate::actions::{self, ActionError, Connection, Reply, Sent, Unread};
 use crate::fanout::Fanout;
 use crate::media::{self, Media};
+use crate::outgoing::{self, Outgoing, SentMedia};
 use crate::profile;
 
 /// Name shown on the phone under "Linked devices".
@@ -137,6 +138,24 @@ impl Protocol {
         };
         self.connection.run(cx, move |client| {
             actions::send_text(client, to, text, reply)
+        })
+    }
+
+    /// Uploads `outgoing` and sends it to `chat`, optionally replying to
+    /// another message.
+    pub fn send_media(
+        &self,
+        chat: &ChatId,
+        outgoing: Outgoing,
+        reply: Option<Reply>,
+        cx: &App,
+    ) -> Task<Result<SentMedia, ActionError>> {
+        let to = match actions::jid(chat) {
+            Ok(to) => to,
+            Err(error) => return Task::ready(Err(error)),
+        };
+        self.connection.run(cx, move |client| {
+            outgoing::send(client, to, outgoing, reply)
         })
     }
 
