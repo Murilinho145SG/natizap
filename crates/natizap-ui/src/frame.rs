@@ -1,7 +1,8 @@
 use gpui::prelude::*;
 use gpui::{
     AnyElement, Bounds, CursorStyle, Decorations, Hitbox, HitboxBehavior, Hsla, MouseButton,
-    Pixels, Point, ResizeEdge, Size, Window, canvas, div, point, px, rgb, svg, transparent_black,
+    Pixels, Point, ResizeEdge, Size, Tiling, Window, canvas, div, point, px, rgb, svg,
+    transparent_black,
 };
 
 use crate::Icon;
@@ -76,17 +77,15 @@ pub fn window_frame(
         .when(!tiling.left, |edges| edges.pl(EDGE))
         .when(!tiling.right, |edges| edges.pr(EDGE))
         .child(
-            canvas(resize_hitbox, |_, hitbox, window, _| {
-                set_resize_cursor(&hitbox, window);
+            canvas(resize_hitbox, move |_, hitbox, window, _| {
+                set_resize_cursor(&hitbox, tiling, window);
             })
             .size_full()
             .absolute(),
         )
         .on_mouse_move(|_, window, _| window.refresh())
-        .on_mouse_down(MouseButton::Left, |event, window, _| {
-            if let Some(edge) =
-                resize_edge(event.position, window.window_bounds().get_bounds().size)
-            {
+        .on_mouse_down(MouseButton::Left, move |event, window, _| {
+            if let Some(edge) = resize_edge(event.position, window.viewport_size(), tiling) {
                 window.start_window_resize(edge);
             }
         })
@@ -179,16 +178,15 @@ fn window_button(
 }
 
 fn resize_hitbox(_: Bounds<Pixels>, window: &mut Window, _: &mut gpui::App) -> Hitbox {
-    let size = window.window_bounds().get_bounds().size;
+    let size = window.viewport_size();
     window.insert_hitbox(
         Bounds::new(point(px(0.0), px(0.0)), size),
         HitboxBehavior::Normal,
     )
 }
 
-fn set_resize_cursor(hitbox: &Hitbox, window: &mut Window) {
-    let size = window.window_bounds().get_bounds().size;
-    let Some(edge) = resize_edge(window.mouse_position(), size) else {
+fn set_resize_cursor(hitbox: &Hitbox, tiling: Tiling, window: &mut Window) {
+    let Some(edge) = resize_edge(window.mouse_position(), window.viewport_size(), tiling) else {
         return;
     };
     let cursor = match edge {
@@ -200,12 +198,16 @@ fn set_resize_cursor(hitbox: &Hitbox, window: &mut Window) {
     window.set_cursor_style(cursor, hitbox);
 }
 
-/// Which window edge or corner `position` is on, if any.
-fn resize_edge(position: Point<Pixels>, size: Size<Pixels>) -> Option<ResizeEdge> {
-    let top = position.y < EDGE;
-    let bottom = position.y > size.height - EDGE;
-    let left = position.x < EDGE;
-    let right = position.x > size.width - EDGE;
+/// Which window edge or corner `position` is on, if any. `size` must be the
+/// window's current size: `window_bounds()` reports the restored size of a
+/// maximized window, which once turned most of a maximized window into a
+/// resize handle that swallowed clicks. Edges against the screen (tiled) do
+/// not resize.
+fn resize_edge(position: Point<Pixels>, size: Size<Pixels>, tiling: Tiling) -> Option<ResizeEdge> {
+    let top = !tiling.top && position.y < EDGE;
+    let bottom = !tiling.bottom && position.y > size.height - EDGE;
+    let left = !tiling.left && position.x < EDGE;
+    let right = !tiling.right && position.x > size.width - EDGE;
     Some(match (top, bottom, left, right) {
         (true, _, true, _) => ResizeEdge::TopLeft,
         (true, _, _, true) => ResizeEdge::TopRight,
@@ -217,4 +219,45 @@ fn resize_edge(position: Point<Pixels>, size: Size<Pixels>) -> Option<ResizeEdge
         (_, _, _, true) => ResizeEdge::Right,
         _ => return None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const WINDOW: Size<Pixels> = Size {
+        width: px(1920.0),
+        height: px(1048.0),
+    };
+
+    #[test]
+    fn only_the_outer_band_of_a_floating_window_resizes() {
+        let floating = Tiling::default();
+        assert_eq!(
+            resize_edge(point(px(5.0), px(500.0)), WINDOW, floating),
+            Some(ResizeEdge::Left)
+        );
+        assert_eq!(
+            resize_edge(point(px(1915.0), px(1045.0)), WINDOW, floating),
+            Some(ResizeEdge::BottomRight)
+        );
+        assert_eq!(
+            resize_edge(point(px(430.0), px(1016.0)), WINDOW, floating),
+            None
+        );
+    }
+
+    #[test]
+    fn a_maximized_window_has_no_resize_edges() {
+        let maximized = Tiling {
+            top: true,
+            left: true,
+            right: true,
+            bottom: true,
+        };
+        assert_eq!(
+            resize_edge(point(px(5.0), px(1045.0)), WINDOW, maximized),
+            None
+        );
+    }
 }
