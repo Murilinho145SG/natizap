@@ -5,7 +5,8 @@ use std::path::PathBuf;
 use gpui::{AppContext as _, Context};
 use natizap_protocol::{ChatId, Media, Outgoing, Reply};
 
-use super::{Input, MessageLog, MessageSent, outgoing_message};
+use super::sending::outgoing_message;
+use super::{Input, MessageLog, MessageSent};
 use crate::media::Fetch;
 use crate::message::MessageChange;
 use crate::outbox::prepare;
