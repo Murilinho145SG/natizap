@@ -8,6 +8,7 @@ use crate::components::alert::{Alert, AlertTone};
 use crate::components::alert_dialog::AlertDialog;
 use crate::components::badge::{BadgeTone, badge, count_label, verified_seal};
 use crate::components::button::{Button, ButtonSize, ButtonVariant};
+use crate::components::code_block::code_block;
 use crate::components::menu::Menu;
 use crate::components::progress::progress;
 use crate::components::separator::separator;
@@ -66,6 +67,7 @@ impl Render for Gallery {
                     .child(Switch::new("switch-on", true))
                     .child(Switch::new("switch-off", false)),
             ))
+            .child(section("Code block", code_sample()))
             .child(section("Avatar", avatars()))
             .child(section("Separator", div().w(px(320.0)).child(separator())))
             .child(section("Skeleton", skeleton_row()))
@@ -247,4 +249,10 @@ fn alerts() -> Div {
                 .description("The connection dropped. natizap keeps trying."),
         )
         .child(Alert::new(AlertTone::Error, "Not sent").description("Tap to try again."))
+}
+
+fn code_sample() -> Div {
+    div().w(px(420.0)).child(code_block(
+        "// Greets everyone in the chat\nfn greet(names: &[String]) -> usize {\n    for name in names {\n        println!(\"Hello, {name}!\");\n    }\n    names.len() * 2\n}",
+    ))
 }

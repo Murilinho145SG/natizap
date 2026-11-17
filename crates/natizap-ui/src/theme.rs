@@ -30,6 +30,19 @@ pub const OUTGOING: u32 = 0x26_1d_17;
 pub const SCRIM: u32 = 0x00_00_00_80;
 /// The light rim of glass surfaces, `0xRRGGBBAA` for `gpui::rgba`.
 pub const EDGE: u32 = 0xff_ff_ff_14;
+/// Links in messages: the accent, lightened to read as text.
+pub const LINK: u32 = 0xff_a8_6b;
+
+/// Code: keywords such as `fn`, `if` and `return`.
+pub const CODE_KEYWORD: u32 = 0xff_9e_5e;
+/// Code: quoted text.
+pub const CODE_STRING: u32 = 0xa8_d1_8a;
+/// Code: numbers.
+pub const CODE_NUMBER: u32 = 0xe6_c0_7b;
+/// Code: type names, which start with a capital.
+pub const CODE_TYPE: u32 = 0x8f_b4_d6;
+/// Code: names being called.
+pub const CODE_CALL: u32 = 0xc7_9b_d0;
 
 /// Styles `element` as a glass surface floating over the window: a faint
 /// light rim and a soft shadow. Backdrop blur is left out on purpose: GPUI
@@ -55,6 +68,8 @@ pub const NAME_TINTS: [u32; 6] = [
 pub const UI_FONT: &str = "Figtree";
 /// The wordmark and headings only.
 pub const DISPLAY_FONT: &str = "Bricolage Grotesque";
+/// Code, in messages and code blocks.
+pub const MONO_FONT: &str = "JetBrains Mono";
 /// Color emoji: Noto Color Emoji, adapted so GPUI accepts it as a fallback
 /// (see `scripts/build-emoji-font.py`). Without it, emoji that system fonts
 /// such as `DejaVu Sans` also cover render monochrome.

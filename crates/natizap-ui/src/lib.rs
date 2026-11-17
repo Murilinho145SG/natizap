@@ -23,6 +23,7 @@ pub use components::alert::{Alert, AlertTone};
 pub use components::alert_dialog::AlertDialog;
 pub use components::badge::{BadgeTone, badge, count_label, verified_seal};
 pub use components::button::{Button, ButtonSize, ButtonVariant};
+pub use components::code_block::code_block;
 pub use components::dialog::dialog;
 pub use components::menu::Menu;
 pub use components::progress::progress;
