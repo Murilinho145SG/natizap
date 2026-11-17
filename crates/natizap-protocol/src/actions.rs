@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use gpui::{App, AppContext as _, Task};
 use gpui_tokio::Tokio;
 use whatsapp_rust::Jid;
-use whatsapp_rust::prelude::{Client, MessageBuilderExt as _, wa};
+use whatsapp_rust::prelude::{Client, MessageBuilderExt as _, MessageExt as _, MessageField, wa};
 
 use crate::ChatId;
 
@@ -89,13 +89,38 @@ pub(crate) fn jid(chat: &ChatId) -> Result<Jid, ActionError> {
         .map_err(|_| ActionError::InvalidAddress(chat.clone()))
 }
 
+/// A message to quote when replying.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Reply {
+    /// WhatsApp's id of the quoted message.
+    pub id: String,
+    /// Who wrote it; `None` for this account's own messages.
+    pub sender: Option<ChatId>,
+    /// Its text, shown inside the reply on every device.
+    pub text: String,
+}
+
 pub(crate) async fn send_text(
     client: Arc<Client>,
     to: Jid,
     text: String,
+    reply: Option<Reply>,
 ) -> Result<Sent, ActionError> {
+    let mut message = wa::Message::text(text);
+    if let Some(reply) = reply {
+        let participant = match &reply.sender {
+            Some(sender) => Some(jid(sender)?),
+            None => client.pn(),
+        };
+        message.set_context_info(wa::ContextInfo {
+            stanza_id: Some(reply.id),
+            participant: participant.map(|jid| jid.to_string()),
+            quoted_message: MessageField::some(wa::Message::text(reply.text)),
+            ..Default::default()
+        });
+    }
     let sent = client
-        .send_message(to, wa::Message::text(text))
+        .send_message(to, message)
         .await
         .map_err(|error| ActionError::Rejected(error.to_string()))?;
     Ok(Sent {

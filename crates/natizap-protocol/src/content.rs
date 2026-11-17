@@ -1,5 +1,7 @@
 use whatsapp_rust::prelude::{MessageExt as _, wa};
 
+use crate::ChatId;
+
 /// What a message carries, as far as the interface needs to know.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ContentKind {
@@ -71,6 +73,61 @@ pub struct Content {
     pub kind: ContentKind,
     /// The text, or a media caption.
     pub text: Option<String>,
+    /// The message this one replies to.
+    pub quote: Option<Quote>,
+}
+
+/// A message being replied to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Quote {
+    /// WhatsApp's id of the quoted message.
+    pub id: String,
+    /// Who wrote it, when WhatsApp says.
+    pub sender: Option<ChatId>,
+    /// One line describing it, as the replier's phone saw it.
+    pub summary: Option<String>,
+}
+
+impl Quote {
+    fn of(message: &wa::Message) -> Option<Self> {
+        let context = context_info(message)?;
+        Some(Self {
+            id: context.stanza_id.clone()?,
+            sender: context.participant.as_deref().map(ChatId::new),
+            summary: context
+                .quoted_message
+                .as_option()
+                .and_then(Content::of)
+                .map(|c| c.summary()),
+        })
+    }
+}
+
+/// The reply metadata, wherever the message kind keeps it.
+fn context_info(message: &wa::Message) -> Option<&wa::ContextInfo> {
+    let infos = [
+        message
+            .extended_text_message
+            .as_option()
+            .map(|m| &m.context_info),
+        message.image_message.as_option().map(|m| &m.context_info),
+        message.video_message.as_option().map(|m| &m.context_info),
+        message.audio_message.as_option().map(|m| &m.context_info),
+        message
+            .document_message
+            .as_option()
+            .map(|m| &m.context_info),
+        message.sticker_message.as_option().map(|m| &m.context_info),
+        message
+            .location_message
+            .as_option()
+            .map(|m| &m.context_info),
+        message.contact_message.as_option().map(|m| &m.context_info),
+    ];
+    infos
+        .into_iter()
+        .flatten()
+        .find_map(|info| info.as_option())
 }
 
 impl Content {
@@ -113,7 +170,11 @@ impl Content {
         } else {
             return None;
         };
-        Some(Self { kind, text })
+        Some(Self {
+            kind,
+            text,
+            quote: Quote::of(message),
+        })
     }
 
     /// One line describing the content: its text, or what kind it is.
@@ -158,6 +219,32 @@ mod tests {
         for kind in ContentKind::ALL {
             assert_eq!(ContentKind::from_label(kind.label()), Some(kind));
         }
+    }
+
+    #[test]
+    fn reads_the_quoted_message_of_a_reply() {
+        let reply = wa::Message {
+            extended_text_message: MessageField::some(wa::message::ExtendedTextMessage {
+                text: Some("agreed".into()),
+                context_info: MessageField::some(wa::ContextInfo {
+                    stanza_id: Some("3EB0".into()),
+                    participant: Some("5511:2@s.whatsapp.net".into()),
+                    quoted_message: MessageField::some(wa::Message::text("lunch?")),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let quote = Content::of(&reply).and_then(|content| content.quote);
+        assert_eq!(
+            quote,
+            Some(Quote {
+                id: "3EB0".into(),
+                sender: Some(ChatId::new("5511@s.whatsapp.net")),
+                summary: Some("lunch?".into()),
+            })
+        );
     }
 
     #[test]

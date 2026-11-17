@@ -7,7 +7,7 @@ use whatsapp_rust::prelude::*;
 use whatsapp_rust::wacore::store::DevicePropsOverride;
 
 use crate::ChatId;
-use crate::actions::{self, ActionError, Connection, Sent, Unread};
+use crate::actions::{self, ActionError, Connection, Reply, Sent, Unread};
 use crate::fanout::Fanout;
 
 /// Name shown on the phone under "Linked devices".
@@ -120,19 +120,21 @@ impl Protocol {
         );
     }
 
-    /// Sends a text message to `chat`.
+    /// Sends a text message to `chat`, optionally replying to another.
     pub fn send_text(
         &self,
         chat: &ChatId,
         text: String,
+        reply: Option<Reply>,
         cx: &App,
     ) -> Task<Result<Sent, ActionError>> {
         let to = match actions::jid(chat) {
             Ok(to) => to,
             Err(error) => return Task::ready(Err(error)),
         };
-        self.connection
-            .run(cx, move |client| actions::send_text(client, to, text))
+        self.connection.run(cx, move |client| {
+            actions::send_text(client, to, text, reply)
+        })
     }
 
     /// Tells WhatsApp, and so the user's other devices, that `messages` in
