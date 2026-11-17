@@ -270,9 +270,10 @@ impl ConversationView {
         )
     }
 
-    /// Escape backs out of whatever is open, innermost first: popups, then
-    /// the reply being composed.
-    fn escape(&mut self, cx: &mut Context<Self>) {
+    /// Backs out of whatever is open, innermost first: a message's menu or
+    /// question, popups, then the reply being composed. Returns whether
+    /// anything was open; escape and the back button both use it.
+    pub fn step_back(&mut self, cx: &mut Context<Self>) -> bool {
         if self.message_popup.is_some() {
             self.close_message_popup(cx);
         } else if self.voices.close_speed_menu() {
@@ -281,7 +282,10 @@ impl ConversationView {
             self.close_popups(cx);
         } else if self.replying.take().is_some() {
             cx.notify();
+        } else {
+            return false;
         }
+        true
     }
 
     /// Opens or closes the quick reactions of the bubble `id`.
@@ -337,7 +341,7 @@ impl Render for ConversationView {
             .bg(rgb(PANE))
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
                 if event.keystroke.key == "escape" {
-                    this.escape(cx);
+                    this.step_back(cx);
                 }
             }))
             .child(
