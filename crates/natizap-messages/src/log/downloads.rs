@@ -2,12 +2,12 @@
 
 use std::path::{Path, PathBuf};
 
-use gpui::{AppContext as _, Context};
+use gpui::{AppContext as _, Context, Task};
 use natizap_playback::save_poster;
 use natizap_protocol::ContentKind;
 
 use super::{Input, MessageLog, PlayRequested, SoundReady};
-use crate::media::{Fetch, PosterJob};
+use crate::media::{Fetch, PosterJob, PosterSource};
 use crate::message::MessageChange;
 
 impl MessageLog {
@@ -75,30 +75,43 @@ impl MessageLog {
     }
 
     /// Takes a still from a downloaded video, then records where it went.
+    /// Takes a still from a downloaded video, or downloads the sharper
+    /// preview WhatsApp keeps, then records where it went.
     pub(super) fn make_poster(&mut self, job: PosterJob, cx: &mut Context<Self>) {
-        // Also keeps a video that cannot be decoded from being retried on
-        // every refresh.
+        // Also keeps a still that cannot be made from being retried on every
+        // refresh; a restart retries it.
         if !self.posters.insert(job.fetch.message_id.clone()) {
             return;
         }
         let poster = job.fetch.poster_path_in(&self.media_dir);
-        let message_id = job.fetch.message_id;
-        cx.spawn(async move |this, cx| {
-            let file = poster.clone();
-            let saved = cx
-                .background_spawn(async move { save_poster(&job.video, &file) })
-                .await;
-            match saved {
-                Ok(()) => {
-                    let _ = this.update(cx, |log, _| {
-                        log.send_input(Input::from(MessageChange::PosterSaved {
-                            message_id,
-                            file: poster,
-                        }));
-                    });
-                }
-                Err(error) => tracing::warn!(%error, "could not take a still from a video"),
+        let file = poster.clone();
+        let making: Task<Result<(), String>> = match job.source {
+            PosterSource::Video(video) => cx.background_spawn(async move {
+                save_poster(&video, &file).map_err(|error| error.to_string())
+            }),
+            PosterSource::HdThumbnail(media) => {
+                let downloading = self
+                    .protocol
+                    .read(cx)
+                    .download(ContentKind::Video, *media, cx);
+                cx.spawn(async move |_, cx| {
+                    let bytes = downloading.await.map_err(|error| error.to_string())?;
+                    cx.background_spawn(async move { save(&file, &bytes) })
+                        .await
+                })
             }
+        };
+        let message_id = job.fetch.message_id;
+        cx.spawn(async move |this, cx| match making.await {
+            Ok(()) => {
+                let _ = this.update(cx, |log, _| {
+                    log.send_input(Input::from(MessageChange::PosterSaved {
+                        message_id,
+                        file: poster,
+                    }));
+                });
+            }
+            Err(error) => tracing::warn!(%error, "could not make a still of a video"),
         })
         .detach();
     }

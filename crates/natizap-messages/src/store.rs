@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use natizap_protocol::{ChatId, ContentKind, Media, Quote, Unread};
+use natizap_protocol::{ChatId, ContentKind, HdThumbnail, Media, Quote, Unread};
 use rusqlite::{Connection, Row, params, params_from_iter};
 
 use crate::message::{Delivery, Message, MessageChange, Reaction};
@@ -49,6 +49,9 @@ const MIGRATIONS: &[&str] = &[
     ALTER TABLE messages ADD COLUMN media_file TEXT;",
     "ALTER TABLE messages ADD COLUMN media_waveform BLOB;",
     "ALTER TABLE messages ADD COLUMN media_poster TEXT;",
+    "ALTER TABLE messages ADD COLUMN media_hd_thumbnail_path TEXT;
+    ALTER TABLE messages ADD COLUMN media_hd_thumbnail_sha256 BLOB;
+    ALTER TABLE messages ADD COLUMN media_hd_thumbnail_enc_sha256 BLOB;",
 ];
 
 /// Every message natizap has seen, on disk.
@@ -245,14 +248,18 @@ impl MessageStore {
 fn insert(tx: &rusqlite::Transaction<'_>, message: &Message) -> rusqlite::Result<()> {
     let quote = message.quote.as_ref();
     let media = message.media.as_ref();
+    let hd = media.and_then(|media| media.hd_thumbnail.as_ref());
     tx.prepare_cached(
         "INSERT OR IGNORE INTO messages (chat, id, from_me, sender, author, sent_at,
              kind, text, edited, deleted, delivery, quoted_id, quoted_sender,
              quoted_summary, media_mime, media_name, media_size, media_width,
              media_height, media_seconds, media_thumbnail, media_direct_path,
-             media_key, media_sha256, media_enc_sha256, media_file, media_waveform)
+             media_key, media_sha256, media_enc_sha256, media_file, media_waveform,
+             media_hd_thumbnail_path, media_hd_thumbnail_sha256,
+             media_hd_thumbnail_enc_sha256)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14,
-             ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27)",
+             ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28,
+             ?29, ?30)",
     )?
     .execute(params![
         message.chat.as_str(),
@@ -289,6 +296,9 @@ fn insert(tx: &rusqlite::Transaction<'_>, message: &Message) -> rusqlite::Result
             .as_ref()
             .map(|file| file.to_string_lossy()),
         media.and_then(|media| media.waveform.as_ref()),
+        hd.map(|hd| &hd.direct_path),
+        hd.map(|hd| &hd.sha256),
+        hd.map(|hd| &hd.enc_sha256),
     ])?;
 
     Ok(())
@@ -309,6 +319,7 @@ fn media_from_row(row: &Row<'_>) -> rusqlite::Result<Option<Media>> {
         seconds: row.get("media_seconds")?,
         thumbnail: row.get("media_thumbnail")?,
         waveform: row.get("media_waveform")?,
+        hd_thumbnail: hd_thumbnail_from_row(row)?,
         direct_path,
         media_key: row
             .get::<_, Option<Vec<u8>>>("media_key")?
@@ -318,6 +329,21 @@ fn media_from_row(row: &Row<'_>) -> rusqlite::Result<Option<Media>> {
             .unwrap_or_default(),
         file_enc_sha256: row
             .get::<_, Option<Vec<u8>>>("media_enc_sha256")?
+            .unwrap_or_default(),
+    }))
+}
+
+fn hd_thumbnail_from_row(row: &Row<'_>) -> rusqlite::Result<Option<HdThumbnail>> {
+    let Some(direct_path) = row.get::<_, Option<String>>("media_hd_thumbnail_path")? else {
+        return Ok(None);
+    };
+    Ok(Some(HdThumbnail {
+        direct_path,
+        sha256: row
+            .get::<_, Option<Vec<u8>>>("media_hd_thumbnail_sha256")?
+            .unwrap_or_default(),
+        enc_sha256: row
+            .get::<_, Option<Vec<u8>>>("media_hd_thumbnail_enc_sha256")?
             .unwrap_or_default(),
     }))
 }
@@ -492,6 +518,11 @@ mod tests {
             width: Some(800),
             thumbnail: Some(vec![0xff, 0xd8]),
             waveform: Some(vec![0, 50, 100]),
+            hd_thumbnail: Some(HdThumbnail {
+                direct_path: "/v/1-thumb".into(),
+                sha256: vec![2],
+                enc_sha256: vec![3],
+            }),
             direct_path: "/v/1".into(),
             media_key: vec![1],
             size: Some(5_000_000_000),

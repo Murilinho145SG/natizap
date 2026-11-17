@@ -66,24 +66,37 @@ pub(crate) fn fetch_on_sight(messages: &[Message]) -> Vec<Fetch> {
         .collect()
 }
 
-/// A video on disk that has no still yet.
+/// A video on screen that has no still yet, and where to get one.
 #[derive(Debug, Clone)]
 pub(crate) struct PosterJob {
     pub(crate) fetch: Fetch,
-    pub(crate) video: PathBuf,
+    pub(crate) source: PosterSource,
 }
 
-/// Downloaded videos on screen whose still is missing.
+/// Where a video's still comes from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum PosterSource {
+    /// Taken from the downloaded video.
+    Video(PathBuf),
+    /// The sharper preview WhatsApp keeps apart from the video, small enough
+    /// to download on sight.
+    HdThumbnail(Box<Media>),
+}
+
+/// Videos on screen whose still is missing: taken from the video once it is
+/// on disk, else downloaded when WhatsApp keeps a sharper preview.
 pub(crate) fn posters_on_sight(messages: &[Message]) -> Vec<PosterJob> {
     messages
         .iter()
         .filter(|message| message.kind == ContentKind::Video)
         .filter(|message| on_disk(message.media_poster.as_deref()).is_none())
         .filter_map(|message| {
-            Some(PosterJob {
-                video: on_disk(message.media_file.as_deref())?.to_owned(),
-                fetch: Fetch::of(message)?,
-            })
+            let fetch = Fetch::of(message)?;
+            let source = match on_disk(message.media_file.as_deref()) {
+                Some(video) => PosterSource::Video(video.to_owned()),
+                None => PosterSource::HdThumbnail(Box::new(fetch.media.hd_thumbnail_download()?)),
+            };
+            Some(PosterJob { fetch, source })
         })
         .collect()
 }
@@ -159,8 +172,17 @@ mod tests {
         }
     }
 
+    fn hd_video(id: &str) -> Message {
+        let mut message = video(id, None, None);
+        message.media = Some(Media {
+            hd_thumbnail: Some(natizap_protocol::HdThumbnail::default()),
+            ..Media::default()
+        });
+        message
+    }
+
     #[test]
-    fn only_downloaded_videos_without_a_still_need_one() -> std::io::Result<()> {
+    fn videos_without_a_still_get_one_from_the_file_or_a_sharper_preview() -> std::io::Result<()> {
         let dir = std::env::temp_dir().join("natizap-posters-on-sight");
         std::fs::create_dir_all(&dir)?;
         let (clip, still) = (dir.join("clip.mp4"), dir.join("clip-poster.jpg"));
@@ -171,12 +193,13 @@ mod tests {
             video("has-one", Some(clip.clone()), Some(still)),
             video("stale", Some(clip.clone()), Some(dir.join("gone.jpg"))),
             video("not-downloaded", None, None),
+            hd_video("sharp-preview"),
         ];
         let ids: Vec<String> = posters_on_sight(&messages)
             .into_iter()
             .map(|job| job.fetch.message_id)
             .collect();
-        assert_eq!(ids, ["needs", "stale"]);
+        assert_eq!(ids, ["needs", "stale", "sharp-preview"]);
         Ok(())
     }
 

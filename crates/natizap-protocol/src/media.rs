@@ -25,6 +25,8 @@ pub struct Media {
     /// A tiny inline preview (JPEG, or PNG for stickers) that needs no
     /// download.
     pub thumbnail: Option<Vec<u8>>,
+    /// A sharper preview of a video, stored apart from the video.
+    pub hd_thumbnail: Option<HdThumbnail>,
     /// Loudness over the length of a voice note: 64 values, 0 to 100, as
     /// the sender's phone measured it.
     pub waveform: Option<Vec<u8>>,
@@ -38,7 +40,46 @@ pub struct Media {
     pub file_enc_sha256: Vec<u8>,
 }
 
+/// Where a video's sharper preview lives on WhatsApp's servers. It is
+/// encrypted with the video's key.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct HdThumbnail {
+    /// Where the encrypted preview lives.
+    pub direct_path: String,
+    /// Hash of the decrypted preview.
+    pub sha256: Vec<u8>,
+    /// Hash of the encrypted preview.
+    pub enc_sha256: Vec<u8>,
+}
+
+impl HdThumbnail {
+    /// `video`'s sharper preview, when it says where one is. Phones leave
+    /// it out at times, e.g. for forwarded or old videos.
+    fn of(video: &wa::message::VideoMessage) -> Option<Self> {
+        Some(Self {
+            direct_path: video.thumbnail_direct_path.clone()?,
+            sha256: video.thumbnail_sha256.clone()?,
+            enc_sha256: video.thumbnail_enc_sha256.clone()?,
+        })
+    }
+}
+
 impl Media {
+    /// The sharper preview as an attachment of its own, to hand to
+    /// [`crate::Protocol::download`] with the video's kind.
+    #[must_use]
+    pub fn hd_thumbnail_download(&self) -> Option<Self> {
+        let thumbnail = self.hd_thumbnail.as_ref()?;
+        Some(Self {
+            mime: Some("image/jpeg".to_owned()),
+            direct_path: thumbnail.direct_path.clone(),
+            media_key: self.media_key.clone(),
+            file_sha256: thumbnail.sha256.clone(),
+            file_enc_sha256: thumbnail.enc_sha256.clone(),
+            ..Self::default()
+        })
+    }
+
     /// The attachment of `message`, if it has a downloadable one.
     pub(crate) fn of(message: &wa::Message) -> Option<Self> {
         macro_rules! locator {
@@ -67,6 +108,7 @@ impl Media {
                 height: m.height,
                 seconds: m.seconds,
                 thumbnail: m.jpeg_thumbnail.clone(),
+                hd_thumbnail: HdThumbnail::of(m),
                 ..locator!(m)
             })
         } else if let Some(m) = message.audio_message.as_option() {
