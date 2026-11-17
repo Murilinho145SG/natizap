@@ -3411,6 +3411,7 @@ dependencies = [
  "gpui_platform",
  "gpui_tokio",
  "natizap-chats",
+ "natizap-messages",
  "natizap-protocol",
  "natizap-session",
  "natizap-ui",
@@ -3420,6 +3421,19 @@ dependencies = [
 
 [[package]]
 name = "natizap-chats"
+version = "0.1.0"
+dependencies = [
+ "async-channel",
+ "chrono",
+ "gpui",
+ "natizap-protocol",
+ "natizap-ui",
+ "rusqlite",
+ "tracing",
+]
+
+[[package]]
+name = "natizap-messages"
 version = "0.1.0"
 dependencies = [
  "async-channel",
