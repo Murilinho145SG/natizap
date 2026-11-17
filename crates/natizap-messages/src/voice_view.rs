@@ -1,4 +1,4 @@
-//! How a voice note or audio file looks inside its bubble: a honey play
+//! How a voice note or audio file looks inside its bubble: an accent play
 //! button in a dark ring, a progress track with a knob that can be dragged,
 //! a speed menu, and the time played beside the length.
 
@@ -13,7 +13,7 @@ use gpui::{
 };
 use natizap_playback::Speed;
 use natizap_ui::Icon;
-use natizap_ui::theme::{DEEP, HONEY, HONEY_INK, LINE, MUTED, PANEL, RAISED, TEXT};
+use natizap_ui::theme::{ACCENT, ACCENT_INK, DEEP, LINE, MUTED, PANEL, RAISED, TEXT, glass};
 
 use crate::items::MediaView;
 use crate::view::ConversationView;
@@ -93,7 +93,7 @@ pub(crate) fn render_voice(
         )
 }
 
-/// The honey play/pause button in its dark ring, dimmed while the file
+/// The accent play/pause button in its dark ring, dimmed while the file
 /// downloads.
 fn play_button(
     playing: bool,
@@ -116,7 +116,7 @@ fn play_button(
                 .items_center()
                 .justify_center()
                 .rounded_full()
-                .bg(rgb(HONEY))
+                .bg(rgb(ACCENT))
                 .cursor_pointer()
                 .hover(|button| button.opacity(0.9))
                 .when(loading, |button| button.opacity(0.5))
@@ -128,13 +128,13 @@ fn play_button(
                         svg()
                             .path(if playing { Icon::Pause } else { Icon::Play }.path())
                             .size(px(14.0))
-                            .text_color(rgb(HONEY_INK)),
+                            .text_color(rgb(ACCENT_INK)),
                     ),
                 ),
         )
 }
 
-/// The progress track: honey up to the knob. Clicking or dragging along it
+/// The progress track: accent up to the knob. Clicking or dragging along it
 /// jumps there.
 fn track(
     id: &SharedString,
@@ -186,7 +186,7 @@ fn track(
                         .h_full()
                         .w(relative(progress))
                         .rounded_full()
-                        .bg(rgb(HONEY)),
+                        .bg(rgb(ACCENT)),
                 ),
         )
         .child(
@@ -280,8 +280,7 @@ fn speed_list(current: Speed, view: &WeakEntity<ConversationView>) -> impl IntoE
             .flex_col()
             .rounded_lg()
             .bg(rgb(PANEL))
-            .border_1()
-            .border_color(rgb(LINE))
+            .map(glass)
             .occlude()
             .children(Speed::ALL.into_iter().map(|speed| {
                 let view = view.clone();
@@ -292,7 +291,7 @@ fn speed_list(current: Speed, view: &WeakEntity<ConversationView>) -> impl IntoE
                     .rounded_md()
                     .text_size(px(12.0))
                     .font_weight(FontWeight::MEDIUM)
-                    .text_color(rgb(if speed == current { HONEY } else { TEXT }))
+                    .text_color(rgb(if speed == current { ACCENT } else { TEXT }))
                     .cursor_pointer()
                     .hover(|row| row.bg(rgb(RAISED)))
                     // On press, not click: the press already closed the menu as

@@ -13,7 +13,7 @@ use gpui::{
 use image::{Frame, RgbaImage};
 use natizap_playback::Playback;
 use natizap_ui::Icon;
-use natizap_ui::theme::{DEEP, HONEY, HONEY_INK, LINE, MUTED, TEXT};
+use natizap_ui::theme::{ACCENT, ACCENT_INK, DEEP, LINE, MUTED, TEXT};
 
 /// How far the arrow keys jump.
 const ARROW_SEEK: Duration = Duration::from_secs(5);
@@ -246,7 +246,7 @@ impl PlayerView {
                     .items_center()
                     .justify_center()
                     .rounded_full()
-                    .bg(rgb(HONEY))
+                    .bg(rgb(ACCENT))
                     .cursor_pointer()
                     .hover(|style| style.opacity(0.9))
                     .on_click(cx.listener(|this, _, _, cx| this.toggle_pause(cx)))
@@ -296,7 +296,7 @@ impl PlayerView {
                                     .h_full()
                                     .w(relative(fraction))
                                     .rounded_full()
-                                    .bg(rgb(HONEY)),
+                                    .bg(rgb(ACCENT)),
                             ),
                     ),
             )
@@ -325,7 +325,7 @@ fn play_glyph() -> Div {
         svg()
             .path(Icon::Play.path())
             .size(px(20.0))
-            .text_color(rgb(HONEY_INK)),
+            .text_color(rgb(ACCENT_INK)),
     )
 }
 
@@ -334,7 +334,7 @@ fn pause_glyph() -> Div {
         svg()
             .path(Icon::Pause.path())
             .size(px(20.0))
-            .text_color(rgb(HONEY_INK)),
+            .text_color(rgb(ACCENT_INK)),
     )
 }
 

@@ -2,7 +2,7 @@
 
 use gpui::prelude::*;
 use gpui::{Div, Stateful, div, px, rgb};
-use natizap_ui::theme::{LINE, PANEL, RAISED};
+use natizap_ui::theme::{PANEL, RAISED, glass};
 
 /// The emoji people reach for most, in roughly that order; a full catalog
 /// with search can replace this list later.
@@ -34,8 +34,7 @@ pub(crate) fn picker(
         .flex_none()
         .rounded_xl()
         .bg(rgb(PANEL))
-        .border_1()
-        .border_color(rgb(LINE))
+        .map(glass)
         .children(PICKER.iter().map(|&emoji| {
             let on_pick = on_pick.clone();
             div()

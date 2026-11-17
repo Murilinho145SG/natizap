@@ -148,9 +148,13 @@ Keep this table current when a crate is added, renamed or removed.
 - Every color, font and icon comes from `natizap-ui` (`theme`, `Icon`);
   feature crates never hard-code hex colors or font names, so the look
   changes in one place.
-- Palette: deep green slate surfaces (`DEEP`, `PANEL`, `PANE`, `RAISED`,
-  `LINE`) with a single honey accent (`HONEY`) reserved for unread counts and
-  primary actions. `MINT` and `ALERT` only signal state.
+- Palette: near-black graphite surfaces (`DEEP`, `PANEL`, `PANE`, `RAISED`,
+  `LINE`) with a single orange accent (`ACCENT`) reserved for unread counts
+  and primary actions. `MINT` and `ALERT` only signal state.
+- Floating surfaces (bubbles, menus, the composer field) are glass:
+  `theme::glass` gives them a faint light rim (`EDGE`) and a soft shadow.
+  There is no backdrop blur: GPUI cannot blur behind an element, and GNOME
+  does not blur behind windows.
 - Type: Figtree (`UI_FONT`) for interface text; Bricolage Grotesque
   (`DISPLAY_FONT`) only for the wordmark, headings and avatar initials.
 - Emoji come from the bundled `Natizap Emoji` font, the fallback of

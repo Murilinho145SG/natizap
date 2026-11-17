@@ -1,30 +1,43 @@
 //! Color and type tokens. Colors are `0xRRGGBB`, for use with `gpui::rgb`.
 
 /// Behind everything: the title bar and window edges.
-pub const DEEP: u32 = 0x0e_17_15;
+pub const DEEP: u32 = 0x09_0a_0c;
 /// The chat list column.
-pub const PANEL: u32 = 0x12_1f_1c;
+pub const PANEL: u32 = 0x0f_11_14;
 /// The conversation pane and full-window screens.
-pub const PANE: u32 = 0x16_26_22;
-/// Hovered and selected surfaces.
-pub const RAISED: u32 = 0x1e_33_2e;
+pub const PANE: u32 = 0x0c_0e_11;
+/// Hovered and selected surfaces, and messages from others.
+pub const RAISED: u32 = 0x1a_1d_22;
 /// Hairlines between regions.
-pub const LINE: u32 = 0x22_3a_34;
+pub const LINE: u32 = 0x24_28_2e;
 /// Primary text.
-pub const TEXT: u32 = 0xe6_ef_ec;
+pub const TEXT: u32 = 0xec_ee_f1;
 /// Secondary text: previews, timestamps, hints.
-pub const MUTED: u32 = 0x8b_a3_9c;
+pub const MUTED: u32 = 0x8b_91_9a;
 /// The accent: unread counts and primary actions.
-pub const HONEY: u32 = 0xf2_b8_4b;
-/// Text drawn on [`HONEY`].
-pub const HONEY_INK: u32 = 0x2a_1d_05;
+pub const ACCENT: u32 = 0xff_7a_1a;
+/// Text and icons drawn on [`ACCENT`].
+pub const ACCENT_INK: u32 = 0x16_0b_03;
 /// Healthy state, e.g. connected.
 pub const MINT: u32 = 0x5f_cf_9f;
 /// Something needs attention, e.g. the close button on hover.
 pub const ALERT: u32 = 0xd0_4f_45;
 
-/// Messages this account sent.
-pub const OUTGOING: u32 = 0x23_4f_44;
+/// Messages this account sent: graphite warmed by the accent.
+pub const OUTGOING: u32 = 0x26_1d_17;
+/// The light rim of glass surfaces, `0xRRGGBBAA` for `gpui::rgba`.
+pub const EDGE: u32 = 0xff_ff_ff_14;
+
+/// Styles `element` as a glass surface floating over the window: a faint
+/// light rim and a soft shadow. Backdrop blur is left out on purpose: GPUI
+/// cannot blur what lies behind an element, and on GNOME not even behind
+/// the window.
+pub fn glass<E: gpui::Styled>(element: E) -> E {
+    element
+        .border_1()
+        .border_color(gpui::rgba(EDGE))
+        .shadow_md()
+}
 
 /// Avatar backgrounds; muted so names stay the brightest thing in a row.
 pub const AVATAR_TINTS: [u32; 6] = [

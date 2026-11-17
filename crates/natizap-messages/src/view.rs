@@ -8,7 +8,7 @@ use gpui::{
 };
 use natizap_playback::Speed;
 use natizap_protocol::Reply;
-use natizap_ui::theme::{HONEY, HONEY_INK, LINE, MUTED, PANE, PANEL, RAISED, TEXT};
+use natizap_ui::theme::{ACCENT, ACCENT_INK, LINE, MUTED, PANE, PANEL, RAISED, TEXT, glass};
 use natizap_ui::{Icon, Submitted, TextInput, avatar, name_color};
 
 use crate::bubble::{quote_block, render_item};
@@ -116,7 +116,7 @@ impl ConversationView {
     pub(crate) fn reply_to(&mut self, bubble: &Bubble, cx: &mut Context<Self>) {
         let reply = bubble.reply.clone();
         let (author, color) = match (&reply.sender, &bubble.sender) {
-            (None, _) => ("You".into(), HONEY),
+            (None, _) => ("You".into(), ACCENT),
             (Some(_), Some(group_sender)) => group_sender.clone(),
             (Some(sender), None) => {
                 let title = self.log.read(cx).open_chat().map(|chat| chat.title.clone());
@@ -351,6 +351,7 @@ impl ConversationView {
                             .py_2p5()
                             .rounded_full()
                             .bg(rgb(RAISED))
+                            .map(glass)
                             .text_size(px(14.5))
                             .text_color(rgb(TEXT))
                             .child(self.composer.clone()),
@@ -364,7 +365,7 @@ impl ConversationView {
                             .items_center()
                             .justify_center()
                             .rounded_full()
-                            .bg(rgb(HONEY))
+                            .bg(rgb(ACCENT))
                             .cursor_pointer()
                             .hover(|style| style.opacity(0.9))
                             .on_click(cx.listener(|this, _, window, cx| this.send(window, cx)))
@@ -372,7 +373,7 @@ impl ConversationView {
                                 svg()
                                     .path(Icon::Send.path())
                                     .size(px(18.0))
-                                    .text_color(rgb(HONEY_INK)),
+                                    .text_color(rgb(ACCENT_INK)),
                             ),
                     ),
             )

@@ -4,7 +4,7 @@ use gpui::{
     Context, Div, Entity, EventEmitter, FontWeight, Stateful, Window, div, px, relative, rgb, svg,
     uniform_list,
 };
-use natizap_ui::theme::{DISPLAY_FONT, HONEY, HONEY_INK, LINE, MUTED, PANEL, RAISED, TEXT};
+use natizap_ui::theme::{ACCENT, ACCENT_INK, DISPLAY_FONT, LINE, MUTED, PANEL, RAISED, TEXT};
 use natizap_ui::{Icon, avatar};
 
 use natizap_protocol::ChatId;
@@ -169,7 +169,7 @@ fn chat_row(row: &ChatRow, now: DateTime<Local>) -> Stateful<Div> {
         let (background, ink) = if row.muted {
             (LINE, MUTED)
         } else {
-            (HONEY, HONEY_INK)
+            (ACCENT, ACCENT_INK)
         };
         div()
             .min_w(px(20.0))
@@ -227,7 +227,7 @@ fn chat_row(row: &ChatRow, now: DateTime<Local>) -> Stateful<Div> {
                             div()
                                 .text_size(px(12.0))
                                 .text_color(rgb(if has_unread && !row.muted {
-                                    HONEY
+                                    ACCENT
                                 } else {
                                     MUTED
                                 }))

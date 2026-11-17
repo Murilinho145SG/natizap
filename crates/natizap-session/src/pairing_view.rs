@@ -1,7 +1,7 @@
 use gpui::prelude::*;
 use gpui::{Context, Div, Entity, FontWeight, SharedString, Window, div, px, relative, rgb, svg};
 use natizap_ui::Icon;
-use natizap_ui::theme::{DEEP, DISPLAY_FONT, HONEY, HONEY_INK, LINE, MUTED, PANE, TEXT};
+use natizap_ui::theme::{ACCENT, ACCENT_INK, DEEP, DISPLAY_FONT, LINE, MUTED, PANE, TEXT};
 
 use crate::{QrMatrix, Session, SessionState};
 
@@ -70,8 +70,8 @@ impl PairingView {
             .px_5()
             .py_2p5()
             .rounded_full()
-            .bg(rgb(HONEY))
-            .text_color(rgb(HONEY_INK))
+            .bg(rgb(ACCENT))
+            .text_color(rgb(ACCENT_INK))
             .font_weight(FontWeight::SEMIBOLD)
             .cursor_pointer()
             .hover(|style| style.opacity(0.9))
@@ -144,7 +144,7 @@ fn pairing(qr: &QrMatrix) -> Div {
                                         .border_color(rgb(LINE))
                                         .text_size(px(13.0))
                                         .font_weight(FontWeight::SEMIBOLD)
-                                        .text_color(rgb(HONEY))
+                                        .text_color(rgb(ACCENT))
                                         .child((index + 1).to_string()),
                                 )
                                 .child(*step)

@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use natizap_protocol::{ChatId, ContentKind, Mark, Marked, Reply};
 use natizap_ui::name_color;
-use natizap_ui::theme::{HONEY, MUTED};
+use natizap_ui::theme::{ACCENT, MUTED};
 
 use crate::media::Fetch;
 use crate::message::{Delivery, Message, Reaction};
@@ -174,7 +174,7 @@ fn bubble(
         .map(|quote| match by_id.get(quote.id.as_str()) {
             Some(quoted) => {
                 let (author, color) = if quoted.from_me {
-                    ("You".to_owned(), HONEY)
+                    ("You".to_owned(), ACCENT)
                 } else {
                     let sender = quoted.sender.as_ref().unwrap_or(&quoted.chat);
                     (sender_name(quoted, sender), name_color(sender.as_str()))

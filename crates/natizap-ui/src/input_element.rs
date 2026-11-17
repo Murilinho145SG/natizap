@@ -5,10 +5,10 @@ use gpui::{
 };
 
 use crate::input::TextInput;
-use crate::theme::{HONEY, MUTED};
+use crate::theme::{ACCENT, MUTED};
 
 /// Selection highlight: the accent at a quarter opacity.
-const SELECTION: u32 = (HONEY << 8) | 0x40;
+const SELECTION: u32 = (ACCENT << 8) | 0x40;
 
 /// Lays out and paints a [`TextInput`]'s single line, caret and selection, and
 /// connects it to the platform's text input.
@@ -117,7 +117,7 @@ impl Element for TextElement {
                 point(bounds.left() + x, bounds.top()),
                 size(px(2.), bounds.size.height),
             );
-            (None, Some(fill(caret, rgb(HONEY))))
+            (None, Some(fill(caret, rgb(ACCENT))))
         } else {
             let area = Bounds::from_corners(
                 point(

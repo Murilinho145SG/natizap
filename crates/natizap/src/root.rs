@@ -4,7 +4,7 @@ use natizap_chats::{ChatList, ChatListView, ChatSelected};
 use natizap_messages::{ConversationView, MessageLog, MessageSent, OpenChat, PlayRequested};
 use natizap_player::{PlayerClosed, PlayerView};
 use natizap_session::{PairingView, Session, SessionState};
-use natizap_ui::theme::{ALERT, DISPLAY_FONT, HONEY, LINE, MINT, MUTED, TEXT, base_font};
+use natizap_ui::theme::{ACCENT, ALERT, DISPLAY_FONT, LINE, MINT, MUTED, TEXT, base_font};
 use natizap_ui::window_frame;
 
 /// The main window's content: the pairing screen until this device is linked,
@@ -130,8 +130,8 @@ impl Render for Root {
 fn wordmark(state: &SessionState) -> Div {
     let (dot, label) = match state {
         SessionState::Connected => (MINT, None),
-        SessionState::Starting | SessionState::Reconnecting => (HONEY, Some("Connecting…")),
-        SessionState::Paired => (HONEY, Some("Syncing chats…")),
+        SessionState::Starting | SessionState::Reconnecting => (ACCENT, Some("Connecting…")),
+        SessionState::Paired => (ACCENT, Some("Syncing chats…")),
         SessionState::AwaitingPairing(_) | SessionState::PairingExpired => {
             (LINE, Some("Not linked"))
         }

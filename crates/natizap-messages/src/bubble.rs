@@ -7,7 +7,7 @@ use gpui::{
 };
 use natizap_protocol::{ContentKind, Mark};
 use natizap_ui::Icon;
-use natizap_ui::theme::{ALERT, DEEP, LINE, MINT, MUTED, OUTGOING, PANEL, RAISED};
+use natizap_ui::theme::{ALERT, DEEP, LINE, MINT, MUTED, OUTGOING, PANEL, RAISED, glass};
 
 use crate::items::{Body, Bubble, Item, Text};
 use crate::media_view::render_media;
@@ -179,6 +179,7 @@ fn frame(bubble: &Bubble) -> Div {
         .py(px(6.0))
         .rounded(px(14.0))
         .bg(rgb(if bubble.from_me { OUTGOING } else { RAISED }))
+        .map(glass)
         .text_size(px(14.5))
         .line_height(relative(1.4))
         .map(|shape| match (bubble.starts_burst, bubble.from_me) {
@@ -250,8 +251,7 @@ fn quick_reactions(bubble: &Bubble, view: &WeakEntity<ConversationView>) -> Stat
         .p_0p5()
         .rounded_full()
         .bg(rgb(PANEL))
-        .border_1()
-        .border_color(rgb(LINE))
+        .map(glass)
         .children(QUICK_REACTIONS.iter().map(|&emoji| {
             let mine = bubble.my_reaction.as_deref() == Some(emoji);
             div()
