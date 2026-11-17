@@ -430,8 +430,9 @@ fn day_label(day: NaiveDate, now: DateTime<Local>) -> String {
 
 #[cfg(test)]
 mod tests {
+    use natizap_protocol::PersonName;
+
     use super::*;
-    use crate::authors::KnownName;
 
     fn at(day: u32, hour: u32, minute: u32) -> i64 {
         Local
@@ -494,14 +495,14 @@ mod tests {
             names: Arc::new(HashMap::from([
                 (
                     ChatId::new("309@lid"),
-                    KnownName {
+                    PersonName {
                         saved: Some("Bruno Lima".into()),
                         chosen: None,
                     },
                 ),
                 (
                     phone,
-                    KnownName {
+                    PersonName {
                         saved: None,
                         chosen: Some("Carla".into()),
                     },

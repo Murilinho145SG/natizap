@@ -7,11 +7,10 @@ use chrono::Local;
 use gpui::{App, AppContext as _, Context, Entity, EventEmitter, SharedString, Task};
 use natizap_protocol::whatsapp_rust::prelude::Event;
 use natizap_protocol::{
-    ActionError, Anchor, ChatId, ContentKind, Extra, Forward, GroupInfo, Protocol, Quote, Reply,
-    Sent, Unread,
+    ActionError, Anchor, ChatId, ContentKind, Extra, Forward, GroupInfo, PersonName, Protocol,
+    Quote, Reply, Sent, Unread,
 };
 
-use crate::authors::KnownName;
 use crate::items::{Item, Members, summary};
 use crate::media::{Fetch, PosterJob};
 use crate::message::{Delivery, Message, MessageChange};
@@ -64,7 +63,7 @@ enum Input {
     /// What the open group says about its members.
     Members(ChatId, Members),
     /// What people are called.
-    Names(Arc<HashMap<ChatId, KnownName>>),
+    Names(Arc<HashMap<ChatId, PersonName>>),
 }
 
 impl From<MessageChange> for Input {
@@ -438,7 +437,7 @@ impl MessageLog {
     /// Names people by `names`, by address, where their messages do not:
     /// the address book's names, and those people chose that older
     /// messages lack.
-    pub fn set_names(&self, names: Arc<HashMap<ChatId, KnownName>>) {
+    pub fn set_names(&self, names: Arc<HashMap<ChatId, PersonName>>) {
         self.send_input(Input::Names(names));
     }
 

@@ -7,19 +7,18 @@ use gpui::{
     Window, div, px, rgb,
 };
 use natizap_chats::{
-    ChatList, ChatListView, ChatPicker, ChatRow, ChatSelected, ChatsPicked, PersonName,
-    PickerDismissed,
+    ChatList, ChatListView, ChatPicker, ChatRow, ChatSelected, ChatsPicked, PickerDismissed,
 };
 use natizap_contacts::{
     ChatSettings, ChatSummary, DisappearingChosen, MuteToggled, ProfileClosed, ProfilePanel, Tile,
 };
 use natizap_messages::{
-    ChatClosed, ChatRequested, ContactsRequested, ConversationView, ForwardRequested, KnownName,
-    MessageLog, MessageSent, MuteRequested, OpenChat, PlayRequested, ProfileRequested,
+    ChatClosed, ChatRequested, ContactsRequested, ConversationView, ForwardRequested, MessageLog,
+    MessageSent, MuteRequested, OpenChat, PlayRequested, ProfileRequested,
 };
 use natizap_player::{PlayerClosed, PlayerView};
 use natizap_profiles::ProfilePictures;
-use natizap_protocol::{Card, ChatId, Extra, Protocol};
+use natizap_protocol::{Card, ChatId, Extra, PersonName, Protocol};
 use natizap_session::{PairingView, Session, SessionState};
 use natizap_ui::theme::{ACCENT, ALERT, DISPLAY_FONT, LINE, MINT, MUTED, TEXT, base_font};
 use natizap_ui::{Alert, AlertTone, window_frame};
@@ -216,17 +215,7 @@ impl Root {
                 return;
             }
             shared = Some(Arc::clone(names));
-            let known = names
-                .iter()
-                .map(|(address, name)| {
-                    let known = KnownName {
-                        saved: name.saved.clone(),
-                        chosen: name.chosen.clone(),
-                    };
-                    (address.clone(), known)
-                })
-                .collect();
-            messages.read(cx).set_names(Arc::new(known));
+            messages.read(cx).set_names(Arc::clone(names));
         })
         .detach();
     }

@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use gpui::SharedString;
-use natizap_protocol::ChatId;
+use natizap_protocol::{ChatId, PersonName};
 use natizap_ui::name_color;
 
 use crate::message::Message;
@@ -24,15 +24,6 @@ pub(crate) struct Author {
     pub(crate) role: Option<SharedString>,
 }
 
-/// What someone is called, as the account knows them.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct KnownName {
-    /// Saved in the phone's address book: shown as is.
-    pub saved: Option<String>,
-    /// Chosen by the person: shown after a `~`.
-    pub chosen: Option<String>,
-}
-
 /// What the group says about its members, beyond each message.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct Members {
@@ -42,7 +33,7 @@ pub(crate) struct Members {
     pub(crate) phones: HashMap<ChatId, ChatId>,
     /// What people are called, by address, for messages that came without
     /// a name and for names saved in the address book.
-    pub(crate) names: Arc<HashMap<ChatId, KnownName>>,
+    pub(crate) names: Arc<HashMap<ChatId, PersonName>>,
 }
 
 /// Everything known about who wrote the messages laid out together.

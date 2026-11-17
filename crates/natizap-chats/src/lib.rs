@@ -12,7 +12,6 @@ mod store;
 mod sync;
 mod view;
 
-pub use book::PersonName;
 pub use list::{ChatList, ChatRow};
 pub use picker::{ChatPicker, ChatsPicked, PickerDismissed};
 pub use view::{ChatListView, ChatSelected};

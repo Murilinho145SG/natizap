@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use natizap_protocol::ChatId;
+use natizap_protocol::{ChatId, PersonName};
 
 /// The latest message of a chat, as shown under its name.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -112,16 +112,6 @@ pub(crate) struct Person {
     pub(crate) business_name: Option<String>,
     /// WhatsApp vouches for the business, which then shows a seal.
     pub(crate) verified: bool,
-}
-
-/// What someone is called: the name saved in the phone's address book,
-/// and the one they chose for themselves.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct PersonName {
-    /// Saved in the address book.
-    pub saved: Option<String>,
-    /// Chosen by the person.
-    pub chosen: Option<String>,
 }
 
 /// Snapshot of one chat from a history sync. History can arrive after live

@@ -81,6 +81,16 @@ fn old_brazilian_mobile(country: u16, national: &str) -> Option<String> {
     })
 }
 
+/// What someone is called: the name saved in the phone's address book,
+/// shown as is, and the one they chose for themselves, shown after a `~`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PersonName {
+    /// Saved in the address book.
+    pub saved: Option<String>,
+    /// Chosen by the person.
+    pub chosen: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

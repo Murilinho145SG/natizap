@@ -7,9 +7,9 @@ use gpui::{App, AppContext as _, Context, Entity, SharedString, Task};
 use natizap_protocol::Protocol;
 use natizap_protocol::whatsapp_rust::prelude::Event;
 
-use natizap_protocol::{ChatId, Disappearing, Marked};
+use natizap_protocol::{ChatId, Disappearing, Marked, PersonName};
 
-use crate::book::{Chat, ChatBook, ChatChange, Mute, PersonName, Preview};
+use crate::book::{Chat, ChatBook, ChatChange, Mute, Preview};
 use crate::store::ChatStore;
 use crate::sync::{CHAT_EVENTS, changes};
 
