@@ -3,14 +3,15 @@ use std::sync::Arc;
 
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, ClipboardItem, Context, Div, Entity, FontWeight, MouseButton, NavigationDirection,
+    AnyElement, Context, Div, Entity, FontWeight, MouseButton, NavigationDirection, SharedString,
     Window, div, px, rgb,
 };
 use natizap_chats::{
     ChatList, ChatListView, ChatPicker, ChatRow, ChatSelected, ChatsPicked, PickerDismissed,
 };
 use natizap_contacts::{
-    ChatSettings, ChatSummary, DisappearingChosen, MuteToggled, ProfileClosed, ProfilePanel, Tile,
+    ChatSettings, ChatSummary, ChatWanted, DisappearingChosen, MuteToggled, PersonOpened,
+    ProfileClosed, ProfilePanel, Tile,
 };
 use natizap_messages::{
     ChatClosed, ChatRequested, ContactsRequested, ConversationView, ForwardRequested, MessageLog,
@@ -42,6 +43,8 @@ pub(crate) struct Root {
     messages: Entity<MessageLog>,
     /// Chats visited, for the mouse's back and forward buttons.
     history: History<ChatId>,
+    protocol: Entity<Protocol>,
+    pictures: Entity<ProfilePictures>,
 }
 
 impl Root {
@@ -98,7 +101,7 @@ impl Root {
         .detach();
 
         Self::forward_through_picker(messages, &chats, pictures, window, cx);
-        Self::open_profiles(&conversation, protocol, pictures, cx);
+        Self::open_profiles(&conversation, cx);
         Self::open_numbers(&conversation, cx);
         Self::share_names(&chats, messages, cx);
         Self::follow_chat_menu(&conversation, cx);
@@ -115,6 +118,8 @@ impl Root {
             profile: None,
             messages: messages.clone(),
             history: History::default(),
+            protocol,
+            pictures: pictures.clone(),
         }
     }
 
@@ -283,65 +288,87 @@ impl Root {
         .detach();
     }
 
-    /// Opens the chat with a number clicked in a message. Without one, copies
-    /// the number, since a chat cannot open before it has a message.
+    /// Opens the chat with a number clicked in a message.
     fn open_numbers(conversation: &Entity<ConversationView>, cx: &mut Context<Self>) {
         cx.subscribe(conversation, |root, _, ChatRequested { phone }, cx| {
-            let row = root
-                .chats
-                .read(cx)
-                .rows()
-                .iter()
-                .find(|row| row.addresses.contains(phone))
-                .cloned();
-            if let Some(row) = row {
-                root.history.visit(row.id.clone());
-                root.open_chat(&row, cx);
-            } else {
-                let number = phone
-                    .phone_number()
-                    .unwrap_or_else(|| phone.as_str().to_owned());
-                cx.write_to_clipboard(ClipboardItem::new_string(number));
-            }
+            let title = phone
+                .phone_number()
+                .unwrap_or_else(|| phone.as_str().to_owned());
+            root.chat_with(phone, title.into(), cx);
         })
         .detach();
     }
 
-    /// Shows a chat's profile beside the conversation when its header is
-    /// clicked.
-    fn open_profiles(
-        conversation: &Entity<ConversationView>,
-        protocol: Entity<Protocol>,
-        pictures: &Entity<ProfilePictures>,
+    /// Shows a profile beside the conversation when the conversation asks:
+    /// the chat's from its header, or a group member's from their message.
+    fn open_profiles(conversation: &Entity<ConversationView>, cx: &mut Context<Self>) {
+        cx.subscribe(conversation, |root, _, request: &ProfileRequested, cx| {
+            root.show_profile(&request.chat, request.title.clone(), request.verified, cx);
+        })
+        .detach();
+    }
+
+    /// Shows `chat`'s profile beside the conversation, named `title` until
+    /// it loads.
+    fn show_profile(
+        &mut self,
+        chat: &ChatId,
+        title: SharedString,
+        verified: bool,
         cx: &mut Context<Self>,
     ) {
-        let pictures = pictures.clone();
-        cx.subscribe(
-            conversation,
-            move |root, _, request: &ProfileRequested, cx| {
-                let panel = cx.new(|cx| {
-                    ProfilePanel::new(
-                        &protocol,
-                        &pictures,
-                        request.chat.clone(),
-                        request.title.clone(),
-                        request.verified,
-                        cx,
-                    )
-                });
-                cx.subscribe(&panel, |root, _, _: &ProfileClosed, cx| {
-                    root.profile = None;
-                    cx.notify();
-                })
-                .detach();
-                let names = Arc::clone(root.chats.read(cx).names());
-                panel.update(cx, |panel, cx| panel.set_names(names, cx));
-                root.fill_profile(&panel, &request.chat, cx);
-                root.profile = Some(panel);
-                cx.notify();
-            },
-        )
+        let (protocol, pictures) = (self.protocol.clone(), self.pictures.clone());
+        let panel =
+            cx.new(|cx| ProfilePanel::new(&protocol, &pictures, chat.clone(), title, verified, cx));
+        cx.subscribe(&panel, |root, _, _: &ProfileClosed, cx| {
+            root.profile = None;
+            cx.notify();
+        })
         .detach();
+        cx.subscribe(&panel, |root, _, opened: &PersonOpened, cx| {
+            root.show_profile(&opened.chat, opened.title.clone(), false, cx);
+        })
+        .detach();
+        cx.subscribe(&panel, |root, _, wanted: &ChatWanted, cx| {
+            root.chat_with(&wanted.chat, wanted.title.clone(), cx);
+        })
+        .detach();
+        let names = Arc::clone(self.chats.read(cx).names());
+        panel.update(cx, |panel, cx| panel.set_names(names, cx));
+        self.fill_profile(&panel, chat, cx);
+        self.profile = Some(panel);
+        cx.notify();
+    }
+
+    /// Opens the chat with `address`, even one not in the list yet, named
+    /// `title` until it has messages.
+    fn chat_with(&mut self, address: &ChatId, title: SharedString, cx: &mut Context<Self>) {
+        let row = self
+            .chats
+            .read(cx)
+            .rows()
+            .iter()
+            .chain(self.chats.read(cx).archived().iter())
+            .find(|row| row.addresses.contains(address))
+            .cloned();
+        self.history.visit(address.clone());
+        if let Some(row) = row {
+            self.open_chat(&row, cx);
+        } else {
+            self.profile = None;
+            let chat = OpenChat {
+                id: address.clone(),
+                verified: false,
+                addresses: vec![address.clone()],
+                title,
+                unread: 0,
+                muted: false,
+            };
+            self.messages
+                .update(cx, |messages, cx| messages.open(chat, cx));
+            self.chat_list.update(cx, |list, cx| list.show(None, cx));
+        }
+        cx.notify();
     }
 
     /// Gives the profile of `chat` what the other features know of it: its
