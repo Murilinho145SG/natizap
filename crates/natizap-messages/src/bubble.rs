@@ -257,7 +257,10 @@ fn picture_bubble(
     let (picture, caption) = match caption {
         Some(text) => {
             let (shown, hits) = rich_text(&bubble.id, text, view, selection);
+            // As wide as the picture, so long captions wrap under it
+            // instead of spilling past the bubble.
             let caption = div()
+                .w(px(media.size.0))
                 .px(px(7.0))
                 .pb(px(3.0))
                 .flex()
