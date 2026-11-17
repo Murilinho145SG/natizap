@@ -64,6 +64,7 @@ pub struct Button {
     variant: ButtonVariant,
     size: ButtonSize,
     round: bool,
+    selected: bool,
     tooltip: Option<SharedString>,
     on_click: Option<ClickHandler>,
 }
@@ -87,6 +88,7 @@ impl Button {
             variant: ButtonVariant::default(),
             size: ButtonSize::default(),
             round: false,
+            selected: false,
             tooltip: None,
             on_click: None,
         }
@@ -124,6 +126,13 @@ impl Button {
     #[must_use]
     pub fn round(mut self) -> Self {
         self.round = true;
+        self
+    }
+
+    /// Keeps its hover surface while what it toggles is open, e.g. a picker.
+    #[must_use]
+    pub fn selected(mut self, selected: bool) -> Self {
+        self.selected = selected;
         self
     }
 
@@ -175,6 +184,9 @@ impl RenderOnce for Button {
                 }
             })
             .when_some(background, |button, background| button.bg(rgb(background)))
+            .when_some(hover.filter(|_| self.selected), |button, hover| {
+                button.bg(rgb(hover)).text_color(rgb(TEXT))
+            })
             .text_color(rgb(ink))
             .font_weight(FontWeight::SEMIBOLD)
             .cursor_pointer()

@@ -121,6 +121,24 @@ fn buttons() -> Div {
                 .round()
                 .tooltip(format!("Round, {name}"))
         })))
+        .child(
+            row()
+                .child(
+                    Button::new("ghost-off")
+                        .icon(Icon::Emoji)
+                        .variant(ButtonVariant::Ghost)
+                        .round()
+                        .tooltip("Ghost"),
+                )
+                .child(
+                    Button::new("ghost-selected")
+                        .icon(Icon::Emoji)
+                        .variant(ButtonVariant::Ghost)
+                        .round()
+                        .selected(true)
+                        .tooltip("Ghost, selected"),
+                ),
+        )
 }
 
 fn badges() -> Div {

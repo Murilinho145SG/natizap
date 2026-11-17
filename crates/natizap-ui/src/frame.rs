@@ -6,6 +6,7 @@ use gpui::{
 };
 
 use crate::Icon;
+use crate::components::tooltip::Tooltip;
 use crate::theme::{ALERT, DEEP, LINE, MUTED, RAISED, TEXT};
 
 /// Width of the invisible band around the window that resizes it, also used
@@ -123,6 +124,7 @@ fn title_bar(window: &Window, title: impl IntoElement, decorations: Decorations)
                     .gap_0p5()
                     .child(window_button(
                         "minimize",
+                        "Minimize",
                         Icon::Minimize,
                         RAISED,
                         |window| {
@@ -131,6 +133,7 @@ fn title_bar(window: &Window, title: impl IntoElement, decorations: Decorations)
                     ))
                     .child(window_button(
                         "maximize",
+                        if maximized { "Restore" } else { "Maximize" },
                         if maximized {
                             Icon::Restore
                         } else {
@@ -141,6 +144,7 @@ fn title_bar(window: &Window, title: impl IntoElement, decorations: Decorations)
                     ))
                     .child(window_button(
                         "close",
+                        "Close",
                         Icon::Close,
                         ALERT,
                         Window::remove_window,
@@ -152,6 +156,7 @@ fn title_bar(window: &Window, title: impl IntoElement, decorations: Decorations)
 
 fn window_button(
     id: &'static str,
+    name: &'static str,
     icon: Icon,
     hover: u32,
     action: impl Fn(&mut Window) + 'static,
@@ -169,6 +174,7 @@ fn window_button(
         // Keep the title bar from starting a window move under the button.
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .on_click(move |_, window, _| action(window))
+        .tooltip(Tooltip::text(name))
         .child(
             svg()
                 .path(icon.path())
