@@ -6,6 +6,9 @@ use gpui_tokio::{JoinError, Tokio};
 use whatsapp_rust::prelude::*;
 use whatsapp_rust::wacore::store::DevicePropsOverride;
 
+use whatsapp_rust::sync_task::MajorSyncTask;
+use whatsapp_rust::wacore::appstate::patch_decode::WAPatchName;
+
 use crate::ChatId;
 use crate::ContentKind;
 use crate::actions::{self, ActionError, Connection, Disappearing, PinFor, Reply, Sent, Unread};
@@ -48,7 +51,7 @@ pub struct Protocol {
     client: Task<()>,
     /// The phone unlinked this device, so the stored keys are dead.
     unlinked: bool,
-    _unlinks: Task<()>,
+    _tasks: [Task<()>; 2],
 }
 
 impl EventEmitter<Arc<StartError>> for Protocol {}
@@ -89,13 +92,32 @@ impl Protocol {
                 }
             }
         });
+        let connects = fanout.subscribe(EventInterest::of(&[EventKind::Connected]));
+        let catch_up = cx.spawn(async move |this, cx| {
+            // Once per launch: what arrived while natizap could not keep it,
+            // e.g. stars from before it read them, is otherwise never sent
+            // again.
+            if connects.recv().await.is_ok() {
+                let refreshing = this.update(cx, |protocol, cx| {
+                    protocol.connection.run(cx, |client| async move {
+                        refresh_account_state(&client).await;
+                        Ok(())
+                    })
+                });
+                if let Ok(refreshing) = refreshing
+                    && let Err(error) = refreshing.await
+                {
+                    tracing::debug!(%error, "account state not refreshed");
+                }
+            }
+        });
         Self {
             store_path,
             fanout,
             connection,
             client,
             unlinked: false,
-            _unlinks: unlinks,
+            _tasks: [unlinks, catch_up],
         }
     }
 
@@ -431,6 +453,25 @@ async fn run(
     bot.run().await;
     connection.set(None);
     Ok(())
+}
+
+/// Asks WhatsApp again for the whole account state the phone keeps in
+/// sync, such as stars, mutes, pins and saved names, rather than only what
+/// changed. Each arrives as the usual events.
+async fn refresh_account_state(client: &Arc<Client>) {
+    for name in [
+        WAPatchName::CriticalUnblockLow,
+        WAPatchName::RegularLow,
+        WAPatchName::RegularHigh,
+        WAPatchName::Regular,
+    ] {
+        client
+            .process_sync_task(MajorSyncTask::AppStateSync {
+                name,
+                full_sync: true,
+            })
+            .await;
+    }
 }
 
 /// Deletes the SQLite store and its write-ahead log.
