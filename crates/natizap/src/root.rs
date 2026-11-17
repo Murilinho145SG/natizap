@@ -10,12 +10,12 @@ use natizap_contacts::{
     ChatSettings, ChatSummary, DisappearingChosen, MuteToggled, ProfileClosed, ProfilePanel, Tile,
 };
 use natizap_messages::{
-    ChatRequested, ConversationView, ForwardRequested, MessageLog, MessageSent, OpenChat,
-    PlayRequested, ProfileRequested,
+    ChatRequested, ContactsRequested, ConversationView, ForwardRequested, MessageLog, MessageSent,
+    OpenChat, PlayRequested, ProfileRequested,
 };
 use natizap_player::{PlayerClosed, PlayerView};
 use natizap_profiles::ProfilePictures;
-use natizap_protocol::{ChatId, Protocol};
+use natizap_protocol::{Card, ChatId, Extra, Protocol};
 use natizap_session::{PairingView, Session, SessionState};
 use natizap_ui::theme::{ACCENT, ALERT, DISPLAY_FONT, LINE, MINT, MUTED, TEXT, base_font};
 use natizap_ui::{Alert, AlertTone, window_frame};
@@ -33,7 +33,7 @@ pub(crate) struct Root {
     /// The video or audio playing over the chats, if any.
     player: Option<Entity<PlayerView>>,
     /// Choosing chats to forward a message to.
-    forwarding: Option<Entity<ChatPicker>>,
+    picker: Option<Entity<ChatPicker>>,
     /// The open chat's profile, beside the conversation.
     profile: Option<Entity<ProfilePanel>>,
     messages: Entity<MessageLog>,
@@ -97,6 +97,7 @@ impl Root {
         Self::forward_through_picker(messages, &chats, pictures, window, cx);
         Self::open_profiles(&conversation, protocol, cx);
         Self::open_numbers(&conversation, cx);
+        Self::share_contacts(&conversation, messages, &chats, pictures, window, cx);
 
         Self {
             session,
@@ -105,7 +106,7 @@ impl Root {
             chat_list,
             conversation,
             player: None,
-            forwarding: None,
+            picker: None,
             profile: None,
             messages: messages.clone(),
             history: History::default(),
@@ -149,24 +150,84 @@ impl Root {
                 let (messages, request) = (forward_messages.clone(), request.clone());
                 cx.subscribe(&picker, move |root, _, ChatsPicked(chats), cx| {
                     messages.update(cx, |log, cx| log.forward(&request, chats.clone(), cx));
-                    root.forwarding = None;
+                    root.picker = None;
                     cx.notify();
                 })
                 .detach();
                 cx.subscribe(&picker, |root, _, _: &PickerDismissed, cx| {
-                    root.forwarding = None;
+                    root.picker = None;
                     cx.notify();
                 })
                 .detach();
-                root.forwarding = Some(picker);
+                root.picker = Some(picker);
                 cx.notify();
             },
         )
         .detach();
     }
 
-    /// Shows a chat's profile beside the conversation when its header is
-    /// clicked.
+    /// Answers the conversation's request to share contacts with the chat
+    /// picker, sending the people chosen as contact cards.
+    fn share_contacts(
+        conversation: &Entity<ConversationView>,
+        messages: &Entity<MessageLog>,
+        chats: &Entity<ChatList>,
+        pictures: &Entity<ProfilePictures>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let (chats, pictures, messages) = (chats.clone(), pictures.clone(), messages.clone());
+        cx.subscribe_in(
+            conversation,
+            window,
+            move |root, _, _: &ContactsRequested, window, cx| {
+                let picker = cx.new(|cx| {
+                    ChatPicker::new(
+                        "Share contacts",
+                        chats.clone(),
+                        pictures.clone(),
+                        window,
+                        cx,
+                    )
+                });
+                let (chats, messages) = (chats.clone(), messages.clone());
+                cx.subscribe(&picker, move |root, _, ChatsPicked(picked), cx| {
+                    let cards: Vec<Card> = chats
+                        .read(cx)
+                        .rows()
+                        .iter()
+                        .filter(|row| picked.contains(&row.id))
+                        .filter_map(|row| {
+                            // Groups have no number to share.
+                            let phone = row
+                                .addresses
+                                .iter()
+                                .find(|address| address.phone_number().is_some())?;
+                            Some(Card {
+                                name: row.title.to_string(),
+                                phone: phone.as_str().split('@').next().map(str::to_owned),
+                            })
+                        })
+                        .collect();
+                    if !cards.is_empty() {
+                        messages.update(cx, |log, cx| log.send_extra(Extra::Cards(cards), cx));
+                    }
+                    root.picker = None;
+                    cx.notify();
+                })
+                .detach();
+                cx.subscribe(&picker, |root, _, _: &PickerDismissed, cx| {
+                    root.picker = None;
+                    cx.notify();
+                })
+                .detach();
+                root.picker = Some(picker);
+                cx.notify();
+            },
+        )
+        .detach();
+    }
+
     /// Opens the chat with a number clicked in a message. Without one, copies
     /// the number, since a chat cannot open before it has a message.
     fn open_numbers(conversation: &Entity<ConversationView>, cx: &mut Context<Self>) {
@@ -191,6 +252,8 @@ impl Root {
         .detach();
     }
 
+    /// Shows a chat's profile beside the conversation when its header is
+    /// clicked.
     fn open_profiles(
         conversation: &Entity<ConversationView>,
         protocol: Entity<Protocol>,
@@ -295,7 +358,7 @@ impl Root {
     /// goes back to the chat before.
     fn go_back(&mut self, cx: &mut Context<Self>) {
         if self.player.take().is_some()
-            || self.forwarding.take().is_some()
+            || self.picker.take().is_some()
             || self.profile.take().is_some()
         {
             cx.notify();
@@ -360,7 +423,7 @@ impl Root {
                     .clone()
                     .map(|profile| div().w(px(380.0)).h_full().flex_none().child(profile)),
             )
-            .children(self.forwarding.clone())
+            .children(self.picker.clone())
             // Chats stay readable offline, so the news floats over them
             // instead of replacing them.
             .when(reconnecting, |content| {
