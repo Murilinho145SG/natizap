@@ -25,6 +25,9 @@ pub const ALERT: u32 = 0xd0_4f_45;
 
 /// Messages this account sent: graphite warmed by the accent.
 pub const OUTGOING: u32 = 0x26_1d_17;
+/// Darkens a picture under text or icons drawn on it, `0xRRGGBBAA` for
+/// `gpui::rgba`.
+pub const SCRIM: u32 = 0x00_00_00_80;
 /// The light rim of glass surfaces, `0xRRGGBBAA` for `gpui::rgba`.
 pub const EDGE: u32 = 0xff_ff_ff_14;
 

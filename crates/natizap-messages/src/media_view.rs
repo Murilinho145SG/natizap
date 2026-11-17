@@ -2,11 +2,12 @@
 
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, App, Div, FontWeight, ImageSource, ObjectFit, WeakEntity, div, img, px, rgb, svg,
+    AnyElement, App, Div, FontWeight, ImageSource, ObjectFit, WeakEntity, div, img, px, rgb, rgba,
+    svg,
 };
 use natizap_protocol::ContentKind;
 use natizap_ui::Icon;
-use natizap_ui::theme::{DEEP, MUTED, TEXT};
+use natizap_ui::theme::{DEEP, MUTED, SCRIM, TEXT};
 
 use crate::items::MediaView;
 use crate::view::ConversationView;
@@ -92,7 +93,7 @@ fn picture(media: &MediaView) -> Div {
     div()
         .w(px(width))
         .h(px(height))
-        .rounded(px(10.0))
+        .rounded(px(11.0))
         .overflow_hidden()
         .when(media.fetch.kind != ContentKind::Sticker, |frame| {
             frame.bg(rgb(DEEP))
@@ -115,7 +116,7 @@ fn round_icon(icon: Icon, size: f32) -> Div {
         .items_center()
         .justify_center()
         .rounded_full()
-        .bg(rgb(0x00_00_00).opacity(0.5))
+        .bg(rgba(SCRIM))
         .child(
             svg()
                 .path(icon.path())

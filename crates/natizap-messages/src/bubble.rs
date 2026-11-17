@@ -3,13 +3,15 @@
 use gpui::prelude::*;
 use gpui::{
     AnyElement, App, Div, FontStyle, FontWeight, HighlightStyle, MouseButton, SharedString,
-    Stateful, StrikethroughStyle, StyledText, WeakEntity, div, px, relative, rgb, svg,
+    Stateful, StrikethroughStyle, StyledText, WeakEntity, div, px, relative, rgb, rgba, svg,
 };
 use natizap_protocol::{ContentKind, Mark};
 use natizap_ui::Icon;
-use natizap_ui::theme::{ALERT, DEEP, LINE, MINT, MUTED, OUTGOING, PANEL, RAISED, glass};
+use natizap_ui::theme::{
+    ALERT, DEEP, LINE, MINT, MUTED, OUTGOING, PANEL, RAISED, SCRIM, TEXT, glass,
+};
 
-use crate::items::{Body, Bubble, Item, Text};
+use crate::items::{Body, Bubble, Item, MediaView, Text};
 use crate::media_view::render_media;
 use crate::message::Delivery;
 use crate::view::ConversationView;
@@ -124,7 +126,14 @@ fn shape(bubble: &Bubble, view: &WeakEntity<ConversationView>, voice: &VoiceUi) 
         )
     });
     if let Some(media) = voice_note {
-        return frame(bubble).child(render_voice(media, voice, meta, view));
+        return padded(bubble).child(render_voice(media, voice, meta, view));
+    }
+    let picture = bubble
+        .media
+        .as_ref()
+        .filter(|media| matches!(media.fetch.kind, ContentKind::Photo | ContentKind::Video));
+    if let Some(media) = picture {
+        return picture_bubble(bubble, media, meta, view);
     }
 
     let body = match &bubble.body {
@@ -146,7 +155,7 @@ fn shape(bubble: &Bubble, view: &WeakEntity<ConversationView>, voice: &VoiceUi) 
             .children(text.as_ref().map(styled_text)),
     };
 
-    frame(bubble)
+    padded(bubble)
         .children(bubble.media.as_ref().map(|media| render_media(media, view)))
         .children(
             bubble
@@ -169,14 +178,78 @@ fn shape(bubble: &Bubble, view: &WeakEntity<ConversationView>, voice: &VoiceUi) 
         )
 }
 
-/// The bubble's background and corners, with the author in groups.
+/// A photo or video filling its bubble but for a thin rim, as on the
+/// phone: the time sits on the picture, or beside the caption if any.
+fn picture_bubble(
+    bubble: &Bubble,
+    media: &MediaView,
+    meta: Div,
+    view: &WeakEntity<ConversationView>,
+) -> Div {
+    let caption = match &bubble.body {
+        Body::Content {
+            text: Some(text), ..
+        } => Some(text),
+        _ => None,
+    };
+    let picture = div().relative().child(render_media(media, view));
+    let (picture, caption) = match caption {
+        Some(text) => (
+            picture,
+            Some(
+                div()
+                    .px(px(7.0))
+                    .pb(px(3.0))
+                    .flex()
+                    .flex_wrap()
+                    .items_end()
+                    .gap_x_2()
+                    .child(styled_text(text).into_any_element())
+                    .child(meta.ml_auto().pb(px(1.0))),
+            ),
+        ),
+        None => (
+            picture.child(
+                div()
+                    .absolute()
+                    .bottom(px(6.0))
+                    .right(px(6.0))
+                    .px_1p5()
+                    .rounded_full()
+                    .bg(rgba(SCRIM))
+                    .child(meta.text_color(rgb(TEXT))),
+            ),
+            None,
+        ),
+    };
+    frame(bubble)
+        .p(px(3.0))
+        .gap_1()
+        .children(author(bubble).map(|name| name.px(px(7.0)).pt(px(2.0))))
+        .children(
+            bubble
+                .quote
+                .as_ref()
+                .map(|quote| quote_block(quote.author.clone(), quote.color, quote.text.clone())),
+        )
+        .child(picture)
+        .children(caption)
+}
+
+/// [`frame`] with the room text needs around it.
+fn padded(bubble: &Bubble) -> Div {
+    frame(bubble)
+        .gap_1()
+        .px(px(10.0))
+        .py(px(6.0))
+        .children(author(bubble))
+}
+
+/// The bubble's background and corners.
 fn frame(bubble: &Bubble) -> Div {
     div()
         .flex()
         .flex_col()
-        .gap_1()
-        .px(px(10.0))
-        .py(px(6.0))
         .rounded(px(14.0))
         .bg(rgb(if bubble.from_me { OUTGOING } else { RAISED }))
         .map(glass)
@@ -189,13 +262,17 @@ fn frame(bubble: &Bubble) -> Div {
             (true, false) => shape.rounded_tl(px(4.0)),
             _ => shape,
         })
-        .children(bubble.author.clone().map(|(name, color)| {
-            div()
-                .text_size(px(13.0))
-                .font_weight(FontWeight::SEMIBOLD)
-                .text_color(rgb(color))
-                .child(name)
-        }))
+}
+
+/// Who wrote a group message.
+fn author(bubble: &Bubble) -> Option<Div> {
+    bubble.author.clone().map(|(name, color)| {
+        div()
+            .text_size(px(13.0))
+            .font_weight(FontWeight::SEMIBOLD)
+            .text_color(rgb(color))
+            .child(name)
+    })
 }
 
 /// Reply and react buttons, shown while the pointer is over the bubble.
