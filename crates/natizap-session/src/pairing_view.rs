@@ -9,7 +9,7 @@ const QR_SIZE: f32 = 264.0;
 const QR_QUIET_ZONE: f32 = 16.0;
 
 /// The screen shown until the session is connected: progress, the pairing QR
-/// code, or why the session stopped.
+/// code, or why the session stopped with a way to try again.
 #[derive(Debug)]
 pub struct PairingView {
     session: Entity<Session>,
@@ -28,11 +28,16 @@ impl Render for PairingView {
         let body = match self.session.read(cx).state() {
             SessionState::Starting => status("Connecting to WhatsApp…"),
             SessionState::AwaitingPairing(qr) => pairing(qr),
+            SessionState::PairingExpired => {
+                status("The code expired before it was scanned.").child(Self::retry_button(cx))
+            }
+            SessionState::Paired => status("Linked. Finishing setup…"),
             SessionState::Connected => status("Connected"),
-            SessionState::LoggedOut => status(
-                "This device was unlinked from your phone. Restart natizap to link it again.",
-            ),
-            SessionState::Failed(error) => status(format!("Could not start: {error}")),
+            SessionState::Reconnecting => status("Connection lost. Reconnecting…"),
+            SessionState::LoggedOut => {
+                status("This device was unlinked from your phone.").child(Self::retry_button(cx))
+            }
+            SessionState::Failed(error) => status(error.to_string()).child(Self::retry_button(cx)),
         };
         div()
             .size_full()
@@ -45,8 +50,32 @@ impl Render for PairingView {
     }
 }
 
+impl PairingView {
+    fn retry_button(cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .id("retry")
+            .px_4()
+            .py_2()
+            .rounded_md()
+            .bg(rgb(0x00_a8_84))
+            .text_color(rgb(0x0b_14_1a))
+            .cursor_pointer()
+            .hover(|style| style.bg(rgb(0x06_cf_9c)))
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.session.update(cx, Session::restart);
+            }))
+            .child("Try again")
+    }
+}
+
 fn status(message: impl Into<SharedString>) -> Div {
-    div().text_lg().child(message.into())
+    div()
+        .flex()
+        .flex_col()
+        .items_center()
+        .gap_4()
+        .text_lg()
+        .child(message.into())
 }
 
 fn pairing(qr: &QrMatrix) -> Div {
