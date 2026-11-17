@@ -5,13 +5,17 @@ use gpui::{
     uniform_list,
 };
 use natizap_ui::theme::{ACCENT, DISPLAY_FONT, LINE, MUTED, PANEL, RAISED, TEXT};
-use natizap_ui::{BadgeTone, Icon, avatar, badge, count_label, separator, skeleton, verified_seal};
+use natizap_ui::{
+    BadgeTone, Button, ButtonVariant, Icon, TextInput, avatar, badge, count_label, separator,
+    skeleton, verified_seal,
+};
 
 use std::path::PathBuf;
 
 use natizap_profiles::ProfilePictures;
 use natizap_protocol::ChatId;
 
+use crate::filters::{Filter, chips, narrowed, search_field};
 use crate::list::{ChatList, ChatRow};
 
 const ROW_HEIGHT: f32 = 68.0;
@@ -24,6 +28,10 @@ pub struct ChatListView {
     pictures: Entity<ProfilePictures>,
     selected: Option<ChatId>,
     syncing: bool,
+    search: Entity<TextInput>,
+    filter: Filter,
+    /// The archived chats are shown instead of the rest.
+    in_archive: bool,
 }
 
 /// The user picked a chat in the list.
@@ -42,11 +50,17 @@ impl ChatListView {
     ) -> Self {
         cx.observe(&list, |_, _, cx| cx.notify()).detach();
         cx.observe(&pictures, |_, _, cx| cx.notify()).detach();
+        let search = cx.new(|cx| TextInput::new("Search", cx));
+        // Typing narrows the list.
+        cx.observe(&search, |_, _, cx| cx.notify()).detach();
         Self {
             list,
             pictures,
             selected: None,
             syncing: false,
+            search,
+            filter: Filter::All,
+            in_archive: false,
         }
     }
 
@@ -75,53 +89,39 @@ impl ChatListView {
 impl Render for ChatListView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let list = self.list.read(cx);
-        let count = list.rows().len();
-        let archived = list.archived_count();
+        let source = if self.in_archive {
+            list.archived()
+        } else {
+            list.rows()
+        };
+        let query = self.search.read(cx).text().to_owned();
+        let rows = narrowed(source, self.filter, &query);
+        let unread = list
+            .rows()
+            .iter()
+            .filter(|row| row.unread > 0 || row.marked_unread)
+            .count();
+        let archived = list.archived().len();
+        let narrowing = !query.trim().is_empty() || self.filter != Filter::All;
 
-        let body = if count == 0 && self.syncing {
+        let body = if rows.is_empty() && source.is_empty() && self.syncing {
             placeholder_rows().into_any_element()
-        } else if count == 0 {
+        } else if rows.is_empty() && !narrowing && !self.in_archive {
             empty_state().into_any_element()
         } else {
-            uniform_list(
-                "chats",
-                count,
-                cx.processor(|this, range: std::ops::Range<usize>, _window, cx| {
-                    let rows = this.list.read(cx).rows().clone();
-                    let now = Local::now();
-                    rows[range]
-                        .iter()
-                        .map(|row| {
-                            let selected = this.selected.as_ref() == Some(&row.id);
-                            let clicked = row.clone();
-                            // Only rows on screen ask, so pictures load as
-                            // the list scrolls.
-                            let picture = this
-                                .pictures
-                                .update(cx, |pictures, cx| pictures.picture(&row.id, cx));
-                            div().w_full().px_2().child(
-                                chat_row(row, picture, now)
-                                    .when(selected, |row| row.bg(rgb(RAISED)))
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        this.select(clicked.clone(), cx);
-                                    })),
-                            )
-                        })
-                        .collect::<Vec<_>>()
-                }),
-            )
-            .flex_1()
-            .pb_2()
-            .into_any_element()
+            Self::chats(rows, cx).into_any_element()
         };
 
+        let view = cx.weak_entity();
         div()
             .size_full()
             .flex()
             .flex_col()
             .bg(rgb(PANEL))
             .text_color(rgb(TEXT))
-            .child(
+            .child(if self.in_archive {
+                archive_header(cx)
+            } else {
                 div()
                     .px_5()
                     .pt_5()
@@ -129,15 +129,113 @@ impl Render for ChatListView {
                     .font_family(DISPLAY_FONT)
                     .text_size(px(24.0))
                     .font_weight(FontWeight::BOLD)
-                    .child("Chats"),
-            )
-            .when(archived > 0, |panel| {
+                    .child("Chats")
+            })
+            .child(search_field(&self.search))
+            .when(!self.in_archive, |panel| {
+                panel.child(
+                    div()
+                        .pt_2p5()
+                        .child(chips(self.filter, unread, move |filter, cx| {
+                            let _ = view.update(cx, |view, cx| {
+                                view.filter = filter;
+                                cx.notify();
+                            });
+                        })),
+                )
+            })
+            .child(div().h_2())
+            .when(!self.in_archive && !narrowing && archived > 0, |panel| {
                 panel
-                    .child(archive_row(archived))
+                    .child(
+                        archive_row(archived).on_click(cx.listener(|view, _, _, cx| {
+                            view.in_archive = true;
+                            cx.notify();
+                        })),
+                    )
                     .child(div().mx_5().my_1().child(separator()))
             })
             .child(body)
     }
+}
+
+impl ChatListView {
+    /// `rows` as a lazily drawn list: only rows on screen are built.
+    fn chats(rows: Vec<ChatRow>, cx: &mut Context<Self>) -> impl IntoElement {
+        let count = rows.len();
+        uniform_list(
+            "chats",
+            count,
+            cx.processor(move |this, range: std::ops::Range<usize>, _window, cx| {
+                let now = Local::now();
+                rows[range]
+                    .iter()
+                    .map(|row| {
+                        let selected = this.selected.as_ref() == Some(&row.id);
+                        let clicked = row.clone();
+                        // Only rows on screen ask, so pictures load as the
+                        // list scrolls.
+                        let picture = this
+                            .pictures
+                            .update(cx, |pictures, cx| pictures.picture(&row.id, cx));
+                        div().w_full().px_2().child(
+                            chat_row(row, picture, now)
+                                .when(selected, |row| row.bg(rgb(RAISED)))
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    this.select(clicked.clone(), cx);
+                                })),
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            }),
+        )
+        .flex_1()
+        .pb_2()
+    }
+}
+
+/// The archived chats' heading, with the way back to the rest.
+fn archive_header(cx: &mut Context<ChatListView>) -> Div {
+    div()
+        .flex()
+        .flex_col()
+        .gap_2()
+        .px_3()
+        .pt_4()
+        .pb_3()
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap_2()
+                .child(
+                    Button::new("leave-archive")
+                        .icon(Icon::Back)
+                        .variant(ButtonVariant::Ghost)
+                        .round()
+                        .tooltip("Back")
+                        .on_click(cx.listener(|view, _, _, cx| {
+                            view.in_archive = false;
+                            cx.notify();
+                        })),
+                )
+                .child(
+                    div()
+                        .text_size(px(17.0))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .child("Archived"),
+                ),
+        )
+        .child(
+            div()
+                .px_2()
+                .text_size(px(13.0))
+                .text_color(rgb(MUTED))
+                .child(
+                    "These chats stay archived when new messages arrive. To change this, \
+                     open WhatsApp on your phone: Settings > Chats.",
+                ),
+        )
 }
 
 /// Chat-shaped placeholders while the first sync fills the list.
@@ -207,8 +305,9 @@ fn empty_state() -> Div {
         )
 }
 
-fn archive_row(count: usize) -> Div {
+fn archive_row(count: usize) -> Stateful<Div> {
     div()
+        .id("archived")
         .mx_2()
         .px_3()
         .h(px(44.0))
@@ -216,6 +315,8 @@ fn archive_row(count: usize) -> Div {
         .items_center()
         .gap_3()
         .rounded_xl()
+        .cursor_pointer()
+        .hover(|row| row.bg(rgb(RAISED)))
         .text_color(rgb(MUTED))
         .child(
             div().w(px(AVATAR_SIZE)).flex().justify_center().child(

@@ -287,7 +287,21 @@ impl ChatBook {
     /// top, then the rest by latest activity. Archived chats are left out.
     #[must_use]
     pub(crate) fn listed(&self) -> Vec<&Chat> {
-        let mut chats: Vec<&Chat> = self.chats.values().filter(|chat| !chat.archived).collect();
+        self.ordered(false)
+    }
+
+    /// The archived chats, in the list's order.
+    #[must_use]
+    pub(crate) fn archived(&self) -> Vec<&Chat> {
+        self.ordered(true)
+    }
+
+    fn ordered(&self, archived: bool) -> Vec<&Chat> {
+        let mut chats: Vec<&Chat> = self
+            .chats
+            .values()
+            .filter(|chat| chat.archived == archived)
+            .collect();
         chats.sort_by(|a, b| {
             b.pinned_at
                 .cmp(&a.pinned_at)
@@ -353,12 +367,6 @@ impl ChatBook {
     /// Marks `id` as the chat on screen, or none.
     pub(crate) fn set_open(&mut self, id: Option<&ChatId>) {
         self.open = id.map(|id| self.resolve(id).clone());
-    }
-
-    /// How many chats are archived.
-    #[must_use]
-    pub(crate) fn archived_count(&self) -> usize {
-        self.chats.values().filter(|chat| chat.archived).count()
     }
 
     /// Returns and forgets what changed since the previous call.
@@ -473,7 +481,7 @@ mod tests {
         book.apply(ChatChange::Archived(id("a@s.whatsapp.net"), true));
 
         assert_eq!(book.listed().len(), 0);
-        assert_eq!(book.archived_count(), 1);
+        assert_eq!(book.archived().len(), 1);
     }
 
     #[test]

@@ -48,6 +48,28 @@ pub struct ChatRow {
 }
 
 impl ChatRow {
+    /// Whether the chat answers a search for `query`: its name holds it,
+    /// ignoring case, or, for a number, its phone number holds the digits.
+    #[must_use]
+    pub fn matches(&self, query: &str) -> bool {
+        let query = query.trim().to_lowercase();
+        let digits: String = query.chars().filter(char::is_ascii_digit).collect();
+        let number = digits.len() >= 3
+            && query
+                .chars()
+                .all(|c| c.is_ascii_digit() || " +-()".contains(c));
+        let by_number = number
+            && self.addresses.iter().any(|address| {
+                address.phone_number().is_some()
+                    && address
+                        .as_str()
+                        .split('@')
+                        .next()
+                        .is_some_and(|user| user.contains(&digits))
+            });
+        query.is_empty() || self.title.to_lowercase().contains(&query) || by_number
+    }
+
     fn new(book: &ChatBook, chat: &Chat, aliases: &[&ChatId], now: i64) -> Self {
         let preview = chat.preview.as_ref().map(|preview| {
             let text = match (&preview.author, preview.from_me) {
@@ -85,7 +107,7 @@ fn first_line(text: &str) -> &str {
 #[derive(Debug, Clone, Default)]
 struct Snapshot {
     rows: Arc<[ChatRow]>,
-    archived: usize,
+    archived: Arc<[ChatRow]>,
 }
 
 /// Requests to the sync worker, alongside protocol events.
@@ -159,10 +181,10 @@ impl ChatList {
         &self.snapshot.rows
     }
 
-    /// How many chats are archived.
+    /// Archived chats, in display order.
     #[must_use]
-    pub fn archived_count(&self) -> usize {
-        self.snapshot.archived
+    pub fn archived(&self) -> &Arc<[ChatRow]> {
+        &self.snapshot.archived
     }
 
     /// Marks `id` as the chat on screen, reading it; messages arriving there
@@ -358,16 +380,18 @@ fn open_store(path: &Path) -> Option<ChatStore> {
 fn snapshot(book: &ChatBook) -> Snapshot {
     let now = unix_now();
     let addresses = book.addresses();
-    Snapshot {
-        rows: book
-            .listed()
+    let rows = |chats: Vec<&Chat>| -> Arc<[ChatRow]> {
+        chats
             .into_iter()
             .map(|chat| {
                 let aliases = addresses.get(&chat.id).map_or(&[][..], Vec::as_slice);
                 ChatRow::new(book, chat, aliases, now)
             })
-            .collect(),
-        archived: book.archived_count(),
+            .collect()
+    };
+    Snapshot {
+        rows: rows(book.listed()),
+        archived: rows(book.archived()),
     }
 }
 

@@ -5,6 +5,7 @@
 //! [`ChatListView`] renders them.
 
 mod book;
+mod filters;
 mod list;
 mod picker;
 mod store;

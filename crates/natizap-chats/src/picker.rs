@@ -62,14 +62,14 @@ impl ChatPicker {
         }
     }
 
-    /// The chats whose name holds what was typed, ignoring case.
+    /// The chats that answer what was typed.
     fn matching(&self, cx: &Context<Self>) -> Vec<ChatRow> {
-        let query = self.search.read(cx).text().trim().to_lowercase();
+        let query = self.search.read(cx).text();
         self.list
             .read(cx)
             .rows()
             .iter()
-            .filter(|row| query.is_empty() || row.title.to_lowercase().contains(&query))
+            .filter(|row| row.matches(query))
             .cloned()
             .collect()
     }
