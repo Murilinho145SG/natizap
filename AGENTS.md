@@ -24,6 +24,13 @@ long chats, low memory use, and an interface that never makes the user wait.
 WhatsApp multi-device protocol directly. Messages stay end-to-end encrypted;
 keys and history are stored locally on the user's machine.
 
+**Scope: full feature parity.** natizap targets everything WhatsApp offers,
+not a messaging-only subset: chats, groups, communities, channels, status,
+media, stickers, polls, and **voice and video calls**, including group calls.
+Calls are a flagship feature: the official desktop calls are poorly made, and
+natizap must do them properly (low latency, stable audio/video, correct device
+handling).
+
 **Product principles** (use them to settle design decisions):
 
 - **Performance is the feature.** Never block the UI thread; protocol, crypto,
@@ -48,10 +55,13 @@ expected split, for orientation:
 | `natizap-session`          | Protocol connection, device pairing (QR/code), reconnects. |
 | `natizap-store`            | Local persistence of keys, chats and message history.      |
 | `natizap-chats`            | Chat list: ordering, unread counts, pin, archive, mute.    |
-| `natizap-messages`         | Conversation view: send, receive, reply, react, edit.      |
-| `natizap-media`            | Images, video, audio, voice notes, documents.              |
-| `natizap-contacts`         | Contacts, profiles, presence.                              |
-| `natizap-groups`           | Group metadata and administration.                         |
+| `natizap-messages`         | Conversation view: send, receive, reply, react, edit, polls. |
+| `natizap-media`            | Images, video, audio, voice notes, documents, stickers.    |
+| `natizap-calls`            | Voice and video calls, 1:1 and group; audio/video devices. |
+| `natizap-contacts`         | Contacts, profiles, presence, blocking.                    |
+| `natizap-groups`           | Groups and communities: metadata and administration.       |
+| `natizap-status`           | Status updates: view, post, privacy.                       |
+| `natizap-channels`         | Channels: follow, read, react.                             |
 | `natizap-notifications`    | Native desktop notifications.                              |
 | `natizap-ui`               | Shared GPUI theme and reusable components.                 |
 
