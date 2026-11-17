@@ -149,8 +149,12 @@ pub(crate) async fn send_extra(
     let rejected = |error: &dyn std::fmt::Display| ActionError::Rejected(error.to_string());
     let message = match extra {
         Extra::Poll(poll) => {
-            // Zero lets people choose any number of answers; one, a single one.
-            let selectable = u32::from(!poll.multiple);
+            // How many answers one person may choose: all of them, or one.
+            let selectable = if poll.multiple {
+                u32::try_from(poll.options.len()).unwrap_or(u32::MAX)
+            } else {
+                1
+            };
             // The returned secret opens the votes, which are not shown yet.
             let (sent, _secret) = client
                 .polls()
