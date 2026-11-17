@@ -5,8 +5,8 @@ use std::ops::Range;
 
 use gpui::prelude::*;
 use gpui::{
-    App, Div, ElementId, FontStyle, FontWeight, InteractiveText, StrikethroughStyle, StyledText,
-    TextRun, UnderlineStyle, WeakEntity, Window, div, px, rgb,
+    AnyElement, App, ElementId, FontStyle, FontWeight, InteractiveText, StrikethroughStyle,
+    StyledText, TextRun, UnderlineStyle, WeakEntity, Window, div, px, rgb,
 };
 use natizap_protocol::{ChatId, LinkKind, Mark};
 use natizap_ui::code_block;
@@ -17,9 +17,7 @@ use crate::view::{ChatRequested, ConversationView};
 
 /// `text` as paragraphs and code blocks, top to bottom. `id` must be unique
 /// among the bubbles on screen.
-pub(crate) fn rich_text(id: &str, text: &Text, view: &WeakEntity<ConversationView>) -> Div {
-    let mut column = div().flex().flex_col().gap_1p5().min_w_0();
-    let mut prose_start = 0;
+pub(crate) fn rich_text(id: &str, text: &Text, view: &WeakEntity<ConversationView>) -> AnyElement {
     let mut blocks = text
         .marks
         .iter()
@@ -27,18 +25,23 @@ pub(crate) fn rich_text(id: &str, text: &Text, view: &WeakEntity<ConversationVie
         .map(|(range, _)| range.clone())
         .collect::<Vec<_>>();
     blocks.sort_by_key(|range| range.start);
+    // Plain text stays a bare text element: wrapped in a column, the
+    // bubble's wrapping row squeezes it to one letter per line.
+    if blocks.is_empty() {
+        return prose(id, 0, text, 0..text.text.len(), view)
+            .map_or_else(|| div().into_any_element(), IntoElement::into_any_element);
+    }
+    let mut column = div().w_full().flex().flex_col().gap_1p5();
+    let mut prose_start = 0;
     for (index, block) in blocks.iter().enumerate() {
         column = column.children(prose(id, index, text, prose_start..block.start, view));
         column = column.child(code_block(text.text[block.clone()].to_owned()));
         prose_start = block.end;
     }
-    column.children(prose(
-        id,
-        blocks.len(),
-        text,
-        prose_start..text.text.len(),
-        view,
-    ))
+    let rest = prose_start..text.text.len();
+    column
+        .children(prose(id, blocks.len(), text, rest, view))
+        .into_any_element()
 }
 
 /// The text in `range` between code blocks, styled, or nothing when it is
