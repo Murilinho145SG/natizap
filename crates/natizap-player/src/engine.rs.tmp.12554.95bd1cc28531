@@ -1,0 +1,309 @@
+//! Decodes a media file on its own thread: video into frames ready to draw,
+//! sound into the speaker's buffer, both paced by the [`Clock`].
+
+use std::collections::VecDeque;
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{Receiver, TryRecvError};
+use std::sync::{Arc, Mutex, PoisonError};
+use std::time::Duration;
+
+use ffmpeg_next as ffmpeg;
+use ffmpeg::format::Pixel;
+use ffmpeg::media::Type;
+use ffmpeg::software::resampling;
+use ffmpeg::software::scaling;
+use ffmpeg::util::frame;
+
+use crate::clock::Clock;
+use crate::speaker::Speaker;
+
+/// Decoded video kept ahead of the clock; enough to absorb hiccups without
+/// holding much memory.
+const VIDEO_AHEAD: usize = 8;
+/// Decoded sound kept ahead of the speaker.
+const AUDIO_AHEAD: Duration = Duration::from_millis(500);
+/// How long the decoder rests when it is far enough ahead.
+const IDLE: Duration = Duration::from_millis(5);
+/// Frames wider than this are scaled down: a chat video never needs more.
+const MAX_WIDTH: u32 = 1920;
+
+/// One video frame in GPUI's pixel layout.
+pub(crate) struct VideoFrame {
+    /// When to show it.
+    pub(crate) at: Duration,
+    pub(crate) width: u32,
+    pub(crate) height: u32,
+    /// Rows of `width` BGRA pixels, top to bottom.
+    pub(crate) bgra: Vec<u8>,
+}
+
+/// State shared between the decoder thread, the speaker and the UI.
+#[derive(Default)]
+pub(crate) struct Shared {
+    pub(crate) clock: Clock,
+    pub(crate) frames: Mutex<VecDeque<VideoFrame>>,
+    pub(crate) info: Mutex<Info>,
+    pub(crate) ended: AtomicBool,
+}
+
+/// What the UI needs to know about the file.
+#[derive(Debug, Default, Clone)]
+pub(crate) struct Info {
+    pub(crate) duration: Option<Duration>,
+    pub(crate) has_video: bool,
+    /// Why playback failed, if it did.
+    pub(crate) error: Option<String>,
+}
+
+impl Shared {
+    pub(crate) fn info(&self) -> Info {
+        lock(&self.info).clone()
+    }
+}
+
+/// What the UI asks the decoder thread to do.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum Command {
+    Pause(bool),
+    Seek(Duration),
+}
+
+pub(crate) fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    // Each holder leaves the data consistent before any step that can panic.
+    mutex.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// Decodes `path` until the commands channel closes, which happens when the
+/// player is dropped.
+pub(crate) fn run(path: PathBuf, shared: Arc<Shared>, commands: Receiver<Command>) {
+    if let Err(error) = decode(&path, &shared, &commands) {
+        tracing::warn!(%error, path = %path.display(), "could not play media");
+        lock(&shared.info).error = Some(error.to_string());
+    }
+}
+
+fn decode(
+    path: &std::path::Path,
+    shared: &Shared,
+    commands: &Receiver<Command>,
+) -> Result<(), ffmpeg::Error> {
+    ffmpeg::init()?;
+    let mut input = ffmpeg::format::input(&path)?;
+
+    let mut video = input.streams().best(Type::Video).map(VideoTrack::new).transpose()?;
+    let speaker = Speaker::open(&shared.clock).inspect_err(|error| {
+        tracing::warn!(%error, "no sound output; playing silently");
+    });
+    let mut audio = match (input.streams().best(Type::Audio), speaker) {
+        (Some(stream), Ok(speaker)) => Some(AudioTrack::new(&stream, speaker)?),
+        _ => None,
+    };
+    {
+        let mut info = lock(&shared.info);
+        info.has_video = video.is_some();
+        info.duration = u64::try_from(input.duration())
+            .ok()
+            .map(|micros| Duration::from_micros(micros));
+    }
+    shared.clock.restart_at(Duration::ZERO);
+
+    let mut input_done = false;
+    loop {
+        match commands.try_recv() {
+            Ok(Command::Pause(paused)) => {
+                shared.clock.set_paused(paused);
+                if let Some(audio) = &audio {
+                    audio.speaker.set_paused(paused);
+                }
+            }
+            Ok(Command::Seek(position)) => {
+                let micros = i64::try_from(position.as_micros()).unwrap_or(i64::MAX);
+                input.seek(micros, ..micros)?;
+                lock(&shared.frames).clear();
+                if let Some(video) = &mut video {
+                    video.decoder.flush();
+                }
+                if let Some(audio) = &mut audio {
+                    audio.decoder.flush();
+                    audio.speaker.clear();
+                    audio.skip_until = position;
+                }
+                if let Some(video) = &mut video {
+                    video.skip_until = position;
+                }
+                shared.clock.restart_at(position);
+                shared.ended.store(false, Ordering::Release);
+                input_done = false;
+            }
+            Err(TryRecvError::Empty) => {}
+            Err(TryRecvError::Disconnected) => return Ok(()),
+        }
+
+        let video_full = lock(&shared.frames).len() >= VIDEO_AHEAD;
+        let audio_full = audio.as_ref().is_some_and(|audio| audio.speaker.buffered() >= AUDIO_AHEAD);
+        if input_done || shared.clock.is_paused() || (video_full && (audio_full || audio.is_none()))
+            || (audio_full && video.is_none())
+        {
+            if input_done && lock(&shared.frames).is_empty()
+                && audio.as_ref().is_none_or(|audio| audio.speaker.buffered().is_zero())
+            {
+                shared.ended.store(true, Ordering::Release);
+            }
+            std::thread::sleep(IDLE);
+            continue;
+        }
+
+        let mut packet = ffmpeg::Packet::empty();
+        match packet.read(&mut input) {
+            Ok(()) => {}
+            Err(ffmpeg::Error::Eof) => {
+                if let Some(video) = &mut video {
+                    video.decoder.send_eof()?;
+                    video.drain(shared)?;
+                }
+                if let Some(audio) = &mut audio {
+                    audio.decoder.send_eof()?;
+                    audio.drain()?;
+                }
+                input_done = true;
+                continue;
+            }
+            Err(error) => return Err(error),
+        }
+        let index = packet.stream();
+        if let Some(video) = video.as_mut().filter(|video| video.index == index) {
+            video.decoder.send_packet(&packet)?;
+            video.drain(shared)?;
+        } else if let Some(audio) = audio.as_mut().filter(|audio| audio.index == index) {
+            audio.decoder.send_packet(&packet)?;
+            audio.drain()?;
+        }
+    }
+}
+
+fn seconds(timestamp: i64, time_base: ffmpeg::Rational) -> Duration {
+    let seconds = timestamp as f64 * f64::from(time_base.numerator())
+        / f64::from(time_base.denominator());
+    Duration::try_from_secs_f64(seconds).unwrap_or_default()
+}
+
+struct VideoTrack {
+    index: usize,
+    time_base: ffmpeg::Rational,
+    decoder: ffmpeg::decoder::Video,
+    scaler: scaling::Context,
+    /// Frames before this are decoded only to reach it after a seek.
+    skip_until: Duration,
+}
+
+impl VideoTrack {
+    fn new(stream: ffmpeg::format::stream::Stream<'_>) -> Result<Self, ffmpeg::Error> {
+        let decoder =
+            ffmpeg::codec::context::Context::from_parameters(stream.parameters())?.decoder().video()?;
+        let (width, height) = fit(decoder.width(), decoder.height());
+        let scaler = scaling::Context::get(
+            decoder.format(),
+            decoder.width(),
+            decoder.height(),
+            Pixel::BGRA,
+            width,
+            height,
+            scaling::Flags::BILINEAR,
+        )?;
+        Ok(Self {
+            index: stream.index(),
+            time_base: stream.time_base(),
+            decoder,
+            scaler,
+            skip_until: Duration::ZERO,
+        })
+    }
+
+    fn drain(&mut self, shared: &Shared) -> Result<(), ffmpeg::Error> {
+        let mut decoded = frame::Video::empty();
+        while self.decoder.receive_frame(&mut decoded).is_ok() {
+            let at = seconds(decoded.timestamp().unwrap_or_default(), self.time_base);
+            if at < self.skip_until {
+                continue;
+            }
+            let mut scaled = frame::Video::empty();
+            self.scaler.run(&decoded, &mut scaled)?;
+            lock(&shared.frames).push_back(VideoFrame {
+                at,
+                width: scaled.width(),
+                height: scaled.height(),
+                bgra: packed_rows(&scaled),
+            });
+        }
+        Ok(())
+    }
+}
+
+/// `frame`'s pixels without the padding FFmpeg adds at the end of each row.
+fn packed_rows(frame: &frame::Video) -> Vec<u8> {
+    let row = frame.width() as usize * 4;
+    let stride = frame.stride(0);
+    let data = frame.data(0);
+    (0..frame.height() as usize).flat_map(|y| &data[y * stride..y * stride + row]).copied().collect()
+}
+
+/// Display size: the original, scaled down to [`MAX_WIDTH`], keeping even
+/// sides as the scaler prefers.
+fn fit(width: u32, height: u32) -> (u32, u32) {
+    if width <= MAX_WIDTH {
+        return (width, height);
+    }
+    let scaled_height = u64::from(height) * u64::from(MAX_WIDTH) / u64::from(width);
+    (MAX_WIDTH, u32::try_from(scaled_height).unwrap_or(height) & !1)
+}
+
+struct AudioTrack {
+    index: usize,
+    time_base: ffmpeg::Rational,
+    decoder: ffmpeg::decoder::Audio,
+    resampler: resampling::Context,
+    speaker: Speaker,
+    skip_until: Duration,
+}
+
+impl AudioTrack {
+    fn new(stream: &ffmpeg::format::stream::Stream<'_>, speaker: Speaker) -> Result<Self, ffmpeg::Error> {
+        let decoder =
+            ffmpeg::codec::context::Context::from_parameters(stream.parameters())?.decoder().audio()?;
+        let resampler = resampling::Context::get(
+            decoder.format(),
+            decoder.channel_layout(),
+            decoder.rate(),
+            ffmpeg::format::Sample::F32(ffmpeg::format::sample::Type::Packed),
+            ffmpeg::ChannelLayout::default(i32::from(speaker.channels())),
+            speaker.rate(),
+        )?;
+        Ok(Self {
+            index: stream.index(),
+            time_base: stream.time_base(),
+            decoder,
+            resampler,
+            speaker,
+            skip_until: Duration::ZERO,
+        })
+    }
+
+    fn drain(&mut self) -> Result<(), ffmpeg::Error> {
+        let mut decoded = frame::Audio::empty();
+        while self.decoder.receive_frame(&mut decoded).is_ok() {
+            let at = seconds(decoded.timestamp().unwrap_or_default(), self.time_base);
+            if at < self.skip_until {
+                continue;
+            }
+            let mut resampled = frame::Audio::empty();
+            self.resampler.run(&decoded, &mut resampled)?;
+            let samples = resampled.samples() * usize::from(self.speaker.channels());
+            let bytes = &resampled.data(0)[..samples * 4];
+            self.speaker.push(
+                bytes.chunks_exact(4).map(|b| f32::from_ne_bytes([b[0], b[1], b[2], b[3]])),
+            );
+        }
+        Ok(())
+    }
+}
