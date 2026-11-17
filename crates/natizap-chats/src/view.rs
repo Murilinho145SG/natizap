@@ -64,11 +64,13 @@ impl Render for ChatListView {
                         .map(|row| {
                             let selected = this.selected.as_ref() == Some(&row.id);
                             let clicked = row.clone();
-                            chat_row(row, now)
-                                .when(selected, |row| row.bg(rgb(RAISED)))
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.select(clicked.clone(), cx);
-                                }))
+                            div().w_full().px_2().child(
+                                chat_row(row, now)
+                                    .when(selected, |row| row.bg(rgb(RAISED)))
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.select(clicked.clone(), cx);
+                                    })),
+                            )
                         })
                         .collect::<Vec<_>>()
                 }),
@@ -187,7 +189,7 @@ fn chat_row(row: &ChatRow, now: DateTime<Local>) -> Stateful<Div> {
     div()
         .id(gpui::SharedString::from(row.id.as_str().to_owned()))
         .h(px(ROW_HEIGHT))
-        .mx_2()
+        .w_full()
         .px_3()
         .flex()
         .items_center()
