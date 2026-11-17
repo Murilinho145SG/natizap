@@ -50,6 +50,8 @@ icons! {
     Check => "check.svg",
     /// Delivered, or read when tinted.
     Checks => "checks.svg",
+    /// Opens a menu below it.
+    ChevronDown => "chevron-down.svg",
     /// Waiting, e.g. a message still sending.
     Clock => "clock.svg",
     /// A conversation.
@@ -80,6 +82,8 @@ icons! {
     Restore => "restore.svg",
     /// Send a message.
     Send => "send.svg",
+    /// Sound: marks voice notes.
+    Waveform => "waveform.svg",
 }
 
 /// Serves the bundled icons; register with `Application::with_assets`.
