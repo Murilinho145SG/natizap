@@ -207,7 +207,7 @@ fn highlight(code: &str) -> Vec<(Range<usize>, Token)> {
             // Python's f"…", r"…" and b"…" are text too.
             let prefixed = ["f", "r", "b", "rb", "br", "fr", "rf"].contains(&word)
                 && at(end).is_some_and(|n| matches!(n, '"' | '\''));
-            if let Some(close) = closing_quote(&chars, end).filter(|_| prefixed) {
+            if let Some(close) = prefixed.then(|| closing_quote(&chars, end)).flatten() {
                 found.push((byte(i)..byte(close), Token::Quoted));
                 i = close;
                 continue;
@@ -302,6 +302,11 @@ mod tests {
                 ("# say it", Token::Comment),
             ]
         );
+    }
+
+    #[test]
+    fn reads_code_that_ends_in_a_word() {
+        assert_eq!(tokens("cargo test --workspace"), []);
     }
 
     #[test]
