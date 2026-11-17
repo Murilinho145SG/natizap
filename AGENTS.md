@@ -146,6 +146,10 @@ Keep this table current when a crate is added, renamed or removed.
   primary actions. `MINT` and `ALERT` only signal state.
 - Type: Figtree (`UI_FONT`) for interface text; Bricolage Grotesque
   (`DISPLAY_FONT`) only for the wordmark, headings and avatar initials.
+- Emoji come from the bundled `Natizap Emoji` font, the fallback of
+  `base_font()` set at the window root; never draw emoji as images or pick
+  font weights to dodge monochrome glyphs. Rebuild the font with
+  `scripts/build-emoji-font.py` (needs fontTools) to update it.
 - The app draws its own title bar and window frame (`window_frame`), since
   GNOME on Wayland leaves decorations to the client.
 
