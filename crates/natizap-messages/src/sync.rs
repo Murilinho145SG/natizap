@@ -11,6 +11,7 @@ use crate::message::{Delivery, Message, MessageChange};
 pub(crate) const MESSAGE_EVENTS: &[EventKind] = &[
     EventKind::HistorySync,
     EventKind::Messages,
+    EventKind::Receipt,
     EventKind::LoggedOut,
 ];
 
@@ -217,5 +218,12 @@ mod tests {
             }]
         );
         assert_eq!(changes(&receipt(ReceiptType::ReadSelf)), []);
+    }
+
+    #[test]
+    fn subscribes_to_the_events_it_translates() {
+        // Translating an event is useless if the subscription never asks
+        // for it.
+        assert!(MESSAGE_EVENTS.contains(&receipt(ReceiptType::Read).kind()));
     }
 }
