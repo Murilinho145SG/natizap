@@ -14,6 +14,9 @@ use crate::message::Message;
 pub(crate) struct Author {
     /// Their address, for their picture.
     pub(crate) id: ChatId,
+    /// Where their profile is asked for: their phone-number address when
+    /// known, as a LID tells less.
+    pub(crate) profile: ChatId,
     /// The name they chose, marked with `~` as the phone does for people not
     /// in the address book, or else their number.
     pub(crate) name: SharedString,
@@ -83,6 +86,7 @@ impl Author {
         };
         Self {
             id: sender.clone(),
+            profile: phone_address.clone(),
             name: name.into(),
             phone: phone.map(Into::into),
             color: name_color(sender.as_str()),

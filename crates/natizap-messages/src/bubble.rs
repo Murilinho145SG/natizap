@@ -10,13 +10,14 @@ use natizap_ui::theme::{ALERT, LINE, MINT, MUTED, OUTGOING, PANEL, RAISED, SCRIM
 use natizap_ui::{Button, ButtonSize, ButtonVariant, Icon, avatar};
 use std::path::PathBuf;
 
+use crate::authors::Author;
 use crate::extra_view::render_extra;
 use crate::items::{Body, Bubble, Item, MediaView, QuotePreview};
 use crate::media_view::render_media;
 use crate::message::Delivery;
 use crate::quote::{name_and_phone, quoted};
 use crate::rich_text::{Selection, rich_text, selectable};
-use crate::view::ConversationView;
+use crate::view::{ConversationView, ProfileRequested};
 use crate::voice::VoiceUi;
 use crate::voice_view::render_voice;
 
@@ -81,12 +82,18 @@ fn render_bubble(
             div().w(px(SENDER_PICTURE)).flex_none().self_start().when(
                 bubble.author.is_some(),
                 |gutter| {
-                    gutter.child(avatar(
-                        sender.id.as_str(),
-                        sender.name.trim_start_matches("~ "),
-                        picture,
-                        px(SENDER_PICTURE),
-                    ))
+                    gutter.child(
+                        div()
+                            .id(SharedString::from(format!("sender-{}", bubble.id)))
+                            .cursor_pointer()
+                            .on_click(open_author(sender, view))
+                            .child(avatar(
+                                sender.id.as_str(),
+                                sender.name.trim_start_matches("~ "),
+                                picture,
+                                px(SENDER_PICTURE),
+                            )),
+                    )
                 },
             )
         });
@@ -175,7 +182,7 @@ fn shape(
         )
     });
     if let Some(media) = voice_note {
-        return padded(bubble).child(render_voice(media, voice, meta, view));
+        return padded(bubble, view).child(render_voice(media, voice, meta, view));
     }
     let picture = bubble
         .media
@@ -220,7 +227,7 @@ fn shape(
             }),
     };
 
-    padded(bubble)
+    padded(bubble, view)
         .children(bubble.media.as_ref().map(|media| render_media(media, view)))
         .children(
             bubble
@@ -293,7 +300,7 @@ fn picture_bubble(
     frame(bubble)
         .p(px(3.0))
         .gap_1()
-        .children(author(bubble).map(|name| name.px(px(7.0)).pt(px(2.0))))
+        .children(author(bubble, view).map(|name| name.px(px(7.0)).pt(px(2.0))))
         .children(forwarded(bubble).map(|line| line.px(px(7.0))))
         .children(
             bubble
@@ -306,12 +313,12 @@ fn picture_bubble(
 }
 
 /// [`frame`] with the room text needs around it.
-fn padded(bubble: &Bubble) -> Div {
+fn padded(bubble: &Bubble, view: &WeakEntity<ConversationView>) -> Div {
     frame(bubble)
         .gap_1()
         .px(px(10.0))
         .py(px(6.0))
-        .children(author(bubble))
+        .children(author(bubble, view))
         .children(forwarded(bubble))
 }
 
@@ -358,6 +365,24 @@ fn frame(bubble: &Bubble) -> Div {
         })
 }
 
+/// Asks for `author`'s profile.
+fn open_author(
+    author: &Author,
+    view: &WeakEntity<ConversationView>,
+) -> impl Fn(&gpui::ClickEvent, &mut gpui::Window, &mut App) + 'static {
+    let request = ProfileRequested {
+        chat: author.profile.clone(),
+        title: author.name.trim_start_matches("~ ").to_owned().into(),
+        verified: false,
+    };
+    let view = view.clone();
+    move |_, _, cx| {
+        cx.stop_propagation();
+        let request = request.clone();
+        let _ = view.update(cx, |_, cx| cx.emit(request));
+    }
+}
+
 /// The quoted message's block; clicking it goes to the quoted message.
 fn jump_to_quoted(quote: &QuotePreview, view: &WeakEntity<ConversationView>) -> Stateful<Div> {
     let (id, view) = (quote.id.clone(), view.clone());
@@ -371,17 +396,24 @@ fn jump_to_quoted(quote: &QuotePreview, view: &WeakEntity<ConversationView>) -> 
 }
 
 /// Who wrote a group message: their name in their color, and their
-/// number on the right beside a chosen name.
-fn author(bubble: &Bubble) -> Option<Div> {
+/// number on the right beside a chosen name. Their name opens their
+/// profile.
+fn author(bubble: &Bubble, view: &WeakEntity<ConversationView>) -> Option<Div> {
     bubble.author.as_ref().map(|author| {
         div()
             .flex()
             .flex_col()
-            .child(name_and_phone(
-                author.name.clone(),
-                author.color,
-                author.phone.clone(),
-            ))
+            .child(
+                div()
+                    .id(SharedString::from(format!("author-{}", bubble.id)))
+                    .cursor_pointer()
+                    .on_click(open_author(author, view))
+                    .child(name_and_phone(
+                        author.name.clone(),
+                        author.color,
+                        author.phone.clone(),
+                    )),
+            )
             .children(
                 author
                     .role
