@@ -98,11 +98,25 @@ organizing rule of the codebase.
 
 ### Crates
 
-| Crate     | Kind   | Role                                              |
-| --------- | ------ | ------------------------------------------------- |
-| `natizap` | binary | Entry point; wires the feature crates together.   |
+| Crate             | Kind    | Role                                                     |
+| ----------------- | ------- | -------------------------------------------------------- |
+| `natizap`         | binary  | Entry point; wires the feature crates together.          |
+| `natizap-session` | feature | Protocol client lifecycle, QR pairing and pairing screen. |
 
 Keep this table current when a crate is added, renamed or removed.
+
+### Runtime model
+
+- GPUI owns the main thread and its own executor. The protocol client
+  (`whatsapp-rust`) needs Tokio, which runs on worker threads registered with
+  `gpui_tokio::init`; spawn Tokio work with `gpui_tokio::Tokio::spawn`.
+- Protocol events cross to the UI over channels and are applied to GPUI
+  entities with `entity.update`, followed by `cx.notify()`. Never block the
+  UI thread on protocol, storage or network work.
+- GPUI comes from Zed's Git repository pinned to one commit. The root
+  `[patch.crates-io]` mirrors the patches Zed applies at that commit; update
+  both together when bumping the pin.
+- `whatsapp-rust` is used without its `simd` feature, which needs nightly.
 
 ## Workspace conventions
 
