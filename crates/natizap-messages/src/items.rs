@@ -110,6 +110,8 @@ pub(crate) struct ReactionChip {
 /// The quoted message shown at the top of a reply.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct QuotePreview {
+    /// The quoted message's id, to go to it.
+    pub(crate) id: SharedString,
     pub(crate) author: SharedString,
     /// The author's number beside a chosen name, in groups.
     pub(crate) phone: Option<SharedString>,
@@ -197,62 +199,7 @@ fn bubble(
         .as_ref()
         .map(|sender| Author::of(message, sender, senders));
     let author = sender.clone().filter(|_| starts_burst);
-    let quote = message
-        .quote
-        .as_ref()
-        .map(|quote| match by_id.get(quote.id.as_str()) {
-            Some(quoted) => {
-                let (author, color, phone) = match (&quoted.sender, quoted.from_me) {
-                    (_, true) => ("You".into(), ACCENT, None),
-                    (Some(sender), false) => {
-                        let author = Author::of(quoted, sender, senders);
-                        (author.name, author.color, author.phone)
-                    }
-                    (None, false) => (
-                        contact.to_owned().into(),
-                        name_color(quoted.chat.as_str()),
-                        None,
-                    ),
-                };
-                QuotePreview {
-                    author,
-                    phone,
-                    color,
-                    text: quote_text(quoted).into(),
-                    kind: quoted.kind,
-                    thumbnail: quoted
-                        .media
-                        .as_ref()
-                        .and_then(|media| media.thumbnail.clone())
-                        .filter(|_| {
-                            matches!(
-                                quoted.kind,
-                                ContentKind::Photo | ContentKind::Video | ContentKind::Sticker
-                            )
-                        })
-                        .map(|bytes| preview(quoted.kind, bytes)),
-                }
-            }
-            // The quoted message is older than what is loaded, or was never
-            // synced: fall back to what the reply carried.
-            None => QuotePreview {
-                author: quote
-                    .sender
-                    .as_ref()
-                    .and_then(ChatId::phone_number)
-                    .unwrap_or_else(|| "Message".to_owned())
-                    .into(),
-                phone: None,
-                color: MUTED,
-                text: quote
-                    .summary
-                    .as_deref()
-                    .map_or_default(|text| Marked::parse(text).text)
-                    .into(),
-                kind: ContentKind::Text,
-                thumbnail: None,
-            },
-        });
+    let quote = quote_preview(message, by_id, contact, senders);
     Bubble {
         id: message.id.clone().into(),
         from_me: message.from_me,
@@ -302,6 +249,74 @@ fn bubble(
 const MEDIA_BOX: (f32, f32) = (300.0, 340.0);
 /// Stickers render at a fixed size, like on the phone.
 const STICKER_SIZE: f32 = 150.0;
+
+/// The block at the top of a reply: the quoted message as loaded, else
+/// what the reply carried of it.
+fn quote_preview(
+    message: &Message,
+    by_id: &HashMap<&str, &Message>,
+    contact: &str,
+    senders: &Senders<'_>,
+) -> Option<QuotePreview> {
+    message
+        .quote
+        .as_ref()
+        .map(|quote| match by_id.get(quote.id.as_str()) {
+            Some(quoted) => {
+                let (author, color, phone) = match (&quoted.sender, quoted.from_me) {
+                    (_, true) => ("You".into(), ACCENT, None),
+                    (Some(sender), false) => {
+                        let author = Author::of(quoted, sender, senders);
+                        (author.name, author.color, author.phone)
+                    }
+                    (None, false) => (
+                        contact.to_owned().into(),
+                        name_color(quoted.chat.as_str()),
+                        None,
+                    ),
+                };
+                QuotePreview {
+                    id: quote.id.clone().into(),
+                    author,
+                    phone,
+                    color,
+                    text: quote_text(quoted).into(),
+                    kind: quoted.kind,
+                    thumbnail: quoted
+                        .media
+                        .as_ref()
+                        .and_then(|media| media.thumbnail.clone())
+                        .filter(|_| {
+                            matches!(
+                                quoted.kind,
+                                ContentKind::Photo | ContentKind::Video | ContentKind::Sticker
+                            )
+                        })
+                        .map(|bytes| preview(quoted.kind, bytes)),
+                }
+            }
+            // The quoted message is older than what is loaded, or was never
+            // synced: fall back to what the reply carried.
+            None => QuotePreview {
+                id: quote.id.clone().into(),
+                author: quote
+                    .sender
+                    .as_ref()
+                    .and_then(ChatId::phone_number)
+                    .unwrap_or_else(|| "Message".to_owned())
+                    .into(),
+                phone: None,
+                color: MUTED,
+                text: quote
+                    .summary
+                    .as_deref()
+                    .map_or_default(|text| Marked::parse(text).text)
+                    .into(),
+                kind: ContentKind::Text,
+                thumbnail: None,
+            },
+        })
+}
 
 #[expect(
     clippy::cast_precision_loss,

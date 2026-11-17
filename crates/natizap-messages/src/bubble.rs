@@ -11,7 +11,7 @@ use natizap_ui::{Button, ButtonSize, ButtonVariant, Icon, avatar};
 use std::path::PathBuf;
 
 use crate::extra_view::render_extra;
-use crate::items::{Body, Bubble, Item, MediaView};
+use crate::items::{Body, Bubble, Item, MediaView, QuotePreview};
 use crate::media_view::render_media;
 use crate::message::Delivery;
 use crate::quote::{name_and_phone, quoted};
@@ -222,7 +222,12 @@ fn shape(
 
     padded(bubble)
         .children(bubble.media.as_ref().map(|media| render_media(media, view)))
-        .children(bubble.quote.as_ref().map(quoted))
+        .children(
+            bubble
+                .quote
+                .as_ref()
+                .map(|quote| jump_to_quoted(quote, view)),
+        )
         // Time sits beside short text and drops below text that fills the
         // bubble, as in WhatsApp.
         .child(
@@ -290,7 +295,12 @@ fn picture_bubble(
         .gap_1()
         .children(author(bubble).map(|name| name.px(px(7.0)).pt(px(2.0))))
         .children(forwarded(bubble).map(|line| line.px(px(7.0))))
-        .children(bubble.quote.as_ref().map(quoted))
+        .children(
+            bubble
+                .quote
+                .as_ref()
+                .map(|quote| jump_to_quoted(quote, view)),
+        )
         .child(picture)
         .children(caption)
 }
@@ -345,6 +355,18 @@ fn frame(bubble: &Bubble) -> Div {
             (true, true) => shape.rounded_tr(px(4.0)),
             (true, false) => shape.rounded_tl(px(4.0)),
             _ => shape,
+        })
+}
+
+/// The quoted message's block; clicking it goes to the quoted message.
+fn jump_to_quoted(quote: &QuotePreview, view: &WeakEntity<ConversationView>) -> Stateful<Div> {
+    let (id, view) = (quote.id.clone(), view.clone());
+    quoted(quote)
+        .id(SharedString::from(format!("quote-{id}")))
+        .cursor_pointer()
+        .on_click(move |_, _, cx| {
+            cx.stop_propagation();
+            let _ = view.update(cx, |view, cx| view.go_to_message(&id, cx));
         })
 }
 

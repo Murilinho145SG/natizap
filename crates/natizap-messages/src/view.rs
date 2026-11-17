@@ -372,6 +372,20 @@ impl ConversationView {
         self.selection.as_ref()
     }
 
+    /// Scrolls to the message `id`, when it is among those loaded.
+    pub(crate) fn go_to_message(&mut self, id: &str, cx: &mut Context<Self>) {
+        let index = self
+            .log
+            .read(cx)
+            .items()
+            .iter()
+            .position(|item| matches!(item, Item::Bubble(bubble) if bubble.id.as_ref() == id));
+        if let Some(index) = index {
+            self.messages.scroll_to_reveal_item(index);
+            cx.notify();
+        }
+    }
+
     /// Escape steps back out of what is open; the copy shortcut copies the
     /// text selected in a message.
     fn key_down(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) {
