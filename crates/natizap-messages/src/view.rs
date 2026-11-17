@@ -5,7 +5,7 @@ use gpui::{
     div, list, px, relative, rgb, svg,
 };
 use natizap_ui::theme::{
-    ALERT, DEEP, HONEY, HONEY_INK, LINE, MUTED, OUTGOING, PANE, PANEL, RAISED, TEXT,
+    ALERT, DEEP, HONEY, HONEY_INK, LINE, MINT, MUTED, OUTGOING, PANE, PANEL, RAISED, TEXT,
 };
 use natizap_ui::{Icon, Submitted, TextInput, avatar};
 
@@ -173,6 +173,7 @@ fn render_item(item: &Item) -> AnyElement {
 fn render_bubble(bubble: &Bubble) -> AnyElement {
     let meta = div()
         .flex()
+        .items_center()
         .justify_end()
         .gap_1p5()
         .text_size(px(11.0))
@@ -182,12 +183,8 @@ fn render_bubble(bubble: &Bubble) -> AnyElement {
             |meta| meta.child("edited"),
         )
         .child(bubble.time.clone())
-        .map(|meta| match (bubble.from_me, bubble.delivery) {
-            (true, Delivery::Sending) => meta.child("· sending"),
-            (true, Delivery::Failed) => {
-                meta.child(div().text_color(rgb(ALERT)).child("· not sent"))
-            }
-            _ => meta,
+        .when(bubble.from_me, |meta| {
+            meta.child(delivery_mark(bubble.delivery))
         });
 
     let body = match &bubble.body {
@@ -255,6 +252,37 @@ fn render_bubble(bubble: &Bubble) -> AnyElement {
         .pt(px(if bubble.starts_burst { 8.0 } else { 2.0 }))
         .when(bubble.from_me, Styled::justify_end)
         .child(shape)
+        .into_any_element()
+}
+
+/// Where a sent message stands, as WhatsApp shows it: a clock while
+/// sending, one check when sent, two when delivered, tinted once read.
+fn delivery_mark(delivery: Delivery) -> AnyElement {
+    let (icon, color) = match delivery {
+        Delivery::Failed => {
+            return div()
+                .flex()
+                .items_center()
+                .gap_1()
+                .text_color(rgb(ALERT))
+                .child(
+                    svg()
+                        .path(Icon::Alert.path())
+                        .size(px(13.0))
+                        .text_color(rgb(ALERT)),
+                )
+                .child("Not sent")
+                .into_any_element();
+        }
+        Delivery::Sending => (Icon::Clock, MUTED),
+        Delivery::Sent => (Icon::Check, MUTED),
+        Delivery::Delivered => (Icon::Checks, MUTED),
+        Delivery::Read => (Icon::Checks, MINT),
+    };
+    svg()
+        .path(icon.path())
+        .size(px(15.0))
+        .text_color(rgb(color))
         .into_any_element()
 }
 

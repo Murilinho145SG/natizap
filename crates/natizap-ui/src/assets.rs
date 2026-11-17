@@ -41,8 +41,16 @@ macro_rules! icons {
 }
 
 icons! {
+    /// Something went wrong, e.g. a message was not sent.
+    Alert => "alert.svg",
     /// Archived chats.
     Archive => "archive.svg",
+    /// Sent.
+    Check => "check.svg",
+    /// Delivered, or read when tinted.
+    Checks => "checks.svg",
+    /// Waiting, e.g. a message still sending.
+    Clock => "clock.svg",
     /// A conversation.
     Chats => "chats.svg",
     /// Close the window.
