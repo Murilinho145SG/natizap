@@ -105,6 +105,10 @@ pub(crate) struct Person {
     pub(crate) contact_name: Option<String>,
     /// Name the person chose for themselves.
     pub(crate) push_name: Option<String>,
+    /// For a business account, the name WhatsApp verified for it.
+    pub(crate) business_name: Option<String>,
+    /// WhatsApp vouches for the business, which then shows a seal.
+    pub(crate) verified: bool,
 }
 
 /// Snapshot of one chat from a history sync. History can arrive after live
@@ -143,6 +147,9 @@ pub(crate) enum ChatChange {
     ContactName(ChatId, String),
     /// Name the person chose for themselves.
     PushName(ChatId, String),
+    /// A business account's verified name, and whether WhatsApp vouches for
+    /// it with a seal.
+    BusinessName(ChatId, String, bool),
     /// Pinned at the given time, or unpinned.
     Pinned(ChatId, Option<i64>),
     /// Muted, or unmuted.
@@ -245,6 +252,11 @@ impl ChatBook {
                 self.person(id).contact_name = Some(name);
             }
             ChatChange::PushName(id, name) => self.person(id).push_name = Some(name),
+            ChatChange::BusinessName(id, name, verified) => {
+                let person = self.person(id);
+                person.business_name = Some(name);
+                person.verified = verified;
+            }
             ChatChange::Pinned(id, at) => self.update(&id, |chat| chat.pinned_at = at),
             ChatChange::Muted(id, mute) => self.update(&id, |chat| chat.mute = mute),
             ChatChange::Archived(id, archived) => self.update(&id, |chat| chat.archived = archived),
@@ -283,8 +295,8 @@ impl ChatBook {
     }
 
     /// The name to show for `chat`, given its other addresses: the address
-    /// book wins, as on the phone, then the chat's own name, the person's
-    /// self-chosen name, and the phone number.
+    /// book wins, as on the phone, then the chat's own name, a business's
+    /// verified name, the person's self-chosen name, and the phone number.
     #[must_use]
     pub(crate) fn title(&self, chat: &Chat, aliases: &[&ChatId]) -> String {
         let addresses = || std::iter::once(&chat.id).chain(aliases.iter().copied());
@@ -292,6 +304,7 @@ impl ChatBook {
         people()
             .find_map(|person| person.contact_name.clone())
             .or_else(|| chat.subject.clone())
+            .or_else(|| people().find_map(|person| person.business_name.clone()))
             .or_else(|| {
                 people()
                     .find_map(|person| person.push_name.as_ref())
@@ -299,6 +312,15 @@ impl ChatBook {
             })
             .or_else(|| addresses().find_map(ChatId::phone_number))
             .unwrap_or_else(|| "Unknown contact".to_owned())
+    }
+
+    /// Whether `chat` is a business WhatsApp vouches for.
+    #[must_use]
+    pub(crate) fn verified(&self, chat: &Chat, aliases: &[&ChatId]) -> bool {
+        std::iter::once(&chat.id)
+            .chain(aliases.iter().copied())
+            .filter_map(|address| self.people.get(address))
+            .any(|person| person.verified)
     }
 
     /// A person's names, for persistence.

@@ -5,7 +5,7 @@ use gpui::{
     uniform_list,
 };
 use natizap_ui::theme::{ACCENT, DISPLAY_FONT, LINE, MUTED, PANEL, RAISED, TEXT};
-use natizap_ui::{BadgeTone, Icon, avatar, badge, count_label, separator, skeleton};
+use natizap_ui::{BadgeTone, Icon, avatar, badge, count_label, separator, skeleton, verified_seal};
 
 use std::path::PathBuf;
 
@@ -284,14 +284,17 @@ fn chat_row(row: &ChatRow, picture: Option<PathBuf>, now: DateTime<Local>) -> St
                             div()
                                 .flex_1()
                                 .min_w_0()
-                                .truncate()
+                                .flex()
+                                .items_center()
+                                .gap_1()
                                 .text_size(px(15.0))
                                 .font_weight(if has_unread {
                                     FontWeight::SEMIBOLD
                                 } else {
                                     FontWeight::MEDIUM
                                 })
-                                .child(row.title.clone()),
+                                .child(div().min_w_0().truncate().child(row.title.clone()))
+                                .when(row.verified, |title| title.child(verified_seal(15.0))),
                         )
                         .child(
                             div()

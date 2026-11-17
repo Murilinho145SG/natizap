@@ -14,6 +14,11 @@ use crate::sync::{CHAT_EVENTS, changes};
 
 /// One line of the chat list, ready to render.
 #[derive(Debug, Clone)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "marked unread, pinned, muted and verified are independent facts \
+              the list shows per chat"
+)]
 pub struct ChatRow {
     /// The chat's address.
     pub id: ChatId,
@@ -33,6 +38,8 @@ pub struct ChatRow {
     pub pinned: bool,
     /// Notifications silenced.
     pub muted: bool,
+    /// A business WhatsApp vouches for, shown with a seal.
+    pub verified: bool,
 }
 
 impl ChatRow {
@@ -59,6 +66,7 @@ impl ChatRow {
             marked_unread: chat.marked_unread,
             pinned: chat.pinned_at.is_some(),
             muted: chat.is_muted(now),
+            verified: book.verified(chat, aliases),
         }
     }
 }

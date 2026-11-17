@@ -106,6 +106,18 @@ fn message_changes(inbound: &InboundMessage) -> Vec<ChatChange> {
                 ChatId::new(&alternate.to_string()),
             ));
         }
+        // A business's messages carry the name WhatsApp verified for it, and
+        // a "high" level when WhatsApp vouches for it with a seal.
+        let business = inbound
+            .info
+            .verified_name
+            .as_ref()
+            .and_then(|verified| verified.name.clone())
+            .filter(|_| !source.is_from_me && !source.is_group);
+        if let Some(name) = business {
+            let vouched = inbound.info.verified_level.as_deref() == Some("high");
+            changes.push(ChatChange::BusinessName(chat.clone(), name, vouched));
+        }
         if !source.is_from_me && !inbound.info.push_name.is_empty() {
             changes.push(ChatChange::PushName(
                 chat.clone(),

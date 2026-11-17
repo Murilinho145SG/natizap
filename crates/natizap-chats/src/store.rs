@@ -42,6 +42,8 @@ const MIGRATIONS: &[&str] = &[
     DELETE FROM chats WHERE preview_text IS NULL AND active_at = 0;
     ALTER TABLE chats DROP COLUMN contact_name;
     ALTER TABLE chats DROP COLUMN push_name;",
+    "ALTER TABLE people ADD COLUMN business_name TEXT;
+    ALTER TABLE people ADD COLUMN verified INTEGER NOT NULL DEFAULT 0;",
 ];
 
 /// `muted_until` value for [`Mute::Forever`].
@@ -89,13 +91,15 @@ impl ChatStore {
             .collect::<rusqlite::Result<Vec<_>>>()?;
         let people = self
             .connection
-            .prepare("SELECT id, contact_name, push_name FROM people")?
+            .prepare("SELECT id, contact_name, push_name, business_name, verified FROM people")?
             .query_map([], |row| {
                 Ok((
                     ChatId::new(&row.get::<_, String>(0)?),
                     Person {
                         contact_name: row.get(1)?,
                         push_name: row.get(2)?,
+                        business_name: row.get(3)?,
+                        verified: row.get(4)?,
                     },
                 ))
             })?
@@ -152,10 +156,16 @@ impl ChatStore {
                 alias.execute(params![from.as_str(), to.as_str()])?;
             }
             let mut person =
-                tx.prepare_cached("INSERT OR REPLACE INTO people VALUES (?1, ?2, ?3)")?;
+                tx.prepare_cached("INSERT OR REPLACE INTO people VALUES (?1, ?2, ?3, ?4, ?5)")?;
             for id in &dirty.people {
                 if let Some(names) = book.person_named(id) {
-                    person.execute(params![id.as_str(), names.contact_name, names.push_name])?;
+                    person.execute(params![
+                        id.as_str(),
+                        names.contact_name,
+                        names.push_name,
+                        names.business_name,
+                        names.verified,
+                    ])?;
                 }
             }
         }
