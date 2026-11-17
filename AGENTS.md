@@ -54,7 +54,6 @@ expected split, for orientation:
 | -------------------------- | ---------------------------------------------------------- |
 | `natizap-session`          | Device pairing (QR/code) and connection state.             |
 | `natizap-chats`            | Chat list: ordering, unread counts, pin, archive, mute.    |
-| `natizap-messages`         | Conversation view: send, receive, reply, react, edit, polls. |
 | `natizap-media`            | Images, video, audio, voice notes, documents, stickers.    |
 | `natizap-calls`            | Voice and video calls, 1:1 and group; audio/video devices. |
 | `natizap-contacts`         | Contacts, profiles, presence, blocking.                    |
@@ -67,7 +66,12 @@ Each feature crate owns its GPUI views, logic and local cache together
 (colocation); `natizap-ui` holds only components that several features
 share. Local data lives in the platform's per-user data directory, one
 file per owner (`session.db` for protocol keys, `chats.db` for the chat
-list).
+list, `messages.db` for messages).
+
+Features talk to each other only through the binary: the chat list emits
+`ChatSelected`, the binary opens that chat in `MessageLog` and tells
+`ChatList` it is on screen; `MessageLog` emits `MessageSent`, which the
+binary forwards to the chat list's preview.
 
 ## Architecture: one crate per feature
 
@@ -105,7 +109,8 @@ organizing rule of the codebase.
 | `natizap-session` | feature | Pairing lifecycle and the pairing screen.                 |
 | `natizap-protocol` | shared  | Owns the WhatsApp client; fans its events out to features. |
 | `natizap-chats`    | feature | Chat list synced from WhatsApp, cached in SQLite, and its view. |
-| `natizap-ui`       | shared  | Theme tokens, bundled fonts and icons, window frame.      |
+| `natizap-messages` | feature | Message store, the open conversation and sending.         |
+| `natizap-ui`       | shared  | Theme tokens, fonts, icons, window frame, text input.     |
 
 Keep this table current when a crate is added, renamed or removed.
 

@@ -11,9 +11,10 @@ use gpui::{
     WindowDecorations, WindowOptions, px, size,
 };
 use natizap_chats::ChatList;
+use natizap_messages::MessageLog;
 use natizap_protocol::Protocol;
 use natizap_session::Session;
-use natizap_ui::{Assets, load_fonts};
+use natizap_ui::{Assets, bind_text_input_keys, load_fonts};
 use tracing_subscriber::EnvFilter;
 
 use crate::root::Root;
@@ -30,6 +31,7 @@ fn main() -> anyhow::Result<()> {
         .with_assets(Assets)
         .run(move |cx: &mut App| {
             gpui_tokio::init(cx);
+            bind_text_input_keys(cx);
             if let Err(error) = load_fonts(cx) {
                 // System fonts still render every screen, just less consistently.
                 tracing::error!(?error, "could not load the bundled fonts");
@@ -58,11 +60,13 @@ fn open_main_window(data_dir: &Path, cx: &mut App) -> anyhow::Result<()> {
         window_min_size: Some(size(px(720.0), px(480.0))),
         ..Default::default()
     };
-    cx.open_window(options, |_, cx| {
+    cx.open_window(options, |window, cx| {
         let protocol = cx.new(|cx| Protocol::new(data_dir.join("session.db"), cx));
         let chats = cx.new(|cx| ChatList::new(&protocol, data_dir.join("chats.db"), cx));
+        let messages =
+            cx.new(|cx| MessageLog::new(protocol.clone(), data_dir.join("messages.db"), cx));
         let session = cx.new(|cx| Session::new(protocol, cx));
-        cx.new(|cx| Root::new(session, chats, cx))
+        cx.new(|cx| Root::new(session, chats, &messages, window, cx))
     })?;
     Ok(())
 }

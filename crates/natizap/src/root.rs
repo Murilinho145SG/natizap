@@ -1,9 +1,10 @@
 use gpui::prelude::*;
-use gpui::{AnyElement, Context, Div, Entity, FontWeight, Window, div, px, rgb, svg};
-use natizap_chats::{ChatList, ChatListView};
+use gpui::{AnyElement, Context, Div, Entity, FontWeight, Window, div, px, rgb};
+use natizap_chats::{ChatList, ChatListView, ChatSelected};
+use natizap_messages::{ConversationView, MessageLog, MessageSent, OpenChat};
 use natizap_session::{PairingView, Session, SessionState};
-use natizap_ui::theme::{ALERT, DISPLAY_FONT, HONEY, LINE, MINT, MUTED, PANE, TEXT, UI_FONT};
-use natizap_ui::{Icon, window_frame};
+use natizap_ui::theme::{ALERT, DISPLAY_FONT, HONEY, LINE, MINT, MUTED, TEXT, UI_FONT};
+use natizap_ui::window_frame;
 
 /// The main window's content: the pairing screen until this device is linked,
 /// then the chat list beside the conversation pane.
@@ -12,23 +13,49 @@ pub(crate) struct Root {
     chats: Entity<ChatList>,
     pairing: Entity<PairingView>,
     chat_list: Entity<ChatListView>,
+    conversation: Entity<ConversationView>,
 }
 
 impl Root {
     pub(crate) fn new(
         session: Entity<Session>,
         chats: Entity<ChatList>,
+        messages: &Entity<MessageLog>,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
         cx.observe(&session, |_, _, cx| cx.notify()).detach();
         cx.observe(&chats, |_, _, cx| cx.notify()).detach();
         let pairing = cx.new(|cx| PairingView::new(session.clone(), cx));
         let chat_list = cx.new(|cx| ChatListView::new(chats.clone(), cx));
+        let conversation = cx.new(|cx| ConversationView::new(messages.clone(), window, cx));
+
+        let (open_messages, open_chats) = (messages.clone(), chats.clone());
+        cx.subscribe(&chat_list, move |_, _, ChatSelected(row), cx| {
+            open_chats.read(cx).open(Some(row.id.clone()));
+            let chat = OpenChat {
+                id: row.id.clone(),
+                addresses: row.addresses.to_vec(),
+                title: row.title.clone(),
+                unread: row.unread,
+            };
+            open_messages.update(cx, |messages, cx| messages.open(chat, cx));
+        })
+        .detach();
+        let sent_chats = chats.clone();
+        cx.subscribe(messages, move |_, _, sent: &MessageSent, cx| {
+            sent_chats
+                .read(cx)
+                .record_sent(sent.chat.clone(), sent.text.clone(), sent.sent_at);
+        })
+        .detach();
+
         Self {
             session,
             chats,
             pairing,
             chat_list,
+            conversation,
         }
     }
 
@@ -58,7 +85,7 @@ impl Root {
                     .border_color(rgb(LINE))
                     .child(self.chat_list.clone()),
             )
-            .child(conversation_placeholder())
+            .child(div().flex_1().h_full().child(self.conversation.clone()))
             .into_any_element()
     }
 }
@@ -106,42 +133,4 @@ fn wordmark(state: &SessionState) -> Div {
                 .text_color(rgb(MUTED))
                 .child(label)
         }))
-}
-
-fn conversation_placeholder() -> Div {
-    div()
-        .flex_1()
-        .h_full()
-        .flex()
-        .flex_col()
-        .items_center()
-        .justify_center()
-        .gap_3()
-        .bg(rgb(PANE))
-        .child(
-            svg()
-                .path(Icon::Chats.path())
-                .size(px(56.0))
-                .text_color(rgb(LINE)),
-        )
-        .child(
-            div()
-                .font_weight(FontWeight::MEDIUM)
-                .child("Pick a chat to read it here"),
-        )
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap_1p5()
-                .text_size(px(12.5))
-                .text_color(rgb(MUTED))
-                .child(
-                    svg()
-                        .path(Icon::Lock.path())
-                        .size(px(13.0))
-                        .text_color(rgb(MUTED)),
-                )
-                .child("End-to-end encrypted"),
-        )
 }
