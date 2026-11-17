@@ -10,6 +10,5 @@ mod store;
 mod sync;
 mod view;
 
-pub use book::ChatId;
 pub use list::{ChatList, ChatRow};
 pub use view::ChatListView;

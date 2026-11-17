@@ -2,7 +2,9 @@ use std::path::Path;
 
 use rusqlite::{Connection, Row, params};
 
-use crate::book::{Chat, ChatBook, ChatId, Dirty, Mute, Preview};
+use natizap_protocol::ChatId;
+
+use crate::book::{Chat, ChatBook, Dirty, Mute, Preview};
 
 /// Bumped when the schema changes; older caches are rebuilt from WhatsApp.
 const SCHEMA_VERSION: i64 = 1;

@@ -1,9 +1,10 @@
 //! Translates protocol events into [`ChatChange`]s.
 
-use natizap_protocol::whatsapp_rust::prelude::{Event, EventKind, MessageExt as _, wa};
+use natizap_protocol::whatsapp_rust::prelude::{Event, EventKind, wa};
 use natizap_protocol::whatsapp_rust::types::events::{InboundMessage, LazyHistorySync};
+use natizap_protocol::{ChatId, Content};
 
-use crate::book::{ChatChange, ChatId, HistoryChat, Mute, Preview};
+use crate::book::{ChatChange, HistoryChat, Mute, Preview};
 
 /// Protocol events the chat list learns from.
 pub(crate) const CHAT_EVENTS: &[EventKind] = &[
@@ -113,7 +114,7 @@ fn message_changes(inbound: &InboundMessage) -> Vec<ChatChange> {
         }
     }
 
-    if let Some(text) = preview_text(&inbound.message) {
+    if let Some(text) = Content::of(&inbound.message).map(|content| content.summary()) {
         let author = (source.is_group && !source.is_from_me)
             .then(|| inbound.info.push_name.clone())
             .filter(|name| !name.is_empty());
@@ -175,7 +176,7 @@ fn history_chat(conversation: &wa::Conversation, is_group: bool) -> HistoryChat 
         .iter()
         .filter_map(|entry| entry.message.as_option())
         .filter_map(|info| {
-            let text = preview_text(info.message.as_option()?)?;
+            let text = Content::of(info.message.as_option()?)?.summary();
             let from_me = info
                 .key
                 .as_option()
@@ -215,40 +216,4 @@ fn history_chat(conversation: &wa::Conversation, is_group: bool) -> HistoryChat 
 
 fn timestamp(seconds: Option<u64>) -> i64 {
     seconds.and_then(|s| i64::try_from(s).ok()).unwrap_or(0)
-}
-
-/// Text for the chat list, or `None` for messages that are not shown as a
-/// message of their own (reactions, edits, protocol housekeeping).
-fn preview_text(message: &wa::Message) -> Option<String> {
-    let message = message.get_base_message();
-    if let Some(text) = message.text_content().or_else(|| message.get_caption()) {
-        return Some(text.to_owned());
-    }
-    let label = if message.image_message.is_set() {
-        "📷 Photo"
-    } else if message.video_message.is_set() {
-        "🎥 Video"
-    } else if let Some(audio) = message.audio_message.as_option() {
-        if audio.ptt.unwrap_or(false) {
-            "🎤 Voice message"
-        } else {
-            "🎵 Audio"
-        }
-    } else if message.document_message.is_set() || message.document_with_caption_message.is_set() {
-        "📄 Document"
-    } else if message.sticker_message.is_set() {
-        "Sticker"
-    } else if message.location_message.is_set() {
-        "📍 Location"
-    } else if message.contact_message.is_set() {
-        "👤 Contact"
-    } else if message.poll_creation_message.is_set()
-        || message.poll_creation_message_v2.is_set()
-        || message.poll_creation_message_v3.is_set()
-    {
-        "📊 Poll"
-    } else {
-        return None;
-    };
-    Some(label.to_owned())
 }

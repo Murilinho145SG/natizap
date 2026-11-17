@@ -1,51 +1,6 @@
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
 
-/// A chat's address: the WhatsApp JID of the person, group or broadcast list,
-/// without a device suffix.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct ChatId(Arc<str>);
-
-impl ChatId {
-    /// Normalizes a JID string: `5511999:3@s.whatsapp.net` and
-    /// `5511999@s.whatsapp.net` address the same chat.
-    #[must_use]
-    pub fn new(jid: &str) -> Self {
-        match jid.split_once('@') {
-            Some((user, server)) => {
-                let user = user.split_once(':').map_or(user, |(user, _device)| user);
-                Self(format!("{user}@{server}").into())
-            }
-            None => Self(jid.into()),
-        }
-    }
-
-    /// The JID as a string.
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-
-    /// Whether this is a group chat.
-    #[must_use]
-    pub fn is_group(&self) -> bool {
-        self.0.ends_with("@g.us")
-    }
-
-    /// The phone number behind a person's JID, when the JID carries one;
-    /// privacy-preserving LID addresses do not.
-    #[must_use]
-    pub fn phone_number(&self) -> Option<String> {
-        let user = self.0.strip_suffix("@s.whatsapp.net")?;
-        Some(format!("+{user}"))
-    }
-
-    /// Whether the chat belongs in the chat list. Status updates and channels
-    /// have their own screens on mobile, so they are kept out.
-    fn is_listed(&self) -> bool {
-        !(self.0.ends_with("@broadcast") || self.0.ends_with("@newsletter"))
-    }
-}
+use natizap_protocol::ChatId;
 
 /// The latest message of a chat, as shown under its name.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -332,7 +287,7 @@ impl ChatBook {
     /// that do not belong in the list are dropped.
     fn update(&mut self, id: &ChatId, f: impl FnOnce(&mut Chat)) {
         let id = self.resolve(id).clone();
-        if !id.is_listed() {
+        if !id.is_conversation() {
             return;
         }
         f(self
@@ -391,11 +346,6 @@ mod tests {
 
     fn order(book: &ChatBook) -> Vec<&str> {
         book.listed().iter().map(|chat| chat.id.as_str()).collect()
-    }
-
-    #[test]
-    fn device_suffix_does_not_split_a_chat() {
-        assert_eq!(id("5511999:3@s.whatsapp.net"), id("5511999@s.whatsapp.net"));
     }
 
     #[test]

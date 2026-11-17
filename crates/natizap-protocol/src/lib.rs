@@ -5,8 +5,12 @@
 //! [subscribes](Protocol::subscribe). Features translate those events into
 //! their own types; nothing outside this crate starts or stops the client.
 
+mod chat;
+mod content;
 mod fanout;
 mod protocol;
 
+pub use chat::ChatId;
+pub use content::{Content, ContentKind};
 pub use protocol::{Protocol, StartError};
 pub use whatsapp_rust;
