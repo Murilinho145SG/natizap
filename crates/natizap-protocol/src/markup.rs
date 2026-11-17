@@ -34,6 +34,9 @@ pub enum LinkKind {
     Email,
     /// A phone number written with its country code, `+…`.
     Phone,
+    /// A Brazilian CPF or CNPJ, whose check digits add up: copied, as on
+    /// the phone, since people paste them into bank and government apps.
+    TaxId,
 }
 
 impl LinkKind {
@@ -44,7 +47,7 @@ impl LinkKind {
             Self::Web if text.starts_with("www.") => format!("https://{text}"),
             Self::Web => text.to_owned(),
             Self::Email => format!("mailto:{text}"),
-            Self::Phone => text.chars().filter(char::is_ascii_digit).collect(),
+            Self::Phone | Self::TaxId => text.chars().filter(char::is_ascii_digit).collect(),
         }
     }
 }
@@ -151,6 +154,9 @@ fn link(chars: &[(usize, char)], start: usize) -> Option<(usize, LinkKind)> {
     if chars[start].1 == '+' {
         return phone(chars, start);
     }
+    if chars[start].1.is_ascii_digit() {
+        return tax_id(chars, start);
+    }
     email(chars, start, word_end)
 }
 
@@ -193,6 +199,73 @@ fn phone(chars: &[(usize, char)], start: usize) -> Option<(usize, LinkKind)> {
     let after = chars.get(last_digit + 1).map(|&(_, c)| c);
     let whole = after.is_none_or(|c| !c.is_alphanumeric());
     ((8..=15).contains(&digits) && whole).then_some((last_digit + 1, LinkKind::Phone))
+}
+
+/// A CPF (`123.456.789-09` or 11 digits) or CNPJ (`12.345.678/0001-95` or
+/// 14 digits) whose check digits are right, so other numbers stay text.
+fn tax_id(chars: &[(usize, char)], start: usize) -> Option<(usize, LinkKind)> {
+    let mut end = start;
+    while chars
+        .get(end)
+        .is_some_and(|&(_, c)| c.is_ascii_digit() || matches!(c, '.' | '-' | '/'))
+    {
+        end += 1;
+    }
+    while end > start && !chars[end - 1].1.is_ascii_digit() {
+        end -= 1;
+    }
+    if chars.get(end).is_some_and(|&(_, c)| c.is_alphanumeric()) {
+        return None;
+    }
+    let written: String = chars[start..end].iter().map(|&(_, c)| c).collect();
+    let shape: String = written
+        .chars()
+        .map(|c| if c.is_ascii_digit() { 'd' } else { c })
+        .collect();
+    let digits: Vec<u32> = written.chars().filter_map(|c| c.to_digit(10)).collect();
+    let valid = match shape.as_str() {
+        "ddd.ddd.ddd-dd" | "ddddddddddd" => cpf_checks(&digits),
+        "dd.ddd.ddd/dddd-dd" | "dddddddddddddd" => cnpj_checks(&digits),
+        _ => false,
+    };
+    valid.then_some((end, LinkKind::TaxId))
+}
+
+fn cpf_checks(digits: &[u32]) -> bool {
+    // The first check digit weighs the nine before it 10 down to 2; the
+    // second weighs the ten before it 11 down to 2.
+    let check = |count: usize| {
+        let weights = (2..=11).rev().skip(10 - count);
+        let sum: u32 = digits[..count]
+            .iter()
+            .zip(weights)
+            .map(|(d, w)| d * w)
+            .sum();
+        sum * 10 % 11 % 10
+    };
+    digits.len() == 11
+        && digits.iter().any(|&d| d != digits[0])
+        && check(9) == digits[9]
+        && check(10) == digits[10]
+}
+
+fn cnpj_checks(digits: &[u32]) -> bool {
+    const WEIGHTS: [u32; 13] = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+    let check = |count: usize| {
+        let sum: u32 = digits[..count]
+            .iter()
+            .zip(&WEIGHTS[13 - count..])
+            .map(|(digit, weight)| digit * weight)
+            .sum();
+        match sum % 11 {
+            0 | 1 => 0,
+            rest => 11 - rest,
+        }
+    };
+    digits.len() == 14
+        && digits.iter().any(|&d| d != digits[0])
+        && check(12) == digits[12]
+        && check(13) == digits[13]
 }
 
 /// `name@domain.tld`, ending before trailing punctuation.
@@ -317,6 +390,20 @@ mod tests {
             [("+55 11 91234-5678", LinkKind::Phone)]
         );
         assert_eq!(links("costs +5 or 2024-01-02, @someone"), []);
+    }
+
+    #[test]
+    fn finds_tax_ids_only_when_their_check_digits_add_up() {
+        assert_eq!(
+            links("CPF 529.982.247-25, CNPJ 11.222.333/0001-81 e 52998224725."),
+            [
+                ("529.982.247-25", LinkKind::TaxId),
+                ("11.222.333/0001-81", LinkKind::TaxId),
+                ("52998224725", LinkKind::TaxId),
+            ]
+        );
+        assert_eq!(links("529.982.247-26 111.111.111-11 12345678901"), []);
+        assert_eq!(LinkKind::TaxId.target("529.982.247-25"), "52998224725");
     }
 
     #[test]

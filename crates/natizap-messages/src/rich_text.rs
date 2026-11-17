@@ -5,8 +5,8 @@ use std::ops::Range;
 
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, App, ElementId, FontStyle, FontWeight, InteractiveText, StrikethroughStyle,
-    StyledText, TextRun, UnderlineStyle, WeakEntity, Window, div, px, rgb,
+    AnyElement, App, ClipboardItem, ElementId, FontStyle, FontWeight, InteractiveText,
+    StrikethroughStyle, StyledText, TextRun, UnderlineStyle, WeakEntity, Window, div, px, rgb,
 };
 use natizap_protocol::{ChatId, LinkKind, Mark};
 use natizap_ui::code_block;
@@ -98,6 +98,7 @@ fn prose(
 fn open(kind: LinkKind, target: &str, view: &WeakEntity<ConversationView>, cx: &mut App) {
     match kind {
         LinkKind::Web | LinkKind::Email => cx.open_url(target),
+        LinkKind::TaxId => cx.write_to_clipboard(ClipboardItem::new_string(target.to_owned())),
         LinkKind::Phone => {
             let phone = ChatId::new(&format!("{target}@s.whatsapp.net"));
             let _ = view.update(cx, |_, cx| cx.emit(ChatRequested { phone }));
