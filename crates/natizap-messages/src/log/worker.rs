@@ -1,17 +1,17 @@
 //! The message store's worker: off the UI thread, it files every change and
 //! rebuilds the open chat's rows when they are affected.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use chrono::Local;
-use natizap_protocol::Unread;
 use natizap_protocol::whatsapp_rust::prelude::Event;
+use natizap_protocol::{Anchor, ChatId, ContentKind, Unread};
 
 use super::{Input, OpenChat, Output, Pinned, SHOWN_MESSAGES};
 use crate::items::{Members, items, summary};
 use crate::media::{fetch_on_sight, posters_on_sight};
-use crate::message::MessageChange;
+use crate::message::{Message, MessageChange};
 use crate::store::MessageStore;
 use crate::sync::changes;
 
@@ -27,6 +27,8 @@ pub(super) async fn sync(
     };
     let mut open: Option<OpenChat> = None;
     let mut members = Members::default();
+    // Chats whose missing media was asked for, once per launch.
+    let mut asked: HashSet<ChatId> = HashSet::new();
 
     while let Ok(input) = inputs.recv().await {
         let mut refresh = false;
@@ -82,16 +84,22 @@ pub(super) async fn sync(
             }
         }
         if opened || refresh {
-            let thread = thread(&store, chat, &members);
+            let (thread, resend) = thread(&store, chat, &members);
             if outputs.send(thread).await.is_err() {
+                return;
+            }
+            if let Some(resend) = resend.filter(|_| asked.insert(chat.id.clone()))
+                && outputs.send(resend).await.is_err()
+            {
                 return;
             }
         }
     }
 }
 
-/// The open chat's rows and what they need fetched, read from `store`.
-fn thread(store: &MessageStore, chat: &OpenChat, members: &Members) -> Output {
+/// The open chat's rows and what they need fetched, read from `store`, and
+/// the request for media its messages were filed without.
+fn thread(store: &MessageStore, chat: &OpenChat, members: &Members) -> (Output, Option<Output>) {
     let messages = store
         .latest(&chat.addresses, SHOWN_MESSAGES)
         .unwrap_or_else(|error| {
@@ -103,6 +111,7 @@ fn thread(store: &MessageStore, chat: &OpenChat, members: &Members) -> Output {
         HashMap::new()
     });
     let rows = items(&messages, &reactions, &chat.title, members, Local::now()).into();
+    let resend = resend(&messages);
     let fetch = fetch_on_sight(&messages);
     let posters = posters_on_sight(&messages);
     let pinned = store
@@ -115,13 +124,47 @@ fn thread(store: &MessageStore, chat: &OpenChat, members: &Members) -> Output {
             id: message.id.clone().into(),
             text: summary(&message).into(),
         });
-    Output::Thread {
+    let thread = Output::Thread {
         chat: chat.id.clone(),
         items: rows,
         fetch,
         posters,
         pinned,
-    }
+    };
+    (thread, resend)
+}
+
+/// Asks for the messages from the oldest to the newest of `messages`
+/// (oldest first) that should carry media but were filed without it,
+/// counting back from the message after them.
+fn resend(messages: &[Message]) -> Option<Output> {
+    let lacking = |message: &Message| {
+        message.media.is_none()
+            && !message.deleted
+            && matches!(
+                message.kind,
+                ContentKind::Photo
+                    | ContentKind::Video
+                    | ContentKind::Sticker
+                    | ContentKind::Audio
+                    | ContentKind::VoiceMessage
+                    | ContentKind::Document
+            )
+    };
+    let oldest = messages.iter().position(lacking)?;
+    let newest = messages.iter().rposition(lacking)?;
+    let anchor = messages.get(newest + 1)?;
+    // The phone answers at most 50 at a time.
+    let count = u8::try_from(newest + 1 - oldest).unwrap_or(u8::MAX).min(50);
+    Some(Output::Resend {
+        chat: anchor.chat.clone(),
+        before: Anchor {
+            id: anchor.id.clone(),
+            from_me: anchor.from_me,
+            sent_at: anchor.sent_at,
+        },
+        count,
+    })
 }
 
 /// Messages others sent to the chat on screen: read as they arrive.

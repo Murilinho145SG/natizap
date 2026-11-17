@@ -6,7 +6,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use chrono::Local;
 use gpui::{App, AppContext as _, Context, Entity, EventEmitter, SharedString, Task};
 use natizap_protocol::whatsapp_rust::prelude::Event;
-use natizap_protocol::{ChatId, ContentKind, Forward, GroupInfo, Protocol, Quote, Reply, Unread};
+use natizap_protocol::{
+    Anchor, ChatId, ContentKind, Forward, GroupInfo, Protocol, Quote, Reply, Unread,
+};
 
 use crate::items::{Item, Members};
 use crate::media::{Fetch, PosterJob};
@@ -75,6 +77,13 @@ enum Output {
     Unread {
         chat: ChatId,
         messages: Vec<Unread>,
+    },
+    /// The open chat shows media messages filed without their media: the
+    /// phone is asked for them again.
+    Resend {
+        chat: ChatId,
+        before: Anchor,
+        count: u8,
     },
 }
 
@@ -392,6 +401,22 @@ impl MessageLog {
                     }
                     cx.notify();
                 }
+            }
+            Output::Resend {
+                chat,
+                before,
+                count,
+            } => {
+                let asking = self
+                    .protocol
+                    .read(cx)
+                    .resend_history(&chat, &before, count, cx);
+                cx.background_spawn(async move {
+                    if let Err(error) = asking.await {
+                        tracing::debug!(%error, "could not ask for the chat's history again");
+                    }
+                })
+                .detach();
             }
             Output::Unread { chat, messages } => {
                 let marking = self.protocol.read(cx).mark_read(&chat, messages, cx);
