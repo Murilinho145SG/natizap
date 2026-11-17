@@ -195,6 +195,27 @@ impl Protocol {
         })
     }
 
+    /// Stars or unstars a message in `chat` on all of this account's
+    /// devices. `from_me` says this account wrote it; `sender` wrote it
+    /// otherwise, in groups (`None` in one-to-one chats).
+    pub fn star(
+        &self,
+        chat: &ChatId,
+        message_id: String,
+        from_me: bool,
+        sender: Option<&ChatId>,
+        starred: bool,
+        cx: &App,
+    ) -> Task<Result<(), ActionError>> {
+        let (chat, sender) = match (actions::jid(chat), sender.map(actions::jid).transpose()) {
+            (Ok(chat), Ok(sender)) => (chat, sender),
+            (Err(error), _) | (_, Err(error)) => return Task::ready(Err(error)),
+        };
+        self.connection.run(cx, move |client| {
+            actions::star(client, chat, message_id, sender, from_me, starred)
+        })
+    }
+
     /// Reacts to a message in `chat` with `emoji`, or removes this account's
     /// reaction when `emoji` is `None`. `sender` is who wrote the message;
     /// `None` for this account's own.

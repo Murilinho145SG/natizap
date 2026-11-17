@@ -90,6 +90,8 @@ icons! {
     Restore => "restore.svg",
     /// Send a message.
     Send => "send.svg",
+    /// A starred message.
+    Star => "star.svg",
     /// Delete.
     Trash => "trash.svg",
     /// A video.

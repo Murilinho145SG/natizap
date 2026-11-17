@@ -148,6 +148,30 @@ pub(crate) async fn delete_for_me(
         .map_err(|error| ActionError::Rejected(error.to_string()))
 }
 
+/// Stars or unstars a message on all of this account's devices. `sender`
+/// wrote it, in groups; `None` for this account's own and in one-to-one
+/// chats.
+pub(crate) async fn star(
+    client: Arc<Client>,
+    chat: Jid,
+    message_id: String,
+    sender: Option<Jid>,
+    from_me: bool,
+    starred: bool,
+) -> Result<(), ActionError> {
+    let actions = client.chat_actions();
+    let result = if starred {
+        actions
+            .star_message(&chat, sender.as_ref(), &message_id, from_me)
+            .await
+    } else {
+        actions
+            .unstar_message(&chat, sender.as_ref(), &message_id, from_me)
+            .await
+    };
+    result.map_err(|error| ActionError::Rejected(error.to_string()))
+}
+
 /// What makes a message a reply to `reply`.
 pub(crate) fn reply_context(client: &Client, reply: Reply) -> Result<wa::ContextInfo, ActionError> {
     let participant = match &reply.sender {
