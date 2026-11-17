@@ -13,7 +13,7 @@ use crate::fanout::Fanout;
 use crate::group::{self, GroupInfo};
 use crate::media::{self, Media};
 use crate::outgoing::{self, Forward, Outgoing, SentMedia};
-use crate::profile;
+use crate::profile::{self, Profile};
 
 /// Name shown on the phone under "Linked devices".
 const DEVICE_NAME: &str = "natizap";
@@ -285,11 +285,13 @@ impl Protocol {
             .run(cx, move |client| group::info(client, jid))
     }
 
-    /// Downloads the small profile picture of `chat`, a person or a group:
-    /// `None` when it has none or hides it from this account.
+    /// Downloads the profile picture of `chat`, a person or a group, small
+    /// for avatars or `full` size: `None` when it has none or hides it from
+    /// this account.
     pub fn profile_picture(
         &self,
         chat: &ChatId,
+        full: bool,
         cx: &App,
     ) -> Task<Result<Option<Vec<u8>>, ActionError>> {
         let jid = match actions::jid(chat) {
@@ -297,7 +299,18 @@ impl Protocol {
             Err(error) => return Task::ready(Err(error)),
         };
         self.connection
-            .run(cx, move |client| profile::picture(client, jid))
+            .run(cx, move |client| profile::picture(client, jid, full))
+    }
+
+    /// What `chat`'s profile shows: their about line, and a business's
+    /// public details.
+    pub fn profile(&self, chat: &ChatId, cx: &App) -> Task<Result<Profile, ActionError>> {
+        let jid = match actions::jid(chat) {
+            Ok(jid) => jid,
+            Err(error) => return Task::ready(Err(error)),
+        };
+        self.connection
+            .run(cx, move |client| profile::profile(client, jid))
     }
 
     /// Downloads and decrypts `media`, which a message of `kind` carried.

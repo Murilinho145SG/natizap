@@ -23,5 +23,6 @@ pub use group::GroupInfo;
 pub use markup::{Mark, Marked};
 pub use media::{HdThumbnail, Media};
 pub use outgoing::{Forward, Outgoing, SentMedia};
+pub use profile::{Business, Profile};
 pub use protocol::{Protocol, StartError};
 pub use whatsapp_rust;

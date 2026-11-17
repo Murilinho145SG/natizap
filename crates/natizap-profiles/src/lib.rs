@@ -111,7 +111,7 @@ impl ProfilePictures {
             return;
         };
         self.fetching = true;
-        let fetching = self.protocol.read(cx).profile_picture(&chat, cx);
+        let fetching = self.protocol.read(cx).profile_picture(&chat, false, cx);
         let dir = self.dir.clone();
         cx.spawn(async move |this, cx| {
             let answer = fetching.await;
