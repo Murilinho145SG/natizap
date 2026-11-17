@@ -1,11 +1,13 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use gpui::{Context, EventEmitter, Task};
+use gpui::{App, Context, EventEmitter, Task};
 use gpui_tokio::{JoinError, Tokio};
 use whatsapp_rust::prelude::*;
 use whatsapp_rust::wacore::store::DevicePropsOverride;
 
+use crate::ChatId;
+use crate::actions::{self, ActionError, Connection, Sent, Unread};
 use crate::fanout::Fanout;
 
 /// Name shown on the phone under "Linked devices".
@@ -37,6 +39,7 @@ pub enum StartError {
 pub struct Protocol {
     store_path: PathBuf,
     fanout: Fanout,
+    connection: Connection,
     client: Task<()>,
     /// The phone unlinked this device, so the stored keys are dead.
     unlinked: bool,
@@ -62,7 +65,14 @@ impl Protocol {
     /// Requires `gpui_tokio::init` to have been called.
     pub fn new(store_path: PathBuf, cx: &mut Context<Self>) -> Self {
         let fanout = Fanout::default();
-        let client = start(store_path.clone(), fanout.clone(), Keys::Keep, cx);
+        let connection = Connection::default();
+        let client = start(
+            store_path.clone(),
+            fanout.clone(),
+            connection.clone(),
+            Keys::Keep,
+            cx,
+        );
         let unlinks = fanout.subscribe(EventInterest::of(&[EventKind::LoggedOut]));
         let unlinks = cx.spawn(async move |this, cx| {
             while unlinks.recv().await.is_ok() {
@@ -77,6 +87,7 @@ impl Protocol {
         Self {
             store_path,
             fanout,
+            connection,
             client,
             unlinked: false,
             _unlinks: unlinks,
@@ -100,7 +111,44 @@ impl Protocol {
             Keys::Keep
         };
         // Replacing the task drops, and so stops, the running client.
-        self.client = start(self.store_path.clone(), self.fanout.clone(), keys, cx);
+        self.client = start(
+            self.store_path.clone(),
+            self.fanout.clone(),
+            self.connection.clone(),
+            keys,
+            cx,
+        );
+    }
+
+    /// Sends a text message to `chat`.
+    pub fn send_text(
+        &self,
+        chat: &ChatId,
+        text: String,
+        cx: &App,
+    ) -> Task<Result<Sent, ActionError>> {
+        let to = match actions::jid(chat) {
+            Ok(to) => to,
+            Err(error) => return Task::ready(Err(error)),
+        };
+        self.connection
+            .run(cx, move |client| actions::send_text(client, to, text))
+    }
+
+    /// Tells WhatsApp, and so the user's other devices, that `messages` in
+    /// `chat` were read.
+    pub fn mark_read(
+        &self,
+        chat: &ChatId,
+        messages: Vec<Unread>,
+        cx: &App,
+    ) -> Task<Result<(), ActionError>> {
+        let chat = match actions::jid(chat) {
+            Ok(chat) => chat,
+            Err(error) => return Task::ready(Err(error)),
+        };
+        self.connection
+            .run(cx, move |client| actions::mark_read(client, chat, messages))
     }
 }
 
@@ -114,10 +162,16 @@ enum Keys {
 
 /// Runs the client on Tokio, starting on the next app tick; start failures
 /// are emitted on the entity.
-fn start(store_path: PathBuf, fanout: Fanout, keys: Keys, cx: &mut Context<Protocol>) -> Task<()> {
+fn start(
+    store_path: PathBuf,
+    fanout: Fanout,
+    connection: Connection,
+    keys: Keys,
+    cx: &mut Context<Protocol>,
+) -> Task<()> {
     cx.spawn(async move |this, cx| {
         let client: Task<Result<Result<(), StartError>, JoinError>> =
-            Tokio::spawn(cx, run(store_path, fanout, keys));
+            Tokio::spawn(cx, run(store_path, fanout, connection, keys));
         let error = match client.await {
             Ok(Ok(())) => return,
             Ok(Err(error)) => error,
@@ -133,7 +187,12 @@ fn start(store_path: PathBuf, fanout: Fanout, keys: Keys, cx: &mut Context<Proto
     })
 }
 
-async fn run(store_path: PathBuf, fanout: Fanout, keys: Keys) -> Result<(), StartError> {
+async fn run(
+    store_path: PathBuf,
+    fanout: Fanout,
+    connection: Connection,
+    keys: Keys,
+) -> Result<(), StartError> {
     if keys == Keys::Discard {
         discard_store(&store_path).await;
     }
@@ -152,7 +211,9 @@ async fn run(store_path: PathBuf, fanout: Fanout, keys: Keys) -> Result<(), Star
         .await
         .map_err(StartError::Client)?;
 
+    connection.set(Some(bot.client()));
     bot.run().await;
+    connection.set(None);
     Ok(())
 }
 
