@@ -14,6 +14,7 @@ mod media_view;
 mod message;
 mod outbox;
 mod preview;
+mod quote;
 mod store;
 mod sync;
 mod view;

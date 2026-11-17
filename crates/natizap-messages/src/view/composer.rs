@@ -11,7 +11,7 @@ use natizap_ui::theme::{LINE, MUTED, PANEL, RAISED, TEXT, glass};
 use natizap_ui::{Button, ButtonSize, ButtonVariant, Icon};
 
 use super::ConversationView;
-use crate::bubble::quote_block;
+use crate::quote::quote_block;
 
 impl ConversationView {
     /// Sends what the composer holds, if anything, and empties it.
