@@ -1,30 +1,32 @@
 use gpui::prelude::*;
-use std::path::PathBuf;
 use std::time::Duration;
 
 use gpui::{
-    Context, Div, Entity, EventEmitter, FocusHandle, Focusable as _, FontWeight, KeyDownEvent,
-    ListAlignment, ListState, MouseButton, Pixels, Point, SharedString, Window, anchored, deferred,
-    div, list, px, rgb, svg,
+    ClipboardItem, Context, Div, Entity, EventEmitter, FocusHandle, Focusable as _, FontWeight,
+    KeyDownEvent, ListAlignment, ListState, MouseButton, Pixels, Point, SharedString, Window,
+    anchored, deferred, div, list, px, rgb, svg,
 };
 use natizap_playback::Speed;
 use natizap_profiles::ProfilePictures;
 use natizap_protocol::{ChatId, Reply};
-use natizap_ui::theme::{ACCENT, LINE, MUTED, PANE, PANEL};
-use natizap_ui::{Icon, Submitted, TextInput, avatar, name_color, verified_seal};
+use natizap_ui::theme::{ACCENT, LINE, MUTED, PANE};
+use natizap_ui::{Icon, Submitted, TextInput, name_color};
 
 use crate::bubble::render_item;
 use crate::emoji::{EmojiPicked, EmojiPicker};
 use crate::items::{Bubble, Item, MediaView};
-use crate::log::{MessageLog, OpenChat, SoundReady};
+use crate::log::{MessageLog, SoundReady};
 use crate::poll_composer::PollComposer;
+use crate::rich_text::Selection;
 use crate::voice::Voices;
 
 mod attach;
 mod composer;
+mod header;
 mod message_menu;
 
 pub use attach::ContactsRequested;
+use header::header;
 use message_menu::MessagePopup;
 
 /// Width of the column a community's announcements read in.
@@ -60,6 +62,8 @@ pub struct ConversationView {
     attach_at: Option<Point<Pixels>>,
     /// A poll being written.
     poll_draft: Option<Entity<PollComposer>>,
+    /// Text selected in a message.
+    selection: Option<Selection>,
 }
 
 /// The user clicked the conversation's header to see the chat's profile.
@@ -157,6 +161,7 @@ impl ConversationView {
             reaction_picker: None,
             attach_at: None,
             poll_draft: None,
+            selection: None,
             reaction_emojis,
         }
     }
@@ -347,6 +352,36 @@ impl ConversationView {
     }
 }
 
+impl ConversationView {
+    /// The text selected in a message, if any.
+    pub(crate) fn text_selection(&self) -> Option<&Selection> {
+        self.selection.as_ref()
+    }
+
+    /// Escape steps back out of what is open; the copy shortcut copies the
+    /// text selected in a message.
+    fn key_down(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) {
+        let keystroke = &event.keystroke;
+        if keystroke.key == "escape" {
+            self.step_back(cx);
+        } else if keystroke.key == "c"
+            && keystroke.modifiers.secondary(cx)
+            && let Some(selected) = self.selection.as_ref().and_then(Selection::selected)
+        {
+            cx.write_to_clipboard(ClipboardItem::new_string(selected.to_owned()));
+            cx.stop_propagation();
+        }
+    }
+
+    /// Selects text in a message, or nothing.
+    pub(crate) fn select_text(&mut self, selection: Option<Selection>, cx: &mut Context<Self>) {
+        if self.selection != selection {
+            self.selection = selection;
+            cx.notify();
+        }
+    }
+}
+
 impl Render for ConversationView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let open = self.log.read(cx).open_chat().map(|chat| chat.id.clone());
@@ -355,7 +390,7 @@ impl Render for ConversationView {
                 .update(cx, |pictures, cx| pictures.picture(&chat, cx))
         });
         let log = self.log.read(cx);
-        let Some(chat) = log.open_chat() else {
+        let Some(chat) = log.open_chat().cloned() else {
             return placeholder().into_any_element();
         };
         let items = log.items().clone();
@@ -369,41 +404,15 @@ impl Render for ConversationView {
         let view = cx.weak_entity();
         let reacting = self.reacting.clone();
         let voice = self.voices.ui();
+        let selection = self.selection.clone();
 
         div()
             .size_full()
             .flex()
             .flex_col()
             .bg(rgb(PANE))
-            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
-                if event.keystroke.key == "escape" {
-                    this.step_back(cx);
-                }
-            }))
-            .child(
-                header(chat, picture)
-                    .id("chat-header")
-                    .cursor_pointer()
-                    .on_click({
-                        let (verified, title) = (chat.verified, chat.title.clone());
-                        // The phone-number address, when the chat has one:
-                        // WhatsApp answers profile questions about a LID
-                        // with less, and a LID shows no number.
-                        let chat = chat
-                            .addresses
-                            .iter()
-                            .find(|address| address.phone_number().is_some())
-                            .unwrap_or(&chat.id)
-                            .clone();
-                        cx.listener(move |_, _, _, cx| {
-                            cx.emit(ProfileRequested {
-                                chat: chat.clone(),
-                                title: title.clone(),
-                                verified,
-                            });
-                        })
-                    }),
-            )
+            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| this.key_down(event, cx)))
+            .child(header(&chat, picture, cx))
             .children(pinned.map(|pinned| self.pinned_bar(pinned, cx)))
             .child(
                 div()
@@ -412,6 +421,13 @@ impl Render for ConversationView {
                     .flex()
                     .flex_col()
                     .items_center()
+                    // A press anywhere drops the selected text; one on a
+                    // message's text then starts a new selection.
+                    .capture_any_mouse_down(cx.listener(|this, _, _, cx| {
+                        if this.selection.take().is_some() {
+                            cx.notify();
+                        }
+                    }))
                     // Clicking the conversation closes the emoji picker; the
                     // quick reactions close themselves.
                     .on_mouse_down(
@@ -436,7 +452,14 @@ impl Render for ConversationView {
                                 }),
                                 Item::Day(_) => None,
                             };
-                            render_item(item, &view, reacting.as_ref(), &voice, picture)
+                            render_item(
+                                item,
+                                &view,
+                                reacting.as_ref(),
+                                &voice,
+                                selection.as_ref(),
+                                picture,
+                            )
                         })
                         .h_full()
                         .w_full()
@@ -488,51 +511,5 @@ fn placeholder() -> Div {
                         .text_color(rgb(MUTED)),
                 )
                 .child("End-to-end encrypted"),
-        )
-}
-
-/// The chat's picture, name and, for a person, their number.
-fn header(chat: &OpenChat, picture: Option<PathBuf>) -> Div {
-    let subtitle = if chat.id.is_group() {
-        Some("Group".to_owned())
-    } else {
-        chat.id
-            .phone_number()
-            .filter(|phone| *phone != chat.title.as_ref())
-    };
-    div()
-        .h(px(60.0))
-        .flex_none()
-        .flex()
-        .items_center()
-        .gap_3()
-        .px_4()
-        .bg(rgb(PANEL))
-        .border_b_1()
-        .border_color(rgb(LINE))
-        .child(avatar(chat.id.as_str(), &chat.title, picture, px(38.0)))
-        .child(
-            div()
-                .min_w_0()
-                .flex()
-                .flex_col()
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap_1()
-                        .text_size(px(16.0))
-                        // Medium on purpose: at semibold, symbols such as ♥ render
-                        // monochrome even with the emoji font as fallback.
-                        .font_weight(FontWeight::MEDIUM)
-                        .child(div().min_w_0().truncate().child(chat.title.clone()))
-                        .when(chat.verified, |title| title.child(verified_seal(16.0))),
-                )
-                .children(subtitle.map(|subtitle| {
-                    div()
-                        .text_size(px(12.5))
-                        .text_color(rgb(MUTED))
-                        .child(subtitle)
-                })),
         )
 }

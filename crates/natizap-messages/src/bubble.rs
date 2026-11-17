@@ -15,7 +15,7 @@ use crate::items::{Body, Bubble, Item, MediaView};
 use crate::media_view::render_media;
 use crate::message::Delivery;
 use crate::quote::{name_and_phone, quoted};
-use crate::rich_text::rich_text;
+use crate::rich_text::{Selection, rich_text, selectable};
 use crate::view::ConversationView;
 use crate::voice::VoiceUi;
 use crate::voice_view::render_voice;
@@ -31,6 +31,7 @@ pub(crate) fn render_item(
     view: &WeakEntity<ConversationView>,
     reacting: Option<&SharedString>,
     voice: &VoiceUi,
+    selection: Option<&Selection>,
     picture: Option<PathBuf>,
 ) -> AnyElement {
     match item {
@@ -56,6 +57,7 @@ pub(crate) fn render_item(
             view,
             reacting.is_some_and(|id| *id == bubble.id),
             voice,
+            selection,
             picture,
         ),
     }
@@ -66,6 +68,7 @@ fn render_bubble(
     view: &WeakEntity<ConversationView>,
     reacting: bool,
     voice: &VoiceUi,
+    selection: Option<&Selection>,
     picture: Option<PathBuf>,
 ) -> AnyElement {
     // In groups, others' messages make room on the left for their sender's
@@ -94,7 +97,7 @@ fn render_bubble(
         .gap_0p5()
         .when(bubble.from_me, Styled::items_end)
         .when(!bubble.from_me, Styled::items_start)
-        .child(shape(bubble, view, voice).max_w_full())
+        .child(shape(bubble, view, voice, selection).max_w_full())
         .when(!bubble.reactions.is_empty(), |message| {
             message.child(reaction_chips(bubble))
         });
@@ -134,7 +137,12 @@ fn render_bubble(
 }
 
 /// The bubble itself: author, attachment, quote, content and time.
-fn shape(bubble: &Bubble, view: &WeakEntity<ConversationView>, voice: &VoiceUi) -> Div {
+fn shape(
+    bubble: &Bubble,
+    view: &WeakEntity<ConversationView>,
+    voice: &VoiceUi,
+    selection: Option<&Selection>,
+) -> Div {
     let meta = div()
         .flex()
         .items_center()
@@ -174,7 +182,7 @@ fn shape(bubble: &Bubble, view: &WeakEntity<ConversationView>, voice: &VoiceUi) 
         .as_ref()
         .filter(|media| matches!(media.fetch.kind, ContentKind::Photo | ContentKind::Video));
     if let Some(media) = picture {
-        return picture_bubble(bubble, media, meta, view);
+        return picture_bubble(bubble, media, meta, view, selection);
     }
 
     let body = match &bubble.body {
@@ -200,7 +208,16 @@ fn shape(bubble: &Bubble, view: &WeakEntity<ConversationView>, voice: &VoiceUi) 
                     .text_color(rgb(MUTED))
                     .child(media)
             }))
-            .children(text.as_ref().map(|text| rich_text(&bubble.id, text, view))),
+            .map(|body| {
+                let (shown, hits) = match text {
+                    Some(text) => {
+                        let (shown, hits) = rich_text(&bubble.id, text, view, selection);
+                        (Some(shown), hits)
+                    }
+                    None => (None, Vec::new()),
+                };
+                selectable(body.children(shown), hits, view)
+            }),
     };
 
     padded(bubble)
@@ -228,6 +245,7 @@ fn picture_bubble(
     media: &MediaView,
     meta: Div,
     view: &WeakEntity<ConversationView>,
+    selection: Option<&Selection>,
 ) -> Div {
     let caption = match &bubble.body {
         Body::Content {
@@ -237,20 +255,19 @@ fn picture_bubble(
     };
     let picture = div().relative().child(render_media(media, view));
     let (picture, caption) = match caption {
-        Some(text) => (
-            picture,
-            Some(
-                div()
-                    .px(px(7.0))
-                    .pb(px(3.0))
-                    .flex()
-                    .flex_wrap()
-                    .items_end()
-                    .gap_x_2()
-                    .child(rich_text(&bubble.id, text, view))
-                    .child(meta.ml_auto().pb(px(1.0))),
-            ),
-        ),
+        Some(text) => {
+            let (shown, hits) = rich_text(&bubble.id, text, view, selection);
+            let caption = div()
+                .px(px(7.0))
+                .pb(px(3.0))
+                .flex()
+                .flex_wrap()
+                .items_end()
+                .gap_x_2()
+                .child(shown)
+                .child(meta.ml_auto().pb(px(1.0)));
+            (picture, Some(selectable(caption, hits, view)))
+        }
         None => (
             picture.child(
                 div()

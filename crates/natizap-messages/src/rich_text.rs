@@ -2,22 +2,116 @@
 //! its links, email addresses and phone numbers clickable.
 
 use std::ops::Range;
+use std::rc::Rc;
 
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, App, ClipboardItem, ElementId, FontStyle, FontWeight, InteractiveText,
-    StrikethroughStyle, StyledText, TextRun, UnderlineStyle, WeakEntity, Window, div, px, rgb,
+    AnyElement, App, ClipboardItem, CursorStyle, Div, ElementId, FontStyle, FontWeight,
+    InteractiveText, MouseButton, SharedString, StrikethroughStyle, StyledText, TextLayout,
+    TextRun, UnderlineStyle, WeakEntity, Window, div, px, rgb, rgba,
 };
 use natizap_protocol::{ChatId, LinkKind, Mark};
 use natizap_ui::code_block;
-use natizap_ui::theme::{DEEP, LINK, MONO_FONT, MUTED, TEXT, base_font};
+use natizap_ui::theme::{DEEP, LINK, MONO_FONT, MUTED, SELECTION, TEXT, base_font};
 
 use crate::items::Text;
 use crate::view::{ChatRequested, ConversationView};
 
-/// `text` as paragraphs and code blocks, top to bottom. `id` must be unique
-/// among the bubbles on screen.
-pub(crate) fn rich_text(id: &str, text: &Text, view: &WeakEntity<ConversationView>) -> AnyElement {
+/// Text selected in one stretch of a message, by dragging over it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Selection {
+    /// Which stretch: unique among the texts on screen.
+    pub(crate) key: SharedString,
+    /// Where the drag started.
+    anchor: usize,
+    /// What is selected, as a byte range of `text`.
+    pub(crate) range: Range<usize>,
+    /// The stretch's text.
+    pub(crate) text: SharedString,
+}
+
+impl Selection {
+    /// The selected text, when any is.
+    pub(crate) fn selected(&self) -> Option<&str> {
+        Some(&self.text[self.range.clone()]).filter(|selected| !selected.is_empty())
+    }
+}
+
+/// A stretch of text on screen that mouse drags select in.
+#[derive(Clone)]
+pub(crate) struct TextHit {
+    key: SharedString,
+    layout: TextLayout,
+    text: SharedString,
+}
+
+/// Makes the texts in `hits`, drawn inside `container`, selectable by
+/// dragging; the conversation keeps the selection.
+pub(crate) fn selectable(
+    container: Div,
+    hits: Vec<TextHit>,
+    view: &WeakEntity<ConversationView>,
+) -> Div {
+    if hits.is_empty() {
+        return container;
+    }
+    let hits = Rc::new(hits);
+    let (down_hits, down_view) = (hits.clone(), view.clone());
+    let view = view.clone();
+    container
+        .cursor(CursorStyle::IBeam)
+        .on_mouse_down(MouseButton::Left, move |event, _, cx| {
+            // Only a press on a character starts a selection.
+            let Some((hit, index)) = down_hits
+                .iter()
+                .find_map(|hit| Some((hit, hit.layout.index_for_position(event.position).ok()?)))
+            else {
+                return;
+            };
+            let selection = Selection {
+                key: hit.key.clone(),
+                anchor: index,
+                range: index..index,
+                text: hit.text.clone(),
+            };
+            let _ = down_view.update(cx, |view, cx| view.select_text(Some(selection), cx));
+        })
+        .on_mouse_move(move |event, _, cx| {
+            if event.pressed_button != Some(MouseButton::Left) {
+                return;
+            }
+            let _ = view.update(cx, |view, cx| {
+                let Some(mut selection) = view.text_selection().cloned() else {
+                    return;
+                };
+                let Some(hit) = hits.iter().find(|hit| hit.key == selection.key) else {
+                    return;
+                };
+                let index = hit
+                    .layout
+                    .index_for_position(event.position)
+                    .unwrap_or_else(|nearest| nearest)
+                    .min(selection.text.len());
+                selection.range = selection.anchor.min(index)..selection.anchor.max(index);
+                view.select_text(Some(selection), cx);
+            });
+        })
+}
+
+/// `text` as paragraphs and code blocks, top to bottom, and the stretches
+/// that can be selected. `id` must be unique among the bubbles on screen;
+/// `selection` is shown where it falls.
+pub(crate) fn rich_text(
+    id: &str,
+    text: &Text,
+    view: &WeakEntity<ConversationView>,
+    selection: Option<&Selection>,
+) -> (AnyElement, Vec<TextHit>) {
+    let shown = Shown {
+        id,
+        view,
+        selection,
+    };
     let mut blocks = text
         .marks
         .iter()
@@ -28,71 +122,95 @@ pub(crate) fn rich_text(id: &str, text: &Text, view: &WeakEntity<ConversationVie
     // Plain text stays a bare text element: wrapped in a column, the
     // bubble's wrapping row squeezes it to one letter per line.
     if blocks.is_empty() {
-        return prose(id, 0, text, 0..text.text.len(), view)
-            .map_or_else(|| div().into_any_element(), IntoElement::into_any_element);
+        return match shown.prose(0, text, 0..text.text.len()) {
+            Some((element, hit)) => (element.into_any_element(), vec![hit]),
+            None => (div().into_any_element(), Vec::new()),
+        };
     }
+    let mut hits = Vec::new();
     let mut column = div().w_full().flex().flex_col().gap_1p5();
     let mut prose_start = 0;
     for (index, block) in blocks.iter().enumerate() {
-        column = column.children(prose(id, index, text, prose_start..block.start, view));
+        if let Some((element, hit)) = shown.prose(index, text, prose_start..block.start) {
+            column = column.child(element);
+            hits.push(hit);
+        }
         column = column.child(code_block(text.text[block.clone()].to_owned()));
         prose_start = block.end;
     }
-    let rest = prose_start..text.text.len();
-    column
-        .children(prose(id, blocks.len(), text, rest, view))
-        .into_any_element()
+    if let Some((element, hit)) = shown.prose(blocks.len(), text, prose_start..text.text.len()) {
+        column = column.child(element);
+        hits.push(hit);
+    }
+    (column.into_any_element(), hits)
 }
 
-/// The text in `range` between code blocks, styled, or nothing when it is
-/// only line breaks.
-fn prose(
-    id: &str,
-    index: usize,
-    text: &Text,
-    range: Range<usize>,
-    view: &WeakEntity<ConversationView>,
-) -> Option<InteractiveText> {
-    let slice = &text.text[range.clone()];
-    let start = range.start + (slice.len() - slice.trim_start_matches('\n').len());
-    let end = range.end - (slice.len() - slice.trim_end_matches('\n').len());
-    if start >= end {
-        return None;
-    }
-    let shown = text.text[start..end].to_owned();
-    let marks: Vec<(Range<usize>, Mark)> = text
-        .marks
-        .iter()
-        .filter(|(mark_range, _)| mark_range.start < end && mark_range.end > start)
-        .map(|(mark_range, mark)| {
-            let clipped = mark_range.start.max(start) - start..mark_range.end.min(end) - start;
-            (clipped, *mark)
-        })
-        .collect();
-    let runs = runs(shown.len(), &marks);
-    let links: Vec<(Range<usize>, LinkKind)> = marks
-        .iter()
-        .filter_map(|(range, mark)| match mark {
-            Mark::Link(kind) => Some((range.clone(), *kind)),
-            _ => None,
-        })
-        .collect();
-    let targets: Vec<(LinkKind, String)> = links
-        .iter()
-        .map(|(range, kind)| (*kind, kind.target(&shown[range.clone()])))
-        .collect();
-    let view = view.clone();
-    let element_id = ElementId::Name(format!("{id}-text-{index}").into());
-    Some(
-        InteractiveText::new(element_id, StyledText::new(shown).with_runs(runs)).on_click(
+/// What every stretch of one message's text is drawn with.
+struct Shown<'a> {
+    id: &'a str,
+    view: &'a WeakEntity<ConversationView>,
+    selection: Option<&'a Selection>,
+}
+
+impl Shown<'_> {
+    /// The text in `range` between code blocks, styled, or nothing when it
+    /// is only line breaks.
+    fn prose(
+        &self,
+        index: usize,
+        text: &Text,
+        range: Range<usize>,
+    ) -> Option<(InteractiveText, TextHit)> {
+        let slice = &text.text[range.clone()];
+        let start = range.start + (slice.len() - slice.trim_start_matches('\n').len());
+        let end = range.end - (slice.len() - slice.trim_end_matches('\n').len());
+        if start >= end {
+            return None;
+        }
+        let shown: SharedString = text.text[start..end].to_owned().into();
+        let marks: Vec<(Range<usize>, Mark)> = text
+            .marks
+            .iter()
+            .filter(|(mark_range, _)| mark_range.start < end && mark_range.end > start)
+            .map(|(mark_range, mark)| {
+                let clipped = mark_range.start.max(start) - start..mark_range.end.min(end) - start;
+                (clipped, *mark)
+            })
+            .collect();
+        let key: SharedString = format!("{}-text-{index}", self.id).into();
+        let selected = self
+            .selection
+            .filter(|selection| selection.key == key)
+            .map(|selection| selection.range.clone());
+        let runs = runs(shown.len(), &marks, selected);
+        let links: Vec<(Range<usize>, LinkKind)> = marks
+            .iter()
+            .filter_map(|(range, mark)| match mark {
+                Mark::Link(kind) => Some((range.clone(), *kind)),
+                _ => None,
+            })
+            .collect();
+        let targets: Vec<(LinkKind, String)> = links
+            .iter()
+            .map(|(range, kind)| (*kind, kind.target(&shown[range.clone()])))
+            .collect();
+        let view = self.view.clone();
+        let styled = StyledText::new(shown.clone()).with_runs(runs);
+        let hit = TextHit {
+            key: key.clone(),
+            layout: styled.layout().clone(),
+            text: shown,
+        };
+        let element = InteractiveText::new(ElementId::Name(key), styled).on_click(
             links.into_iter().map(|(range, _)| range).collect(),
             move |clicked, _: &mut Window, cx: &mut App| {
                 if let Some((kind, target)) = targets.get(clicked) {
                     open(*kind, target, &view, cx);
                 }
             },
-        ),
-    )
+        );
+        Some((element, hit))
+    }
 }
 
 fn open(kind: LinkKind, target: &str, view: &WeakEntity<ConversationView>, cx: &mut App) {
@@ -106,12 +224,20 @@ fn open(kind: LinkKind, target: &str, view: &WeakEntity<ConversationView>, cx: &
     }
 }
 
-/// One text run per stretch of `len` bytes that `marks` style alike.
-fn runs(len: usize, marks: &[(Range<usize>, Mark)]) -> Vec<TextRun> {
+/// One text run per stretch of `len` bytes that `marks` style alike, with
+/// `selected` behind a highlight.
+fn runs(
+    len: usize,
+    marks: &[(Range<usize>, Mark)],
+    selected: Option<Range<usize>>,
+) -> Vec<TextRun> {
+    let selected = selected.filter(|range| !range.is_empty());
     let mut edges: Vec<usize> = marks
         .iter()
         .flat_map(|(range, _)| [range.start, range.end])
+        .chain(selected.iter().flat_map(|range| [range.start, range.end]))
         .chain([0, len])
+        .filter(|&edge| edge <= len)
         .collect();
     edges.sort_unstable();
     edges.dedup();
@@ -122,7 +248,14 @@ fn runs(len: usize, marks: &[(Range<usize>, Mark)]) -> Vec<TextRun> {
                 .iter()
                 .filter(|(range, _)| range.start <= edge[0] && range.end >= edge[1])
                 .map(|(_, mark)| *mark);
-            run(edge[1] - edge[0], covering)
+            let mut run = run(edge[1] - edge[0], covering);
+            if selected
+                .as_ref()
+                .is_some_and(|range| range.start <= edge[0] && range.end >= edge[1])
+            {
+                run.background_color = Some(rgba(SELECTION).into());
+            }
+            run
         })
         .collect()
 }
@@ -173,7 +306,7 @@ mod tests {
     #[test]
     fn splits_text_where_its_styles_change() {
         let marks = [(0..4, Mark::Bold), (2..8, Mark::Link(LinkKind::Web))];
-        let runs: Vec<(usize, bool, bool)> = runs(10, &marks)
+        let runs: Vec<(usize, bool, bool)> = runs(10, &marks, None)
             .iter()
             .map(|run| {
                 (
