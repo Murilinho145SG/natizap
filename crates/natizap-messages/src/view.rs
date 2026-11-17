@@ -7,7 +7,7 @@ use gpui::{
     svg,
 };
 use natizap_playback::Speed;
-use natizap_protocol::Reply;
+use natizap_protocol::{ContentKind, Reply};
 use natizap_ui::theme::{ACCENT, LINE, MUTED, PANE, PANEL, RAISED, TEXT, glass};
 use natizap_ui::{
     Button, ButtonSize, ButtonVariant, Icon, Submitted, TextInput, avatar, name_color,
@@ -247,6 +247,8 @@ impl ConversationView {
                         replying.author.clone(),
                         replying.color,
                         replying.reply.text.clone().into(),
+                        ContentKind::Text,
+                        None,
                     )
                     .flex_1()
                     .min_w_0(),

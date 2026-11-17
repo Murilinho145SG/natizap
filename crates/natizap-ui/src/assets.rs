@@ -54,6 +54,8 @@ icons! {
     ChevronDown => "chevron-down.svg",
     /// Waiting, e.g. a message still sending.
     Clock => "clock.svg",
+    /// A photo.
+    Camera => "camera.svg",
     /// A conversation.
     Chats => "chats.svg",
     /// Close the window.
@@ -66,6 +68,8 @@ icons! {
     Lock => "lock.svg",
     /// Maximize the window.
     Maximize => "maximize.svg",
+    /// A voice message.
+    Mic => "mic.svg",
     /// Minimize the window.
     Minimize => "minimize.svg",
     /// Notifications silenced.
@@ -82,6 +86,8 @@ icons! {
     Restore => "restore.svg",
     /// Send a message.
     Send => "send.svg",
+    /// A video.
+    Video => "video.svg",
     /// Sound: marks voice notes.
     Waveform => "waveform.svg",
 }

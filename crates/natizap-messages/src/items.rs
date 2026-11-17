@@ -98,6 +98,10 @@ pub(crate) struct QuotePreview {
     pub(crate) author: SharedString,
     pub(crate) color: u32,
     pub(crate) text: SharedString,
+    /// What the quoted message carries, for its icon.
+    pub(crate) kind: ContentKind,
+    /// The quoted photo's or video's preview, shown beside the text.
+    pub(crate) thumbnail: Option<Arc<Image>>,
 }
 
 /// Message text with its markup read: what to show and how to style it.
@@ -118,9 +122,12 @@ impl Text {
 }
 
 /// Lays out `messages` (oldest first) as rows, with day separators.
+/// `contact` names the other side of a one-to-one chat, whose messages
+/// carry no sender of their own.
 pub(crate) fn items(
     messages: &[Message],
     reactions: &HashMap<String, Vec<Reaction>>,
+    contact: &str,
     now: DateTime<Local>,
 ) -> Vec<Item> {
     let by_id: HashMap<&str, &Message> = messages
@@ -144,7 +151,7 @@ pub(crate) fn items(
                     || previous.sender != message.sender
                     || message.sent_at - previous.sent_at > BURST_GAP_SECONDS
             });
-        let mut bubble = bubble(message, sent, starts_burst, &by_id);
+        let mut bubble = bubble(message, sent, starts_burst, &by_id, contact);
         if let Some(reactions) = reactions.get(&message.id) {
             bubble.my_reaction = reactions
                 .iter()
@@ -163,6 +170,7 @@ fn bubble(
     sent: DateTime<Local>,
     starts_burst: bool,
     by_id: &HashMap<&str, &Message>,
+    contact: &str,
 ) -> Bubble {
     let sender: Option<(SharedString, u32)> = message.sender.as_ref().map(|sender| {
         (
@@ -176,16 +184,29 @@ fn bubble(
         .as_ref()
         .map(|quote| match by_id.get(quote.id.as_str()) {
             Some(quoted) => {
-                let (author, color) = if quoted.from_me {
-                    ("You".to_owned(), ACCENT)
-                } else {
-                    let sender = quoted.sender.as_ref().unwrap_or(&quoted.chat);
-                    (sender_name(quoted, sender), name_color(sender.as_str()))
+                let (author, color) = match (&quoted.sender, quoted.from_me) {
+                    (_, true) => ("You".to_owned(), ACCENT),
+                    (Some(sender), false) => {
+                        (sender_name(quoted, sender), name_color(sender.as_str()))
+                    }
+                    (None, false) => (contact.to_owned(), name_color(quoted.chat.as_str())),
                 };
                 QuotePreview {
                     author: author.into(),
                     color,
-                    text: summary(quoted).into(),
+                    text: quote_text(quoted).into(),
+                    kind: quoted.kind,
+                    thumbnail: quoted
+                        .media
+                        .as_ref()
+                        .and_then(|media| media.thumbnail.clone())
+                        .filter(|_| {
+                            matches!(
+                                quoted.kind,
+                                ContentKind::Photo | ContentKind::Video | ContentKind::Sticker
+                            )
+                        })
+                        .map(|bytes| preview(quoted.kind, bytes)),
                 }
             }
             // The quoted message is older than what is loaded, or was never
@@ -203,6 +224,8 @@ fn bubble(
                     .as_deref()
                     .map_or_default(|text| Marked::parse(text).text)
                     .into(),
+                kind: ContentKind::Text,
+                thumbnail: None,
             },
         });
     Bubble {
@@ -344,6 +367,25 @@ fn sender_name(message: &Message, sender: &ChatId) -> String {
         .unwrap_or_else(|| sender.as_str().to_owned())
 }
 
+/// The quoted message's line: its caption or text, a voice note's length,
+/// or else what it is. The icon beside it already says it is a photo, so a
+/// caption stands alone.
+fn quote_text(message: &Message) -> String {
+    let caption = message.text.as_deref().map(|text| Marked::parse(text).text);
+    let length = message
+        .media
+        .as_ref()
+        .and_then(|media| media.seconds)
+        .map(|seconds| format!("{}:{:02}", seconds / 60, seconds % 60));
+    match (caption, message.kind) {
+        (Some(text), _) => text,
+        (None, ContentKind::VoiceMessage | ContentKind::Audio) => {
+            length.unwrap_or_else(|| message.kind.label().to_owned())
+        }
+        (None, kind) => kind.label().to_owned(),
+    }
+}
+
 /// One plain line describing a message.
 fn summary(message: &Message) -> String {
     let text = message.text.as_deref().map(|text| Marked::parse(text).text);
@@ -425,7 +467,7 @@ mod tests {
         ];
 
         assert_eq!(
-            layout(&items(&messages, &HashMap::new(), now)),
+            layout(&items(&messages, &HashMap::new(), "Ana", now)),
             [
                 "[Yesterday]",
                 "+themAna",

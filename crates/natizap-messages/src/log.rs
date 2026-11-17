@@ -368,7 +368,7 @@ async fn sync(
                 tracing::error!(%error, "could not read reactions");
                 HashMap::new()
             });
-            let rows = items(&messages, &reactions, Local::now()).into();
+            let rows = items(&messages, &reactions, &chat.title, Local::now()).into();
             let fetch = fetch_on_sight(&messages);
             let posters = posters_on_sight(&messages);
             if outputs

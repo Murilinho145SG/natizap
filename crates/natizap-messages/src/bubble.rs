@@ -2,16 +2,18 @@
 
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, App, Div, FontStyle, FontWeight, HighlightStyle, MouseButton, SharedString,
-    Stateful, StrikethroughStyle, StyledText, WeakEntity, div, px, relative, rgb, rgba, svg,
+    AnyElement, App, Div, FontStyle, FontWeight, HighlightStyle, Image, MouseButton, ObjectFit,
+    SharedString, Stateful, StrikethroughStyle, StyledText, WeakEntity, div, img, px, relative,
+    rgb, rgba, svg,
 };
 use natizap_protocol::{ContentKind, Mark};
 use natizap_ui::theme::{
     ALERT, DEEP, LINE, MINT, MUTED, OUTGOING, PANEL, RAISED, SCRIM, TEXT, glass,
 };
 use natizap_ui::{Button, ButtonSize, ButtonVariant, Icon};
+use std::sync::Arc;
 
-use crate::items::{Body, Bubble, Item, MediaView, Text};
+use crate::items::{Body, Bubble, Item, MediaView, QuotePreview, Text};
 use crate::media_view::render_media;
 use crate::message::Delivery;
 use crate::view::ConversationView;
@@ -157,12 +159,7 @@ fn shape(bubble: &Bubble, view: &WeakEntity<ConversationView>, voice: &VoiceUi) 
 
     padded(bubble)
         .children(bubble.media.as_ref().map(|media| render_media(media, view)))
-        .children(
-            bubble
-                .quote
-                .as_ref()
-                .map(|quote| quote_block(quote.author.clone(), quote.color, quote.text.clone())),
-        )
+        .children(bubble.quote.as_ref().map(quoted))
         // Time sits beside short text and drops below text that fills the
         // bubble, as in WhatsApp.
         .child(
@@ -226,12 +223,7 @@ fn picture_bubble(
         .p(px(3.0))
         .gap_1()
         .children(author(bubble).map(|name| name.px(px(7.0)).pt(px(2.0))))
-        .children(
-            bubble
-                .quote
-                .as_ref()
-                .map(|quote| quote_block(quote.author.clone(), quote.color, quote.text.clone())),
-        )
+        .children(bubble.quote.as_ref().map(quoted))
         .child(picture)
         .children(caption)
 }
@@ -371,7 +363,36 @@ fn reply_to(view: &WeakEntity<ConversationView>, bubble: &Bubble, cx: &mut App) 
 
 /// A quoted message: who wrote it over one line of what they said, marked
 /// by a bar in their color.
-pub(crate) fn quote_block(author: SharedString, color: u32, text: SharedString) -> Div {
+fn quoted(quote: &QuotePreview) -> Div {
+    quote_block(
+        quote.author.clone(),
+        quote.color,
+        quote.text.clone(),
+        quote.kind,
+        quote.thumbnail.clone(),
+    )
+}
+
+/// A quoted message: a bar in the author's color, the author, an icon for
+/// what it carries and a line of it, and a photo or video's preview on the
+/// right, as in WhatsApp.
+pub(crate) fn quote_block(
+    author: SharedString,
+    color: u32,
+    text: SharedString,
+    kind: ContentKind,
+    thumbnail: Option<Arc<Image>>,
+) -> Div {
+    let icon = match kind {
+        ContentKind::Photo | ContentKind::Sticker => Some(Icon::Camera),
+        ContentKind::Video => Some(Icon::Video),
+        ContentKind::VoiceMessage => Some(Icon::Mic),
+        ContentKind::Audio => Some(Icon::Waveform),
+        ContentKind::Document => Some(Icon::File),
+        ContentKind::Text | ContentKind::Location | ContentKind::Contact | ContentKind::Poll => {
+            None
+        }
+    };
     div()
         .flex()
         .rounded(px(8.0))
@@ -380,6 +401,7 @@ pub(crate) fn quote_block(author: SharedString, color: u32, text: SharedString) 
         .child(div().w(px(3.0)).flex_none().bg(rgb(color)))
         .child(
             div()
+                .flex_1()
                 .min_w_0()
                 .flex()
                 .flex_col()
@@ -394,12 +416,28 @@ pub(crate) fn quote_block(author: SharedString, color: u32, text: SharedString) 
                 )
                 .child(
                     div()
-                        .truncate()
+                        .flex()
+                        .items_center()
+                        .gap_1()
                         .text_size(px(13.0))
                         .text_color(rgb(MUTED))
-                        .child(text),
+                        .children(icon.map(|icon| {
+                            svg()
+                                .path(icon.path())
+                                .size(px(14.0))
+                                .flex_none()
+                                .text_color(rgb(MUTED))
+                        }))
+                        .child(div().min_w_0().truncate().child(text)),
                 ),
         )
+        .children(thumbnail.map(|thumbnail| {
+            img(thumbnail)
+                .w(px(48.0))
+                .flex_none()
+                .self_stretch()
+                .object_fit(ObjectFit::Cover)
+        }))
 }
 
 /// Where a sent message stands, as WhatsApp shows it: a clock while
