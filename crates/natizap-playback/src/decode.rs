@@ -208,7 +208,7 @@ impl VideoTrack {
             count: 0,
         });
         let decoder = context.decoder().video()?;
-        let (width, height) = fit(decoder.width(), decoder.height());
+        let (width, height) = fit(decoder.width(), decoder.height(), MAX_WIDTH);
         let scaler = scaling::Context::get(
             decoder.format(),
             decoder.width(),
@@ -380,18 +380,18 @@ fn tempo_graph(
     Ok(graph)
 }
 
-/// Scales `width`×`height` down to at most [`MAX_WIDTH`] wide, keeping the
+/// Scales `width`×`height` down to at most `max_width` wide, keeping the
 /// aspect ratio and even sides (the scaler's chroma planes need them).
-fn fit(width: u32, height: u32) -> (u32, u32) {
-    if width <= MAX_WIDTH {
+pub(crate) fn fit(width: u32, height: u32, max_width: u32) -> (u32, u32) {
+    if width <= max_width {
         return (width, height);
     }
-    let scaled = u64::from(height) * u64::from(MAX_WIDTH) / u64::from(width);
-    (MAX_WIDTH, u32::try_from(scaled).unwrap_or(height) & !1)
+    let scaled = u64::from(height) * u64::from(max_width) / u64::from(width);
+    (max_width, u32::try_from(scaled).unwrap_or(height) & !1)
 }
 
 /// `timestamp` in `time_base` units as a duration; unknown stamps count as 0.
-fn seconds(timestamp: Option<i64>, time_base: Rational) -> Duration {
+pub(crate) fn seconds(timestamp: Option<i64>, time_base: Rational) -> Duration {
     let ticks = timestamp.unwrap_or(0).max(0);
     let (num, den) = (
         i64::from(time_base.numerator()),
@@ -405,7 +405,7 @@ fn seconds(timestamp: Option<i64>, time_base: Rational) -> Duration {
 }
 
 /// The picture's pixels with each row's padding removed.
-fn packed_rows(frame: &frame::Video, row_bytes: usize, rows: usize) -> Vec<u8> {
+pub(crate) fn packed_rows(frame: &frame::Video, row_bytes: usize, rows: usize) -> Vec<u8> {
     let stride = frame.stride(0);
     let data = frame.data(0);
     let mut pixels = Vec::with_capacity(row_bytes * rows);
@@ -421,9 +421,9 @@ mod tests {
 
     #[test]
     fn scales_wide_videos_down_keeping_their_shape() {
-        assert_eq!(fit(848, 478), (848, 478));
-        assert_eq!(fit(3840, 2160), (1920, 1080));
-        assert_eq!(fit(2560, 1081), (1920, 810));
+        assert_eq!(fit(848, 478, 1920), (848, 478));
+        assert_eq!(fit(3840, 2160, 1920), (1920, 1080));
+        assert_eq!(fit(2560, 1081, 1920), (1920, 810));
     }
 
     #[test]

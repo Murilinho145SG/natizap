@@ -4,16 +4,19 @@
 //! sound goes to the sound card through `cpal`, and the sound card's progress
 //! is the clock video pictures follow. Callers only see [`Playback`]: they
 //! steer it and read where it is, and draw it however their feature needs.
+//! [`save_poster`] takes a still from a video for its bubble.
 
 mod audio;
 mod clock;
 mod decode;
+mod poster;
 mod speed;
 
 use std::path::Path;
 use std::sync::{Arc, mpsc};
 use std::time::Duration;
 
+pub use poster::{PosterError, save_poster};
 pub use speed::Speed;
 
 use decode::{Command, Shared};
