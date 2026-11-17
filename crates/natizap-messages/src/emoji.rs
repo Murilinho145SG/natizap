@@ -1,7 +1,7 @@
 //! The composer's emoji picker.
 
 use gpui::prelude::*;
-use gpui::{Div, div, px, rgb};
+use gpui::{Div, Stateful, div, px, rgb};
 use natizap_ui::theme::{LINE, PANEL, RAISED};
 
 /// The emoji people reach for most, in roughly that order; a full catalog
@@ -15,13 +15,18 @@ pub(crate) const PICKER: &[&str] = &[
     "✌️", "🎊", "🥵", "😞", "💚", "☀️", "🖤", "💰", "😚", "👑",
 ];
 
-/// A grid of [`PICKER`] emoji; `on_pick` gets the chosen one.
+/// A scrollable grid of [`PICKER`] emoji; `on_pick` gets the chosen one.
 pub(crate) fn picker(
     on_pick: impl Fn(&'static str, &mut gpui::Window, &mut gpui::App) + Clone + 'static,
-) -> Div {
+) -> Stateful<Div> {
     div()
+        .id("emoji-picker")
+        // Without scrolling the rows past the height limit spill over the
+        // composer below.
+        .overflow_y_scroll()
         .flex()
         .flex_wrap()
+        .content_start()
         .gap_0p5()
         .p_2()
         .max_h(px(220.0))

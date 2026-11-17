@@ -228,7 +228,11 @@ impl ConversationView {
             .when(self.picking_emoji, |composer| {
                 let input = self.composer.downgrade();
                 composer.child(picker(move |emoji, window, cx| {
-                    let _ = input.update(cx, |input, cx| input.insert(emoji, window, cx));
+                    // Keep typing where the emoji went.
+                    let _ = input.update(cx, |input, cx| {
+                        input.insert(emoji, window, cx);
+                        window.focus(&input.focus_handle(cx), cx);
+                    });
                 }))
             })
             .children(self.reply_bar(cx))
