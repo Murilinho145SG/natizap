@@ -14,8 +14,8 @@ use natizap_contacts::{
     ChatSettings, ChatSummary, DisappearingChosen, MuteToggled, ProfileClosed, ProfilePanel, Tile,
 };
 use natizap_messages::{
-    ChatRequested, ContactsRequested, ConversationView, ForwardRequested, KnownName, MessageLog,
-    MessageSent, OpenChat, PlayRequested, ProfileRequested,
+    ChatClosed, ChatRequested, ContactsRequested, ConversationView, ForwardRequested, KnownName,
+    MessageLog, MessageSent, MuteRequested, OpenChat, PlayRequested, ProfileRequested,
 };
 use natizap_player::{PlayerClosed, PlayerView};
 use natizap_profiles::ProfilePictures;
@@ -102,6 +102,7 @@ impl Root {
         Self::open_profiles(&conversation, protocol, cx);
         Self::open_numbers(&conversation, cx);
         Self::share_names(&chats, messages, cx);
+        Self::follow_chat_menu(&conversation, cx);
         Self::share_contacts(&conversation, messages, &chats, pictures, window, cx);
 
         Self {
@@ -168,6 +169,32 @@ impl Root {
                 cx.notify();
             },
         )
+        .detach();
+    }
+
+    /// Closes the open chat, or mutes it, when its header menu says so.
+    fn follow_chat_menu(conversation: &Entity<ConversationView>, cx: &mut Context<Self>) {
+        cx.subscribe(conversation, |root, _, _: &ChatClosed, cx| {
+            root.profile = None;
+            root.chats.read(cx).open(None);
+            root.messages.update(cx, MessageLog::close);
+            root.chat_list.update(cx, |list, cx| list.show(None, cx));
+            cx.notify();
+        })
+        .detach();
+        cx.subscribe(conversation, |root, _, MuteRequested(muted), cx| {
+            let Some(chat) = root
+                .messages
+                .read(cx)
+                .open_chat()
+                .map(|chat| chat.id.clone())
+            else {
+                return;
+            };
+            root.chats.read(cx).set_muted(&chat, *muted, cx);
+            root.messages
+                .update(cx, |log, cx| log.set_muted(*muted, cx));
+        })
         .detach();
     }
 
@@ -385,10 +412,12 @@ impl Root {
             addresses: row.addresses.to_vec(),
             title: row.title.clone(),
             unread: row.unread,
+            muted: row.muted,
         };
         self.messages
             .update(cx, |messages, cx| messages.open(chat, cx));
-        self.chat_list.update(cx, |list, cx| list.show(&row.id, cx));
+        self.chat_list
+            .update(cx, |list, cx| list.show(Some(&row.id), cx));
     }
 
     /// Like the phone's back button: closes what is on top first (the
