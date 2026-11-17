@@ -15,7 +15,7 @@ mod outgoing;
 mod profile;
 mod protocol;
 
-pub use actions::{ActionError, Reply, Sent, Unread};
+pub use actions::{ActionError, PinFor, Reply, Sent, Unread};
 pub use chat::ChatId;
 pub use content::{Content, ContentKind, Quote};
 pub use markup::{Mark, Marked};

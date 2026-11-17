@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use gpui::{App, AppContext as _, Task};
 use gpui_tokio::Tokio;
 use whatsapp_rust::prelude::{Client, MessageBuilderExt as _, MessageExt as _, MessageField, wa};
-use whatsapp_rust::{Jid, RevokeType};
+use whatsapp_rust::{Jid, PinDuration, RevokeType};
 
 use crate::ChatId;
 
@@ -168,6 +168,73 @@ pub(crate) async fn star(
         actions
             .unstar_message(&chat, sender.as_ref(), &message_id, from_me)
             .await
+    };
+    result.map_err(|error| ActionError::Rejected(error.to_string()))
+}
+
+/// How long a pinned message stays pinned, as WhatsApp offers it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PinFor {
+    /// 24 hours.
+    Day,
+    /// 7 days.
+    Week,
+    /// 30 days.
+    Month,
+}
+
+impl PinFor {
+    /// Every choice, shortest first, as the pin question lists them.
+    pub const ALL: [Self; 3] = [Self::Day, Self::Week, Self::Month];
+
+    /// How the choice reads.
+    #[must_use]
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Day => "24 hours",
+            Self::Week => "7 days",
+            Self::Month => "30 days",
+        }
+    }
+
+    /// The length in seconds.
+    #[must_use]
+    pub fn seconds(self) -> i64 {
+        match self {
+            Self::Day => 86_400,
+            Self::Week => 7 * 86_400,
+            Self::Month => 30 * 86_400,
+        }
+    }
+}
+
+/// Pins a message for everyone in the chat for `pin`, or unpins it when
+/// `pin` is `None`. `sender` wrote it, in groups; `None` for this account's
+/// own and in one-to-one chats.
+pub(crate) async fn pin(
+    client: Arc<Client>,
+    chat: Jid,
+    message_id: String,
+    sender: Option<Jid>,
+    from_me: bool,
+    pin: Option<PinFor>,
+) -> Result<(), ActionError> {
+    let key = wa::MessageKey {
+        remote_jid: Some(chat.to_string()),
+        from_me: Some(from_me),
+        id: Some(message_id),
+        participant: sender.map(|sender| sender.to_string()),
+    };
+    let result = match pin {
+        Some(pin) => {
+            let duration = match pin {
+                PinFor::Day => PinDuration::Hours24,
+                PinFor::Week => PinDuration::Days7,
+                PinFor::Month => PinDuration::Days30,
+            };
+            client.pin_message(chat, key, duration).await
+        }
+        None => client.unpin_message(chat, key).await,
     };
     result.map_err(|error| ActionError::Rejected(error.to_string()))
 }

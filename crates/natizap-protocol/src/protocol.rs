@@ -8,7 +8,7 @@ use whatsapp_rust::wacore::store::DevicePropsOverride;
 
 use crate::ChatId;
 use crate::ContentKind;
-use crate::actions::{self, ActionError, Connection, Reply, Sent, Unread};
+use crate::actions::{self, ActionError, Connection, PinFor, Reply, Sent, Unread};
 use crate::fanout::Fanout;
 use crate::media::{self, Media};
 use crate::outgoing::{self, Outgoing, SentMedia};
@@ -192,6 +192,27 @@ impl Protocol {
         };
         self.connection.run(cx, move |client| {
             actions::delete_for_me(client, chat, message_id, sender, from_me)
+        })
+    }
+
+    /// Pins a message in `chat` for everyone for `pin`, or unpins it when
+    /// `pin` is `None`. `from_me` says this account wrote it; `sender` wrote
+    /// it otherwise, in groups (`None` in one-to-one chats).
+    pub fn pin(
+        &self,
+        chat: &ChatId,
+        message_id: String,
+        from_me: bool,
+        sender: Option<&ChatId>,
+        pin: Option<PinFor>,
+        cx: &App,
+    ) -> Task<Result<(), ActionError>> {
+        let (chat, sender) = match (actions::jid(chat), sender.map(actions::jid).transpose()) {
+            (Ok(chat), Ok(sender)) => (chat, sender),
+            (Err(error), _) | (_, Err(error)) => return Task::ready(Err(error)),
+        };
+        self.connection.run(cx, move |client| {
+            actions::pin(client, chat, message_id, sender, from_me, pin)
         })
     }
 
