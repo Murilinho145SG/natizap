@@ -8,6 +8,8 @@ publish.workspace = true
 [dependencies]
 anyhow.workspace = true
 gpui.workspace = true
+tracing.workspace = true
+unicode-segmentation.workspace = true
 
 [lints]
 workspace = true

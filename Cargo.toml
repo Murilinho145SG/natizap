@@ -37,6 +37,7 @@ qrcode = { version = "0.14", default-features = false }
 thiserror = "2"
 tokio = { version = "1", default-features = false, features = ["fs"] }
 tracing = "0.1"
+unicode-segmentation = "1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 natizap-chats = { path = "crates/natizap-chats" }
