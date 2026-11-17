@@ -77,7 +77,7 @@ impl MessageStore {
                         message.text,
                         message.edited,
                         message.deleted,
-                        delivery_name(message.delivery),
+                        message.delivery.name(),
                     ])?;
                 }
                 MessageChange::Edited { chat, id, text } => {
@@ -98,6 +98,23 @@ impl MessageStore {
                          WHERE chat = ?1 AND id = ?2",
                     )?
                     .execute(params![chat.as_str(), local_id, id])?;
+                }
+                MessageChange::Progressed { ids, delivery } => {
+                    // Receipts arrive out of order; a message only moves
+                    // forward.
+                    let behind: Vec<&str> = Delivery::ALL
+                        .into_iter()
+                        .filter(|state| (Delivery::Sending..*delivery).contains(state))
+                        .map(Delivery::name)
+                        .collect();
+                    let mut progress = tx.prepare_cached(&format!(
+                        "UPDATE messages SET delivery = ?1
+                         WHERE id = ?2 AND from_me = 1 AND delivery IN ('{}')",
+                        behind.join("', '")
+                    ))?;
+                    for id in ids {
+                        progress.execute(params![delivery.name(), id])?;
+                    }
                 }
                 MessageChange::Rejected { chat, local_id } => {
                     tx.prepare_cached(
@@ -157,14 +174,6 @@ impl MessageStore {
     }
 }
 
-fn delivery_name(delivery: Delivery) -> &'static str {
-    match delivery {
-        Delivery::Sending => "sending",
-        Delivery::Sent => "sent",
-        Delivery::Failed => "failed",
-    }
-}
-
 fn message_from_row(row: &Row<'_>) -> rusqlite::Result<Message> {
     let kind: String = row.get("kind")?;
     let delivery: String = row.get("delivery")?;
@@ -181,11 +190,7 @@ fn message_from_row(row: &Row<'_>) -> rusqlite::Result<Message> {
         text: row.get("text")?,
         edited: row.get("edited")?,
         deleted: row.get("deleted")?,
-        delivery: match delivery.as_str() {
-            "sending" => Delivery::Sending,
-            "failed" => Delivery::Failed,
-            _ => Delivery::Sent,
-        },
+        delivery: Delivery::from_name(&delivery).unwrap_or(Delivery::Sent),
     })
 }
 
@@ -253,6 +258,25 @@ mod tests {
         let messages = store.latest(&[chat], 10)?;
         assert_eq!(texts(&messages), [Some("hi"), None]);
         assert!(messages[0].edited && messages[1].deleted);
+        Ok(())
+    }
+
+    #[test]
+    fn receipts_only_move_a_sent_message_forward() -> rusqlite::Result<()> {
+        let mut store = MessageStore::in_memory()?;
+        let chat = ChatId::new("1@lid");
+        let mut sent = message("1@lid", "a", 10, "hi");
+        sent.from_me = true;
+        store.apply(&[MessageChange::Received(sent)])?;
+
+        let progressed = |delivery| MessageChange::Progressed {
+            ids: vec!["a".into()],
+            delivery,
+        };
+        store.apply(&[progressed(Delivery::Read), progressed(Delivery::Delivered)])?;
+
+        let delivery = store.latest(std::slice::from_ref(&chat), 1)?[0].delivery;
+        assert_eq!(delivery, Delivery::Read);
         Ok(())
     }
 

@@ -2,6 +2,7 @@
 
 use natizap_protocol::whatsapp_rust::prelude::{Event, EventKind, MessageExt as _, wa};
 use natizap_protocol::whatsapp_rust::types::events::{InboundMessage, LazyHistorySync};
+use natizap_protocol::whatsapp_rust::types::presence::ReceiptType;
 use natizap_protocol::{ChatId, Content};
 
 use crate::message::{Delivery, Message, MessageChange};
@@ -18,6 +19,21 @@ pub(crate) fn changes(event: &Event) -> Vec<MessageChange> {
     match event {
         Event::HistorySync(history) => history_changes(history),
         Event::Messages(batch) => batch.messages.iter().filter_map(live_change).collect(),
+        Event::Receipt(receipt) => {
+            let delivery = match receipt.r#type {
+                ReceiptType::Delivered => Delivery::Delivered,
+                ReceiptType::Read | ReceiptType::Played => Delivery::Read,
+                // Receipts about this account's own reading, retries and
+                // errors say nothing about where a sent message is.
+                _ => return Vec::new(),
+            };
+            let ids = receipt
+                .message_ids
+                .iter()
+                .map(ToString::to_string)
+                .collect();
+            vec![MessageChange::Progressed { ids, delivery }]
+        }
         _ => Vec::new(),
     }
 }
@@ -63,6 +79,15 @@ fn live_change(inbound: &InboundMessage) -> Option<MessageChange> {
     }))
 }
 
+fn history_delivery(info: &wa::WebMessageInfo) -> Delivery {
+    use wa::web_message_info::Status;
+    match info.status {
+        Some(Status::DELIVERY_ACK) => Delivery::Delivered,
+        Some(Status::READ | Status::PLAYED) => Delivery::Read,
+        _ => Delivery::Sent,
+    }
+}
+
 fn history_changes(history: &LazyHistorySync) -> Vec<MessageChange> {
     let Some(history) = history.get() else {
         tracing::warn!("could not decode a history sync chunk");
@@ -102,6 +127,10 @@ fn history_message(chat: &ChatId, info: &wa::WebMessageInfo) -> Option<MessageCh
         text: content.text,
         edited: false,
         deleted: false,
-        delivery: Delivery::Sent,
+        delivery: if from_me {
+            history_delivery(info)
+        } else {
+            Delivery::Sent
+        },
     }))
 }

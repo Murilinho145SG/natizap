@@ -299,9 +299,11 @@ fn arrivals<'a>(
 
 fn touches(open: Option<&OpenChat>, changes: &[MessageChange]) -> bool {
     open.is_some_and(|open| {
-        changes
-            .iter()
-            .any(|change| open.addresses.contains(change.chat()))
+        changes.iter().any(|change| {
+            change
+                .chat()
+                .is_none_or(|chat| open.addresses.contains(chat))
+        })
     })
 }
 
