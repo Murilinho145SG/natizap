@@ -109,7 +109,33 @@ impl ConversationView {
         )
     }
 
+    /// Why this account cannot write here, when only admins may and it is
+    /// not one: shown where the composer would be, as on the phone.
+    fn who_may_write(&self, cx: &Context<Self>) -> Option<&'static str> {
+        let group = self.log.read(cx).group()?;
+        (group.admins_only && !group.own_admin).then_some(if group.community_announcements {
+            "Only community admins can send messages"
+        } else {
+            "Only admins can send messages"
+        })
+    }
+
     pub(super) fn composer(&self, cx: &mut Context<Self>) -> Stateful<Div> {
+        if let Some(notice) = self.who_may_write(cx) {
+            return div()
+                .id("composer")
+                .flex_none()
+                .flex()
+                .justify_center()
+                .px_4()
+                .py_4()
+                .bg(rgb(PANEL))
+                .border_t_1()
+                .border_color(rgb(LINE))
+                .text_size(px(13.5))
+                .text_color(rgb(MUTED))
+                .child(notice);
+        }
         div()
             .id("composer")
             .relative()

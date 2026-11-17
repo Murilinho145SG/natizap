@@ -298,10 +298,22 @@ fn frame(bubble: &Bubble) -> Div {
 /// Who wrote a group message: their name in their color, and their
 /// number on the right beside a chosen name.
 fn author(bubble: &Bubble) -> Option<Div> {
-    bubble
-        .author
-        .as_ref()
-        .map(|author| name_and_phone(author.name.clone(), author.color, author.phone.clone()))
+    bubble.author.as_ref().map(|author| {
+        div()
+            .flex()
+            .flex_col()
+            .child(name_and_phone(
+                author.name.clone(),
+                author.color,
+                author.phone.clone(),
+            ))
+            .children(
+                author
+                    .role
+                    .clone()
+                    .map(|role| div().text_size(px(12.0)).text_color(rgb(MUTED)).child(role)),
+            )
+    })
 }
 
 /// Reply and react buttons, shown while the pointer is over the bubble.

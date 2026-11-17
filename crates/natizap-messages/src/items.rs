@@ -110,11 +110,14 @@ pub(crate) struct Author {
     /// Their number beside a chosen name, when known.
     pub(crate) phone: Option<SharedString>,
     pub(crate) color: u32,
+    /// Their role under their name, e.g. "Community admin".
+    pub(crate) role: Option<SharedString>,
 }
 
 impl Author {
-    /// The author of `message`, sent by `sender` in a group.
-    fn of(message: &Message, sender: &ChatId) -> Self {
+    /// The author of `message`, sent by `sender` in a group whose
+    /// community admins are `community_admins`.
+    fn of(message: &Message, sender: &ChatId, community_admins: &[ChatId]) -> Self {
         let phone = message
             .sender_phone
             .as_ref()
@@ -129,6 +132,10 @@ impl Author {
             name: name.into(),
             phone: phone.map(Into::into),
             color: name_color(sender.as_str()),
+            role: community_admins
+                .iter()
+                .any(|admin| admin == sender || message.sender_phone.as_ref() == Some(admin))
+                .then(|| "Community admin".into()),
         }
     }
 }
@@ -171,6 +178,7 @@ pub(crate) fn items(
     messages: &[Message],
     reactions: &HashMap<String, Vec<Reaction>>,
     contact: &str,
+    community_admins: &[ChatId],
     now: DateTime<Local>,
 ) -> Vec<Item> {
     let by_id: HashMap<&str, &Message> = messages
@@ -194,7 +202,14 @@ pub(crate) fn items(
                     || previous.sender != message.sender
                     || message.sent_at - previous.sent_at > BURST_GAP_SECONDS
             });
-        let mut bubble = bubble(message, sent, starts_burst, &by_id, contact);
+        let mut bubble = bubble(
+            message,
+            sent,
+            starts_burst,
+            &by_id,
+            contact,
+            community_admins,
+        );
         if let Some(reactions) = reactions.get(&message.id) {
             bubble.my_reaction = reactions
                 .iter()
@@ -214,11 +229,12 @@ fn bubble(
     starts_burst: bool,
     by_id: &HashMap<&str, &Message>,
     contact: &str,
+    community_admins: &[ChatId],
 ) -> Bubble {
     let sender = message
         .sender
         .as_ref()
-        .map(|sender| Author::of(message, sender));
+        .map(|sender| Author::of(message, sender, community_admins));
     let author = sender.clone().filter(|_| starts_burst);
     let quote = message
         .quote
@@ -228,7 +244,7 @@ fn bubble(
                 let (author, color, phone) = match (&quoted.sender, quoted.from_me) {
                     (_, true) => ("You".into(), ACCENT, None),
                     (Some(sender), false) => {
-                        let author = Author::of(quoted, sender);
+                        let author = Author::of(quoted, sender, &[]);
                         (author.name, author.color, author.phone)
                     }
                     (None, false) => (
@@ -515,7 +531,7 @@ mod tests {
         ];
 
         assert_eq!(
-            layout(&items(&messages, &HashMap::new(), "Ana", now)),
+            layout(&items(&messages, &HashMap::new(), "Ana", &[], now)),
             [
                 "[Yesterday]",
                 "+them~ Ana",

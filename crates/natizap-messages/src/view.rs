@@ -24,6 +24,9 @@ mod message_menu;
 
 use message_menu::MessagePopup;
 
+/// Width of the column a community's announcements read in.
+const CENTERED_WIDTH: f32 = 720.0;
+
 /// How often a playing note's bubble is redrawn: often enough for the
 /// waveform and clock, far less than every frame.
 const VOICE_TICK: Duration = Duration::from_millis(50);
@@ -325,6 +328,11 @@ impl Render for ConversationView {
         let items = log.items().clone();
         let pinned = log.pinned().cloned();
         let pictures = self.pictures.clone();
+        // A community's announcements read as a column down the middle, as
+        // on the phone.
+        let centered = log
+            .group()
+            .is_some_and(|group| group.community_announcements);
         let view = cx.weak_entity();
         let reacting = self.reacting.clone();
         let voice = self.voices.ui();
@@ -347,6 +355,7 @@ impl Render for ConversationView {
                     .min_h_0()
                     .flex()
                     .flex_col()
+                    .items_center()
                     // Clicking the conversation closes the emoji picker; the
                     // quick reactions close themselves.
                     .on_mouse_down(
@@ -373,9 +382,11 @@ impl Render for ConversationView {
                             };
                             render_item(item, &view, reacting.as_ref(), &voice, picture)
                         })
-                        .flex_1()
-                        .px(px(56.0))
-                        .py_3(),
+                        .h_full()
+                        .w_full()
+                        .py_3()
+                        .when(centered, |list| list.max_w(px(CENTERED_WIDTH)).px_4())
+                        .when(!centered, |list| list.px(px(56.0))),
                     ),
             )
             .child(self.composer(cx))

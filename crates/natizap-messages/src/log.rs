@@ -6,7 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use chrono::Local;
 use gpui::{AppContext as _, Context, Entity, EventEmitter, SharedString, Task};
 use natizap_protocol::whatsapp_rust::prelude::Event;
-use natizap_protocol::{ChatId, ContentKind, Forward, Protocol, Quote, Reply, Unread};
+use natizap_protocol::{ChatId, ContentKind, Forward, GroupInfo, Protocol, Quote, Reply, Unread};
 
 use crate::items::{Item, items, summary};
 use crate::media::{Fetch, PosterJob, fetch_on_sight, posters_on_sight};
@@ -49,6 +49,9 @@ enum Input {
     Event(Arc<Event>),
     Open(OpenChat),
     Apply(Box<MessageChange>),
+    /// The open chat is a community's announcements group run by these
+    /// addresses, whose messages say so.
+    CommunityAdmins(ChatId, Vec<ChatId>),
 }
 
 impl From<MessageChange> for Input {
@@ -89,6 +92,7 @@ pub struct MessageLog {
     /// Videos whose still is being taken, by message id.
     posters: HashSet<String>,
     pinned: Option<Pinned>,
+    group: Option<GroupInfo>,
     _tasks: [Task<()>; 3],
 }
 
@@ -171,6 +175,7 @@ impl MessageLog {
             fetching: HashSet::new(),
             posters: HashSet::new(),
             pinned: None,
+            group: None,
             _tasks: [forward, sync, apply],
         }
     }
@@ -196,9 +201,39 @@ impl MessageLog {
             return;
         }
         self.items = Arc::from([]);
+        self.pinned = None;
+        self.group = None;
+        if chat.id.is_group() {
+            self.load_group(chat.id.clone(), cx);
+        }
         self.open = Some(chat.clone());
         self.send_input(Input::Open(chat));
         cx.notify();
+    }
+
+    /// Who runs the open group and who may write in it, once known.
+    pub(crate) fn group(&self) -> Option<&GroupInfo> {
+        self.group.as_ref()
+    }
+
+    fn load_group(&mut self, chat: ChatId, cx: &mut Context<Self>) {
+        let loading = self.protocol.read(cx).group_info(&chat, cx);
+        cx.spawn(async move |this, cx| match loading.await {
+            Ok(group) => {
+                let _ = this.update(cx, |log, cx| {
+                    // Another chat may have opened meanwhile.
+                    if log.open.as_ref().is_some_and(|open| open.id == chat) {
+                        if group.community_announcements {
+                            log.send_input(Input::CommunityAdmins(chat, group.admins.clone()));
+                        }
+                        log.group = Some(group);
+                        cx.notify();
+                    }
+                });
+            }
+            Err(error) => tracing::debug!(%error, "group details unavailable"),
+        })
+        .detach();
     }
 
     /// Sends `text` to the open chat, optionally replying to a message. It
@@ -363,6 +398,7 @@ async fn sync(
         return;
     };
     let mut open: Option<OpenChat> = None;
+    let mut community_admins: Vec<ChatId> = Vec::new();
 
     while let Ok(input) = inputs.recv().await {
         let mut refresh = false;
@@ -373,7 +409,14 @@ async fn sync(
             match input {
                 Input::Open(chat) => {
                     open = Some(chat);
+                    community_admins.clear();
                     opened = true;
+                }
+                Input::CommunityAdmins(chat, admins) => {
+                    if open.as_ref().is_some_and(|open| open.id == chat) {
+                        community_admins = admins;
+                        refresh = true;
+                    }
                 }
                 Input::Event(event) if matches!(*event, Event::LoggedOut(_)) => {
                     // Whoever links next may be a different account.
@@ -411,43 +454,52 @@ async fn sync(
             }
         }
         if opened || refresh {
-            let messages = store
-                .latest(&chat.addresses, SHOWN_MESSAGES)
-                .unwrap_or_else(|error| {
-                    tracing::error!(%error, "could not read messages");
-                    Vec::new()
-                });
-            let reactions = store.reactions(&messages).unwrap_or_else(|error| {
-                tracing::error!(%error, "could not read reactions");
-                HashMap::new()
-            });
-            let rows = items(&messages, &reactions, &chat.title, Local::now()).into();
-            let fetch = fetch_on_sight(&messages);
-            let posters = posters_on_sight(&messages);
-            let pinned = store
-                .pinned(&chat.addresses, Local::now().timestamp())
-                .unwrap_or_else(|error| {
-                    tracing::error!(%error, "could not read the pinned message");
-                    None
-                })
-                .map(|message| Pinned {
-                    id: message.id.clone().into(),
-                    text: summary(&message).into(),
-                });
-            if outputs
-                .send(Output::Thread {
-                    chat: chat.id.clone(),
-                    items: rows,
-                    fetch,
-                    posters,
-                    pinned,
-                })
-                .await
-                .is_err()
-            {
+            let thread = thread(&store, chat, &community_admins);
+            if outputs.send(thread).await.is_err() {
                 return;
             }
         }
+    }
+}
+
+/// The open chat's rows and what they need fetched, read from `store`.
+fn thread(store: &MessageStore, chat: &OpenChat, community_admins: &[ChatId]) -> Output {
+    let messages = store
+        .latest(&chat.addresses, SHOWN_MESSAGES)
+        .unwrap_or_else(|error| {
+            tracing::error!(%error, "could not read messages");
+            Vec::new()
+        });
+    let reactions = store.reactions(&messages).unwrap_or_else(|error| {
+        tracing::error!(%error, "could not read reactions");
+        HashMap::new()
+    });
+    let rows = items(
+        &messages,
+        &reactions,
+        &chat.title,
+        community_admins,
+        Local::now(),
+    )
+    .into();
+    let fetch = fetch_on_sight(&messages);
+    let posters = posters_on_sight(&messages);
+    let pinned = store
+        .pinned(&chat.addresses, Local::now().timestamp())
+        .unwrap_or_else(|error| {
+            tracing::error!(%error, "could not read the pinned message");
+            None
+        })
+        .map(|message| Pinned {
+            id: message.id.clone().into(),
+            text: summary(&message).into(),
+        });
+    Output::Thread {
+        chat: chat.id.clone(),
+        items: rows,
+        fetch,
+        posters,
+        pinned,
     }
 }
 
