@@ -1,8 +1,13 @@
 //! How attachments look inside a bubble.
 
+use std::cell::Cell;
+use std::rc::Rc;
+use std::time::Duration;
+
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, App, Div, FontWeight, ImageSource, ObjectFit, WeakEntity, div, img, px, rgb, svg,
+    AnyElement, App, Bounds, Div, FontWeight, ImageSource, MouseButton, MouseDownEvent, ObjectFit,
+    Pixels, WeakEntity, canvas, div, img, px, rgb, svg,
 };
 use natizap_protocol::ContentKind;
 use natizap_ui::Icon;
@@ -10,12 +15,20 @@ use natizap_ui::theme::{DEEP, MUTED, TEXT};
 
 use crate::items::MediaView;
 use crate::view::ConversationView;
+use crate::voice::VoiceState;
+
+/// Bars drawn for a note whose sender sent no waveform.
+const FLAT_BARS: usize = 48;
 
 /// The attachment of a bubble: an image for photos and stickers, a preview
-/// with a play button for videos, and a row for audio and documents.
-/// Videos and audio play in natizap on click; documents open in the system's
-/// app for them.
-pub(crate) fn render_media(media: &MediaView, view: &WeakEntity<ConversationView>) -> AnyElement {
+/// with a play button for videos, a player for voice notes and audio, and a
+/// row for documents. Videos play over the window, sound plays in the
+/// bubble, and documents open in the system's app for them.
+pub(crate) fn render_media(
+    media: &MediaView,
+    voice: Option<&VoiceState>,
+    view: &WeakEntity<ConversationView>,
+) -> AnyElement {
     match media.fetch.kind {
         ContentKind::Photo | ContentKind::Sticker => picture(media).into_any_element(),
         ContentKind::Video => picture(media)
@@ -42,6 +55,10 @@ pub(crate) fn render_media(media: &MediaView, view: &WeakEntity<ConversationView
             .cursor_pointer()
             .on_click(open(media, view))
             .into_any_element(),
+        ContentKind::VoiceMessage | ContentKind::Audio => {
+            let voice = voice.filter(|voice| voice.message_id == media.fetch.message_id.as_str());
+            render_voice(media, voice, view).into_any_element()
+        }
         kind => div()
             .id("media")
             .min_w(px(220.0))
@@ -105,6 +122,141 @@ fn picture(media: &MediaView) -> Div {
             };
             img(source).size_full().object_fit(fit)
         }))
+}
+
+/// Play button, waveform, time and, while it is the note playing, speed.
+fn render_voice(
+    media: &MediaView,
+    voice: Option<&VoiceState>,
+    view: &WeakEntity<ConversationView>,
+) -> Div {
+    let playing = voice.is_some_and(|voice| voice.playing);
+    let progress = voice.map_or(0.0, |voice| voice.progress);
+    let time = voice.map_or_else(
+        || media.detail.clone().unwrap_or_default(),
+        |voice| clock_label(voice.position).into(),
+    );
+    let message_id = media.fetch.message_id.clone();
+    let track: Rc<Cell<Option<Bounds<Pixels>>>> = Rc::default();
+    let seek = {
+        let (track, view) = (Rc::clone(&track), view.clone());
+        move |event: &MouseDownEvent, _: &mut gpui::Window, cx: &mut App| {
+            let Some(bounds) = track.get() else { return };
+            let fraction = (event.position.x - bounds.origin.x) / bounds.size.width;
+            // The view is gone only while the window closes.
+            let _ = view.update(cx, |view, cx| view.seek_voice(&message_id, fraction, cx));
+            cx.stop_propagation();
+        }
+    };
+    let toggle = {
+        let (media, view) = (media.clone(), view.clone());
+        move |_: &gpui::ClickEvent, _: &mut gpui::Window, cx: &mut App| {
+            let _ = view.update(cx, |view, cx| view.toggle_voice(&media, cx));
+        }
+    };
+
+    div()
+        .w(px(260.0))
+        .flex()
+        .items_center()
+        .gap_3()
+        .py_1()
+        .child(
+            div()
+                .id("voice-toggle")
+                .flex_none()
+                .cursor_pointer()
+                .when(voice.is_some_and(|voice| voice.loading), |button| {
+                    button.opacity(0.5)
+                })
+                .on_click(toggle)
+                .child(round_icon(
+                    if playing { Icon::Pause } else { Icon::Play },
+                    36.0,
+                )),
+        )
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .flex()
+                .flex_col()
+                .gap_1()
+                .child(
+                    div()
+                        .id("waveform")
+                        .relative()
+                        .h(px(26.0))
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .cursor_pointer()
+                        .on_mouse_down(MouseButton::Left, seek)
+                        .child(
+                            canvas(
+                                move |bounds, _, _| track.set(Some(bounds)),
+                                |_, (), _, _| {},
+                            )
+                            .absolute()
+                            .size_full(),
+                        )
+                        .children(bars(media.fetch.media.waveform.as_deref(), progress)),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .text_size(px(12.0))
+                        .text_color(rgb(MUTED))
+                        .child(time)
+                        .children(voice.map(|voice| {
+                            let view = view.clone();
+                            div()
+                                .id("voice-speed")
+                                .px_1p5()
+                                .rounded_full()
+                                .bg(rgb(DEEP))
+                                .text_color(rgb(TEXT))
+                                .font_weight(FontWeight::MEDIUM)
+                                .cursor_pointer()
+                                .on_click(move |_, _, cx| {
+                                    let _ = view.update(cx, ConversationView::cycle_voice_speed);
+                                })
+                                .child(voice.speed.label())
+                        })),
+                ),
+        )
+}
+
+/// One bar per waveform sample; bars before `progress` are lit.
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "bar counts and loudness values are tiny"
+)]
+fn bars(waveform: Option<&[u8]>, progress: f32) -> Vec<Div> {
+    let flat = [20; FLAT_BARS];
+    let levels = waveform
+        .filter(|levels| !levels.is_empty())
+        .unwrap_or(&flat);
+    let count = levels.len() as f32;
+    levels
+        .iter()
+        .enumerate()
+        .map(|(index, &level)| {
+            let lit = (index as f32 + 0.5) / count <= progress;
+            div()
+                .w(px(2.0))
+                .h(px(3.0 + f32::from(level.min(100)) * 0.22))
+                .rounded_full()
+                .bg(rgb(if lit { TEXT } else { MUTED }))
+        })
+        .collect()
+}
+
+fn clock_label(time: Duration) -> String {
+    let seconds = time.as_secs();
+    format!("{}:{:02}", seconds / 60, seconds % 60)
 }
 
 fn round_icon(icon: Icon, size: f32) -> Div {

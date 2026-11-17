@@ -13,6 +13,7 @@ use crate::items::{Body, Bubble, Item, Text};
 use crate::media_view::render_media;
 use crate::message::Delivery;
 use crate::view::ConversationView;
+use crate::voice::VoiceState;
 
 /// Quick reactions offered on every bubble, as in WhatsApp.
 pub(crate) const QUICK_REACTIONS: [&str; 6] = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
@@ -21,6 +22,7 @@ pub(crate) fn render_item(
     item: &Item,
     view: &WeakEntity<ConversationView>,
     reacting: Option<&SharedString>,
+    voice: Option<&VoiceState>,
 ) -> AnyElement {
     match item {
         Item::Day(label) => div()
@@ -40,9 +42,12 @@ pub(crate) fn render_item(
                     .child(label.clone()),
             )
             .into_any_element(),
-        Item::Bubble(bubble) => {
-            render_bubble(bubble, view, reacting.is_some_and(|id| *id == bubble.id))
-        }
+        Item::Bubble(bubble) => render_bubble(
+            bubble,
+            view,
+            reacting.is_some_and(|id| *id == bubble.id),
+            voice,
+        ),
     }
 }
 
@@ -50,6 +55,7 @@ fn render_bubble(
     bubble: &Bubble,
     view: &WeakEntity<ConversationView>,
     reacting: bool,
+    voice: Option<&VoiceState>,
 ) -> AnyElement {
     let message = div()
         .max_w(relative(0.72))
@@ -58,7 +64,7 @@ fn render_bubble(
         .gap_0p5()
         .when(bubble.from_me, Styled::items_end)
         .when(!bubble.from_me, Styled::items_start)
-        .child(shape(bubble, view).max_w_full())
+        .child(shape(bubble, view, voice).max_w_full())
         .when(!bubble.reactions.is_empty(), |message| {
             message.child(reaction_chips(bubble))
         });
@@ -92,7 +98,7 @@ fn render_bubble(
 }
 
 /// The bubble itself: author, attachment, quote, content and time.
-fn shape(bubble: &Bubble, view: &WeakEntity<ConversationView>) -> Div {
+fn shape(bubble: &Bubble, view: &WeakEntity<ConversationView>, voice: Option<&VoiceState>) -> Div {
     let meta = div()
         .flex()
         .items_center()
@@ -152,7 +158,12 @@ fn shape(bubble: &Bubble, view: &WeakEntity<ConversationView>) -> Div {
                 .text_color(rgb(color))
                 .child(name)
         }))
-        .children(bubble.media.as_ref().map(|media| render_media(media, view)))
+        .children(
+            bubble
+                .media
+                .as_ref()
+                .map(|media| render_media(media, voice, view)),
+        )
         .children(
             bubble
                 .quote

@@ -2,7 +2,8 @@
 //! and sending new ones.
 //!
 //! [`MessageLog`] stores history and live messages and keeps the open chat
-//! current; [`ConversationView`] renders it with a composer.
+//! current; [`ConversationView`] renders it with a composer and plays voice
+//! notes inside their bubbles.
 
 mod bubble;
 mod emoji;
@@ -14,6 +15,7 @@ mod message;
 mod store;
 mod sync;
 mod view;
+mod voice;
 
 pub use log::{MessageLog, MessageSent, OpenChat, PlayRequested};
 pub use view::ConversationView;

@@ -74,8 +74,9 @@ again. Each store keeps an append-only `MIGRATIONS` list.
 Features talk to each other only through the binary: the chat list emits
 `ChatSelected`, the binary opens that chat in `MessageLog` and tells
 `ChatList` it is on screen; `MessageLog` emits `MessageSent`, which the
-binary forwards to the chat list's preview, and `PlayRequested`, which the
-binary answers by showing a `PlayerView`.
+binary forwards to the chat list's preview, and `PlayRequested` for videos,
+which the binary answers by showing a `PlayerView`. Voice notes and audio
+files play inside their bubble; both players share `natizap-playback`.
 
 ## Architecture: one crate per feature
 

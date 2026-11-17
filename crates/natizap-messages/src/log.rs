@@ -85,15 +85,23 @@ pub struct MessageLog {
 
 impl EventEmitter<MessageSent> for MessageLog {}
 impl EventEmitter<PlayRequested> for MessageLog {}
+impl EventEmitter<SoundReady> for MessageLog {}
 
-/// The user opened a video, voice message or audio file, now on disk, so the
-/// app can play it in place.
+/// The user opened a video, now on disk, so the app can play it over the
+/// window.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlayRequested {
     /// The downloaded file.
     pub file: PathBuf,
     /// What to call it while playing.
     pub title: SharedString,
+}
+
+/// A voice note or audio file asked to play finished downloading.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SoundReady {
+    pub(crate) message_id: String,
+    pub(crate) file: PathBuf,
 }
 
 impl MessageLog {
@@ -245,23 +253,25 @@ impl MessageLog {
         .detach();
     }
 
-    /// Opens an attachment in the system's default app, downloading it
-    /// first if needed.
+    /// Opens an attachment, downloading it first if needed.
     pub(crate) fn open_media(&mut self, fetch: Fetch, file: Option<&Path>, cx: &mut Context<Self>) {
         match file.filter(|file| file.exists()) {
-            Some(file) => self.reveal(fetch.kind, file.to_owned(), cx),
+            Some(file) => self.reveal(fetch.kind, fetch.message_id, file.to_owned(), cx),
             None => self.fetch(fetch, true, cx),
         }
     }
 
-    /// Plays videos and sound in the app; other files open in the system's
-    /// app for them.
-    fn reveal(&self, kind: ContentKind, file: PathBuf, cx: &mut Context<Self>) {
+    /// Videos play over the window and sound in its bubble; other files open
+    /// in the system's app for them.
+    fn reveal(&self, kind: ContentKind, message_id: String, file: PathBuf, cx: &mut Context<Self>) {
         match kind {
-            ContentKind::Video | ContentKind::VoiceMessage | ContentKind::Audio => {
+            ContentKind::Video => {
                 let chat = self.open.as_ref().map_or_default(|open| open.title.clone());
                 let title = format!("{} · {chat}", kind.label()).into();
                 cx.emit(PlayRequested { file, title });
+            }
+            ContentKind::VoiceMessage | ContentKind::Audio => {
+                cx.emit(SoundReady { message_id, file });
             }
             _ => cx.open_with_system(&file),
         }
@@ -290,11 +300,11 @@ impl MessageLog {
                     Ok(()) => {
                         log.fetching.remove(&message_id);
                         log.send_input(Input::from(MessageChange::MediaSaved {
-                            message_id,
+                            message_id: message_id.clone(),
                             file: path.clone(),
                         }));
                         if open {
-                            log.reveal(kind, path, cx);
+                            log.reveal(kind, message_id, path, cx);
                         }
                     }
                     // Stays in `fetching` so a failing file is not retried on

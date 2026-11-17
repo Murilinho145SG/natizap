@@ -1,4 +1,6 @@
 use gpui::prelude::*;
+use std::time::Duration;
+
 use gpui::{
     Context, Div, Entity, FocusHandle, Focusable as _, FontWeight, KeyDownEvent, ListAlignment,
     ListState, MouseButton, SharedString, Stateful, Window, deferred, div, list, px, relative, rgb,
@@ -11,7 +13,12 @@ use natizap_ui::{Icon, Submitted, TextInput, avatar, name_color};
 use crate::bubble::{quote_block, render_item};
 use crate::emoji::picker;
 use crate::items::{Bubble, MediaView};
-use crate::log::MessageLog;
+use crate::log::{MessageLog, SoundReady};
+use crate::voice::Voices;
+
+/// How often a playing note's bubble is redrawn: often enough for the
+/// waveform and clock, far less than every frame.
+const VOICE_TICK: Duration = Duration::from_millis(50);
 
 /// The conversation pane: header, messages and composer for the open chat,
 /// or a hint to pick one.
@@ -25,6 +32,9 @@ pub struct ConversationView {
     /// The bubble whose quick reactions are open.
     reacting: Option<SharedString>,
     picking_emoji: bool,
+    voices: Voices,
+    /// Whether a task is redrawing the playing note.
+    ticking: bool,
 }
 
 /// The message the next one will reply to, as the composer shows it.
@@ -47,6 +57,11 @@ impl ConversationView {
             this.follow(&log, window, cx);
         })
         .detach();
+        cx.subscribe(&log, |this, _, ready: &SoundReady, cx| {
+            this.voices.downloaded(&ready.message_id, &ready.file);
+            this.keep_ticking(cx);
+        })
+        .detach();
         Self {
             log,
             composer,
@@ -55,6 +70,8 @@ impl ConversationView {
             replying: None,
             reacting: None,
             picking_emoji: false,
+            voices: Voices::default(),
+            ticking: false,
         }
     }
 
@@ -83,6 +100,7 @@ impl ConversationView {
             self.replying = None;
             self.reacting = None;
             self.picking_emoji = false;
+            self.voices.stop();
             // A newly opened chat is where the user is about to type.
             let focus: FocusHandle = self.composer.focus_handle(cx);
             window.focus(&focus, cx);
@@ -112,11 +130,57 @@ impl ConversationView {
         cx.notify();
     }
 
-    /// Opens an attachment in the system's app, downloading it first.
+    /// Opens an attachment, downloading it first.
     pub(crate) fn open_media(&mut self, media: &MediaView, cx: &mut Context<Self>) {
         let (fetch, file) = (media.fetch.clone(), media.file.clone());
         self.log
             .update(cx, |log, cx| log.open_media(fetch, file.as_deref(), cx));
+    }
+
+    /// Plays or pauses a voice note or audio file in its bubble.
+    pub(crate) fn toggle_voice(&mut self, media: &MediaView, cx: &mut Context<Self>) {
+        let id = SharedString::from(media.fetch.message_id.clone());
+        if self.voices.toggle(&id, media.file.as_deref()) {
+            let fetch = media.fetch.clone();
+            self.log
+                .update(cx, |log, cx| log.open_media(fetch, None, cx));
+        }
+        self.keep_ticking(cx);
+    }
+
+    /// Jumps to `fraction` of the playing note.
+    pub(crate) fn seek_voice(&mut self, message_id: &str, fraction: f32, cx: &mut Context<Self>) {
+        self.voices.seek(message_id, fraction);
+        cx.notify();
+    }
+
+    /// Switches voice notes to the next speed.
+    pub(crate) fn cycle_voice_speed(&mut self, cx: &mut Context<Self>) {
+        self.voices.cycle_speed();
+        cx.notify();
+    }
+
+    /// Redraws the playing note until it pauses, stops or ends.
+    fn keep_ticking(&mut self, cx: &mut Context<Self>) {
+        cx.notify();
+        if self.ticking || !self.voices.is_running() {
+            return;
+        }
+        self.ticking = true;
+        cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor().timer(VOICE_TICK).await;
+                let running = this.update(cx, |view, cx| {
+                    cx.notify();
+                    view.ticking = view.voices.is_running();
+                    view.ticking
+                });
+                if !matches!(running, Ok(true)) {
+                    break;
+                }
+            }
+        })
+        .detach();
     }
 
     /// Closes the quick reactions and the emoji picker.
@@ -314,6 +378,7 @@ impl Render for ConversationView {
         let items = log.items().clone();
         let view = cx.weak_entity();
         let reacting = self.reacting.clone();
+        let voice = self.voices.state();
         let subtitle = if chat.id.is_group() {
             Some("Group".to_owned())
         } else {
@@ -387,7 +452,7 @@ impl Render for ConversationView {
                         list(self.messages.clone(), move |index, _, _| {
                             items.get(index).map_or_else(
                                 || div().into_any_element(),
-                                |item| render_item(item, &view, reacting.as_ref()),
+                                |item| render_item(item, &view, reacting.as_ref(), voice.as_ref()),
                             )
                         })
                         .flex_1()
