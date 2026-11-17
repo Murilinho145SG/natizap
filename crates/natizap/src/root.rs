@@ -98,7 +98,7 @@ impl Root {
         .detach();
 
         Self::forward_through_picker(messages, &chats, pictures, window, cx);
-        Self::open_profiles(&conversation, protocol, cx);
+        Self::open_profiles(&conversation, protocol, pictures, cx);
         Self::open_numbers(&conversation, cx);
         Self::share_names(&chats, messages, cx);
         Self::follow_chat_menu(&conversation, cx);
@@ -311,14 +311,17 @@ impl Root {
     fn open_profiles(
         conversation: &Entity<ConversationView>,
         protocol: Entity<Protocol>,
+        pictures: &Entity<ProfilePictures>,
         cx: &mut Context<Self>,
     ) {
+        let pictures = pictures.clone();
         cx.subscribe(
             conversation,
             move |root, _, request: &ProfileRequested, cx| {
                 let panel = cx.new(|cx| {
                     ProfilePanel::new(
                         &protocol,
+                        &pictures,
                         request.chat.clone(),
                         request.title.clone(),
                         request.verified,
@@ -330,6 +333,8 @@ impl Root {
                     cx.notify();
                 })
                 .detach();
+                let names = Arc::clone(root.chats.read(cx).names());
+                panel.update(cx, |panel, cx| panel.set_names(names, cx));
                 root.fill_profile(&panel, &request.chat, cx);
                 root.profile = Some(panel);
                 cx.notify();
