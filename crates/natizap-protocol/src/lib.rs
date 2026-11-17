@@ -20,6 +20,6 @@ pub use chat::ChatId;
 pub use content::{Content, ContentKind, Quote};
 pub use markup::{Mark, Marked};
 pub use media::{HdThumbnail, Media};
-pub use outgoing::{Outgoing, SentMedia};
+pub use outgoing::{Forward, Outgoing, SentMedia};
 pub use protocol::{Protocol, StartError};
 pub use whatsapp_rust;

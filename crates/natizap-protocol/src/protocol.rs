@@ -11,7 +11,7 @@ use crate::ContentKind;
 use crate::actions::{self, ActionError, Connection, PinFor, Reply, Sent, Unread};
 use crate::fanout::Fanout;
 use crate::media::{self, Media};
-use crate::outgoing::{self, Outgoing, SentMedia};
+use crate::outgoing::{self, Forward, Outgoing, SentMedia};
 use crate::profile;
 
 /// Name shown on the phone under "Linked devices".
@@ -192,6 +192,23 @@ impl Protocol {
         };
         self.connection.run(cx, move |client| {
             actions::delete_for_me(client, chat, message_id, sender, from_me)
+        })
+    }
+
+    /// Sends `forward` to `chat`, marked as forwarded.
+    pub fn forward(
+        &self,
+        chat: &ChatId,
+        forward: Forward,
+        cx: &App,
+    ) -> Task<Result<Sent, ActionError>> {
+        let to = match actions::jid(chat) {
+            Ok(to) => to,
+            Err(error) => return Task::ready(Err(error)),
+        };
+        self.connection.run(cx, move |client| async move {
+            let id = outgoing::forward(client, to, forward).await?;
+            Ok(Sent { id })
         })
     }
 

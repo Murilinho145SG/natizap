@@ -3,8 +3,8 @@
 use std::sync::Arc;
 
 use whatsapp_rust::Jid;
-use whatsapp_rust::prelude::{Client, MessageExt as _, MessageField, wa};
-use whatsapp_rust::upload::{UploadOptions, UploadResponse};
+use whatsapp_rust::prelude::{Client, MessageBuilderExt as _, MessageExt as _, MessageField, wa};
+use whatsapp_rust::upload::UploadOptions;
 use whatsapp_rust::wacore::download::MediaType;
 
 use crate::actions::{ActionError, Reply, reply_context};
@@ -44,6 +44,42 @@ pub struct SentMedia {
     pub media: Media,
 }
 
+/// A message to send again to another chat.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Forward {
+    /// What it carries.
+    pub kind: ContentKind,
+    /// Its text or caption.
+    pub text: Option<String>,
+    /// Its file, already on WhatsApp's servers; `None` for text.
+    pub media: Option<Media>,
+}
+
+/// Sends `forward` to `to`, marked as forwarded. A file is not uploaded
+/// again: the message points at the copy already on WhatsApp's servers, as
+/// the phone does.
+pub(crate) async fn forward(
+    client: Arc<Client>,
+    to: Jid,
+    forward: Forward,
+) -> Result<String, ActionError> {
+    let context = wa::ContextInfo {
+        is_forwarded: Some(true),
+        forwarding_score: Some(1),
+        ..Default::default()
+    };
+    let mut message = match forward.media {
+        Some(media) => media_message(forward.kind, &media, forward.text, None),
+        None => wa::Message::text(forward.text.unwrap_or_default()),
+    };
+    message.set_context_info(context);
+    let sent = client
+        .send_message(to, message)
+        .await
+        .map_err(|error| ActionError::Rejected(error.to_string()))?;
+    Ok(sent.message_id)
+}
+
 pub(crate) async fn send(
     client: Arc<Client>,
     to: Jid,
@@ -79,7 +115,12 @@ pub(crate) async fn send(
         file_sha256: upload.file_sha256.to_vec(),
         file_enc_sha256: upload.file_enc_sha256.to_vec(),
     };
-    let mut message = message(outgoing, upload);
+    let fresh = Fresh {
+        url: upload.url,
+        timestamp: upload.media_key_timestamp,
+        sidecar: upload.streaming_sidecar,
+    };
+    let mut message = media_message(outgoing.kind, &media, outgoing.caption, Some(fresh));
     if let Some(reply) = reply {
         message.set_context_info(reply_context(&client, reply)?);
     }
@@ -93,93 +134,111 @@ pub(crate) async fn send(
     })
 }
 
-/// The message carrying `o`, uploaded as `u`.
-fn message(o: Outgoing, u: UploadResponse) -> wa::Message {
+/// What only a fresh upload knows; a forwarded file goes without.
+pub(crate) struct Fresh {
+    url: String,
+    timestamp: i64,
+    sidecar: Option<Vec<u8>>,
+}
+
+/// The message carrying the file `media` describes, as a `kind` message
+/// with `caption`.
+pub(crate) fn media_message(
+    kind: ContentKind,
+    media: &Media,
+    caption: Option<String>,
+    fresh: Option<Fresh>,
+) -> wa::Message {
+    let m = media.clone();
+    let (url, timestamp, sidecar) = match fresh {
+        Some(fresh) => (Some(fresh.url), Some(fresh.timestamp), fresh.sidecar),
+        None => (None, None, None),
+    };
     let mut message = wa::Message::default();
-    match o.kind {
+    match kind {
         ContentKind::Photo => {
             message.image_message = MessageField::some(wa::message::ImageMessage {
-                url: Some(u.url),
-                mimetype: Some(o.mime),
-                caption: o.caption,
-                file_sha256: Some(u.file_sha256.to_vec()),
-                file_length: Some(u.file_length),
-                height: o.height,
-                width: o.width,
-                media_key: Some(u.media_key.to_vec()),
-                file_enc_sha256: Some(u.file_enc_sha256.to_vec()),
-                direct_path: Some(u.direct_path),
-                media_key_timestamp: Some(u.media_key_timestamp),
-                jpeg_thumbnail: o.thumbnail,
+                url,
+                mimetype: m.mime,
+                caption,
+                file_sha256: Some(m.file_sha256),
+                file_length: m.size,
+                height: m.height,
+                width: m.width,
+                media_key: Some(m.media_key),
+                file_enc_sha256: Some(m.file_enc_sha256),
+                direct_path: Some(m.direct_path),
+                media_key_timestamp: timestamp,
+                jpeg_thumbnail: m.thumbnail,
                 ..Default::default()
             });
         }
         ContentKind::Video => {
             message.video_message = MessageField::some(wa::message::VideoMessage {
-                url: Some(u.url),
-                mimetype: Some(o.mime),
-                file_sha256: Some(u.file_sha256.to_vec()),
-                file_length: Some(u.file_length),
-                seconds: o.seconds,
-                media_key: Some(u.media_key.to_vec()),
-                caption: o.caption,
-                height: o.height,
-                width: o.width,
-                file_enc_sha256: Some(u.file_enc_sha256.to_vec()),
-                direct_path: Some(u.direct_path),
-                media_key_timestamp: Some(u.media_key_timestamp),
-                jpeg_thumbnail: o.thumbnail,
-                streaming_sidecar: u.streaming_sidecar,
+                url,
+                mimetype: m.mime,
+                file_sha256: Some(m.file_sha256),
+                file_length: m.size,
+                seconds: m.seconds,
+                media_key: Some(m.media_key),
+                caption,
+                height: m.height,
+                width: m.width,
+                file_enc_sha256: Some(m.file_enc_sha256),
+                direct_path: Some(m.direct_path),
+                media_key_timestamp: timestamp,
+                jpeg_thumbnail: m.thumbnail,
+                streaming_sidecar: sidecar,
                 ..Default::default()
             });
         }
         ContentKind::VoiceMessage | ContentKind::Audio => {
             message.audio_message = MessageField::some(wa::message::AudioMessage {
-                url: Some(u.url),
-                mimetype: Some(o.mime),
-                file_sha256: Some(u.file_sha256.to_vec()),
-                file_length: Some(u.file_length),
-                seconds: o.seconds,
-                ptt: Some(o.kind == ContentKind::VoiceMessage),
-                media_key: Some(u.media_key.to_vec()),
-                file_enc_sha256: Some(u.file_enc_sha256.to_vec()),
-                direct_path: Some(u.direct_path),
-                media_key_timestamp: Some(u.media_key_timestamp),
-                streaming_sidecar: u.streaming_sidecar,
-                waveform: o.waveform,
+                url,
+                mimetype: m.mime,
+                file_sha256: Some(m.file_sha256),
+                file_length: m.size,
+                seconds: m.seconds,
+                ptt: Some(kind == ContentKind::VoiceMessage),
+                media_key: Some(m.media_key),
+                file_enc_sha256: Some(m.file_enc_sha256),
+                direct_path: Some(m.direct_path),
+                media_key_timestamp: timestamp,
+                streaming_sidecar: sidecar,
+                waveform: m.waveform,
                 ..Default::default()
             });
         }
         ContentKind::Sticker => {
             message.sticker_message = MessageField::some(wa::message::StickerMessage {
-                url: Some(u.url),
-                file_sha256: Some(u.file_sha256.to_vec()),
-                file_enc_sha256: Some(u.file_enc_sha256.to_vec()),
-                media_key: Some(u.media_key.to_vec()),
-                mimetype: Some(o.mime),
-                height: o.height,
-                width: o.width,
-                direct_path: Some(u.direct_path),
-                file_length: Some(u.file_length),
-                media_key_timestamp: Some(u.media_key_timestamp),
+                url,
+                file_sha256: Some(m.file_sha256),
+                file_enc_sha256: Some(m.file_enc_sha256),
+                media_key: Some(m.media_key),
+                mimetype: m.mime,
+                height: m.height,
+                width: m.width,
+                direct_path: Some(m.direct_path),
+                file_length: m.size,
+                media_key_timestamp: timestamp,
                 ..Default::default()
             });
         }
         // Anything else goes as a document, which takes any file.
         _ => {
             message.document_message = MessageField::some(wa::message::DocumentMessage {
-                url: Some(u.url),
-                mimetype: Some(o.mime),
-                title: o.file_name.clone(),
-                file_sha256: Some(u.file_sha256.to_vec()),
-                file_length: Some(u.file_length),
-                media_key: Some(u.media_key.to_vec()),
-                file_name: o.file_name,
-                file_enc_sha256: Some(u.file_enc_sha256.to_vec()),
-                direct_path: Some(u.direct_path),
-                media_key_timestamp: Some(u.media_key_timestamp),
-                jpeg_thumbnail: o.thumbnail,
-                caption: o.caption,
+                url,
+                mimetype: m.mime,
+                title: m.file_name.clone(),
+                file_sha256: Some(m.file_sha256),
+                file_length: m.size,
+                media_key: Some(m.media_key),
+                file_name: m.file_name,
+                file_enc_sha256: Some(m.file_enc_sha256),
+                direct_path: Some(m.direct_path),
+                media_key_timestamp: timestamp,
+                jpeg_thumbnail: m.thumbnail,
+                caption,
                 ..Default::default()
             });
         }
