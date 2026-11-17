@@ -7,8 +7,10 @@ use whatsapp_rust::prelude::*;
 use whatsapp_rust::wacore::store::DevicePropsOverride;
 
 use crate::ChatId;
+use crate::ContentKind;
 use crate::actions::{self, ActionError, Connection, Reply, Sent, Unread};
 use crate::fanout::Fanout;
+use crate::media::{self, Media};
 
 /// Name shown on the phone under "Linked devices".
 const DEVICE_NAME: &str = "natizap";
@@ -155,6 +157,17 @@ impl Protocol {
         self.connection.run(cx, move |client| {
             actions::react(client, chat, message_id, sender, emoji)
         })
+    }
+
+    /// Downloads and decrypts `media`, which a message of `kind` carried.
+    pub fn download(
+        &self,
+        kind: ContentKind,
+        media: Media,
+        cx: &App,
+    ) -> Task<Result<Vec<u8>, ActionError>> {
+        self.connection
+            .run(cx, move |client| media::download(client, kind, media))
     }
 
     /// Tells WhatsApp, and so the user's other devices, that `messages` in

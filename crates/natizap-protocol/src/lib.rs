@@ -10,11 +10,13 @@ mod chat;
 mod content;
 mod fanout;
 mod markup;
+mod media;
 mod protocol;
 
 pub use actions::{ActionError, Reply, Sent, Unread};
 pub use chat::ChatId;
 pub use content::{Content, ContentKind, Quote};
 pub use markup::{Mark, Marked};
+pub use media::Media;
 pub use protocol::{Protocol, StartError};
 pub use whatsapp_rust;

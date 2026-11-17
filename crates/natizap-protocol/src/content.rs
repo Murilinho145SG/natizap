@@ -1,6 +1,7 @@
 use whatsapp_rust::prelude::{MessageExt as _, wa};
 
 use crate::ChatId;
+use crate::media::Media;
 
 /// What a message carries, as far as the interface needs to know.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -75,6 +76,8 @@ pub struct Content {
     pub text: Option<String>,
     /// The message this one replies to.
     pub quote: Option<Quote>,
+    /// The attached photo, video, audio, document or sticker.
+    pub media: Option<Media>,
 }
 
 /// A message being replied to.
@@ -174,6 +177,7 @@ impl Content {
             kind,
             text,
             quote: Quote::of(message),
+            media: Media::of(message),
         })
     }
 
@@ -245,6 +249,37 @@ mod tests {
                 summary: Some("lunch?".into()),
             })
         );
+    }
+
+    #[test]
+    fn carries_what_is_needed_to_show_and_download_a_photo() {
+        let image = |direct_path: Option<&str>| wa::Message {
+            image_message: MessageField::some(wa::message::ImageMessage {
+                direct_path: direct_path.map(str::to_owned),
+                media_key: Some(vec![1]),
+                file_sha256: Some(vec![2]),
+                file_enc_sha256: Some(vec![3]),
+                width: Some(800),
+                height: Some(600),
+                jpeg_thumbnail: Some(vec![0xff, 0xd8]),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let media = Content::of(&image(Some("/v/t62/abc"))).and_then(|content| content.media);
+        let media = media.unwrap_or_else(|| panic!("a complete photo carries media"));
+        assert_eq!((media.width, media.height), (Some(800), Some(600)));
+        assert_eq!(media.thumbnail.as_deref(), Some(&[0xff, 0xd8][..]));
+
+        // Without a location the file cannot be fetched, but the photo is
+        // still shown by kind.
+        let unreachable = Content::of(&image(None));
+        assert_eq!(
+            unreachable.as_ref().map(|content| content.kind),
+            Some(ContentKind::Photo)
+        );
+        assert_eq!(unreachable.and_then(|content| content.media), None);
     }
 
     #[test]
