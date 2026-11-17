@@ -66,6 +66,8 @@ icons! {
     Emoji => "emoji.svg",
     /// A document.
     File => "file.svg",
+    /// Forward a message to another chat.
+    Forward => "forward.svg",
     /// End-to-end encryption.
     Lock => "lock.svg",
     /// Maximize the window.
