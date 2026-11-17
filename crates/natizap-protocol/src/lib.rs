@@ -21,7 +21,7 @@ pub use actions::{ActionError, Anchor, Disappearing, PinFor, Reply, Sent, Unread
 pub use business::{Business, DayHours, Hours};
 pub use chat::{ChatId, PersonName};
 pub use content::{Card, Content, ContentKind, Extra, Forwarding, Poll, Quote};
-pub use group::GroupInfo;
+pub use group::{GroupInfo, Member, Role};
 pub use markup::{LinkKind, Mark, Marked};
 pub use media::{HdThumbnail, Media};
 pub use outgoing::{Forward, Outgoing, SentMedia};
