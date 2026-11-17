@@ -20,12 +20,7 @@ pub(crate) const MESSAGE_EVENTS: &[EventKind] = &[
 pub(crate) fn changes(event: &Event) -> Vec<MessageChange> {
     match event {
         Event::HistorySync(history) => history_changes(history),
-        Event::Messages(batch) => batch
-            .messages
-            .iter()
-            .filter_map(live_change)
-            .chain(batch.messages.iter().filter_map(named))
-            .collect(),
+        Event::Messages(batch) => batch.messages.iter().filter_map(live_change).collect(),
         Event::Receipt(receipt) => {
             let delivery = match receipt.r#type {
                 ReceiptType::Delivered => Delivery::Delivered,
@@ -48,18 +43,6 @@ pub(crate) fn changes(event: &Event) -> Vec<MessageChange> {
         }],
         _ => Vec::new(),
     }
-}
-
-/// The name a group member's message carries, kept for their messages
-/// that came without one.
-fn named(inbound: &InboundMessage) -> Option<MessageChange> {
-    let source = &inbound.info.source;
-    let name = Some(inbound.info.push_name.clone())
-        .filter(|name| !name.is_empty() && source.is_group && !source.is_from_me)?;
-    Some(MessageChange::Named {
-        address: ChatId::new(&source.sender.to_string()),
-        name,
-    })
 }
 
 fn live_change(inbound: &InboundMessage) -> Option<MessageChange> {
@@ -182,12 +165,6 @@ fn history_changes(history: &LazyHistorySync) -> Vec<MessageChange> {
                 .filter_map(|entry| entry.message.as_option())
                 .flat_map(move |info| history_message(&chat, info))
         })
-        .chain(history.pushnames.iter().filter_map(|pushname| {
-            Some(MessageChange::Named {
-                address: ChatId::new(pushname.id.as_deref()?),
-                name: pushname.pushname.clone().filter(|name| !name.is_empty())?,
-            })
-        }))
         .collect()
 }
 

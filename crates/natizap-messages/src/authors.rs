@@ -30,9 +30,6 @@ pub(crate) struct Members {
     pub(crate) community_admins: Vec<ChatId>,
     /// Each member's phone-number address by their other address.
     pub(crate) phones: HashMap<ChatId, ChatId>,
-    /// Names members chose, by address, for messages that came without
-    /// one.
-    pub(crate) names: HashMap<ChatId, String>,
 }
 
 /// Everything known about who wrote the messages laid out together.
@@ -62,17 +59,10 @@ impl Author {
             .or_else(|| senders.members.phones.get(sender))
             .unwrap_or(sender);
         let phone = phone_address.phone_number();
-        let known = &senders.members.names;
         let chosen = message
             .author
             .as_deref()
-            .or_else(|| senders.names.get(sender).copied())
-            .or_else(|| {
-                known
-                    .get(sender)
-                    .or_else(|| known.get(phone_address))
-                    .map(String::as_str)
-            });
+            .or_else(|| senders.names.get(sender).copied());
         let (name, phone) = match chosen {
             Some(chosen) => (format!("~ {chosen}"), phone),
             None => (phone.unwrap_or_else(|| sender.as_str().to_owned()), None),
