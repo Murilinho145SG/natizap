@@ -9,5 +9,6 @@ mod members;
 mod panel;
 mod sections;
 
-pub use panel::{ProfileClosed, ProfilePanel};
+pub use members::PersonOpened;
+pub use panel::{ChatWanted, ProfileClosed, ProfilePanel};
 pub use sections::{ChatSettings, ChatSummary, DisappearingChosen, MuteToggled, Tile};

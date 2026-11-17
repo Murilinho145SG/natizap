@@ -22,6 +22,15 @@ const COVERED_PICTURE: f32 = 140.0;
 /// Height of a business's banner.
 const COVER: f32 = 150.0;
 
+/// The user wants to write to the person whose profile this is.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChatWanted {
+    /// Their address.
+    pub chat: ChatId,
+    /// Their name, until the chat has one.
+    pub title: SharedString,
+}
+
 /// The user closed the panel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ProfileClosed;
@@ -60,6 +69,8 @@ pub struct ProfilePanel {
 }
 
 impl EventEmitter<ProfileClosed> for ProfilePanel {}
+impl EventEmitter<ChatWanted> for ProfilePanel {}
+impl EventEmitter<crate::members::PersonOpened> for ProfilePanel {}
 
 impl ProfilePanel {
     /// Opens `chat`'s profile, named `title`, with a seal when `verified`,
@@ -198,6 +209,7 @@ impl Render for ProfilePanel {
                             .when(self.cover.is_none(), Styled::pt_8)
                             .child(self.picture(cx))
                             .child(self.identity())
+                            .children(self.message_button(cx))
                             .child(div().w_full().py_4().child(separator()))
                             .child(self.details())
                             .child(self.sections(cx))
@@ -297,6 +309,24 @@ impl ProfilePanel {
     }
 
     /// The name, number, category and opening hours under the picture.
+    /// A way to write to the person, unless this is a group or yourself.
+    fn message_button(&self, cx: &mut Context<Self>) -> Option<Button> {
+        if self.chat.is_group() || self.own {
+            return None;
+        }
+        let wanted = ChatWanted {
+            chat: self.chat.clone(),
+            title: self.title.clone(),
+        };
+        Some(
+            Button::new("message-person")
+                .icon(Icon::Chats)
+                .label("Message")
+                .variant(ButtonVariant::Secondary)
+                .on_click(cx.listener(move |_, _, _, cx| cx.emit(wanted.clone()))),
+        )
+    }
+
     fn identity(&self) -> Div {
         let business = self.business();
         // A business shows the name WhatsApp verified, as the phone does.

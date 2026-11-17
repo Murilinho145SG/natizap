@@ -5,12 +5,21 @@ use std::collections::HashMap;
 
 use chrono::{Local, TimeZone as _};
 use gpui::prelude::*;
-use gpui::{Context, Div, FontWeight, SharedString, div, px, rgb};
+use gpui::{Context, Div, FontWeight, SharedString, Stateful, div, px, rgb};
 use natizap_protocol::{ChatId, GroupInfo, Member, PersonName, Role};
 use natizap_ui::theme::{MUTED, RAISED, TEXT};
 use natizap_ui::{BadgeTone, avatar, badge, separator};
 
 use crate::panel::ProfilePanel;
+
+/// The user picked someone in a group to see their profile.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PersonOpened {
+    /// Their address.
+    pub chat: ChatId,
+    /// Their name as listed.
+    pub title: SharedString,
+}
 
 /// Members listed before "View all".
 const FIRST_MEMBERS: usize = 10;
@@ -20,6 +29,9 @@ const MEMBER_PICTURE: f32 = 40.0;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Listed {
     pub(crate) address: ChatId,
+    /// Where their profile is asked for: their phone-number address when
+    /// known, as a LID tells less.
+    pub(crate) profile: ChatId,
     /// Their saved name, "~ chosen", "You", or their number.
     pub(crate) name: String,
     /// Their number, beside a name that is not saved.
@@ -64,6 +76,10 @@ pub(crate) fn listed(
             };
             let entry = Listed {
                 address: member.address.clone(),
+                profile: member
+                    .phone
+                    .clone()
+                    .unwrap_or_else(|| member.address.clone()),
                 name,
                 phone,
                 role: member.role,
@@ -101,14 +117,25 @@ impl ProfilePanel {
         } else {
             total.min(FIRST_MEMBERS)
         };
-        let rows: Vec<Div> = listed
+        let rows: Vec<Stateful<Div>> = listed
             .iter()
             .take(shown)
-            .map(|member| {
+            .enumerate()
+            .map(|(index, member)| {
                 let picture = self
                     .pictures
                     .update(cx, |pictures, cx| pictures.picture(&member.address, cx));
-                member_row(member, picture)
+                let row = member_row(member, picture).id(("member", index));
+                if member.own {
+                    return row;
+                }
+                let opened = PersonOpened {
+                    chat: member.profile.clone(),
+                    title: member.name.trim_start_matches("~ ").to_owned().into(),
+                };
+                row.cursor_pointer()
+                    .hover(|row| row.bg(rgb(RAISED)))
+                    .on_click(cx.listener(move |_, _, _, cx| cx.emit(opened.clone())))
             })
             .collect();
         div()
