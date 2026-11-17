@@ -7,6 +7,7 @@ use whatsapp_rust::prelude::{Client, MessageBuilderExt as _, MessageExt as _, Me
 use whatsapp_rust::{Jid, PinDuration, RevokeType};
 
 use crate::ChatId;
+use crate::content::{Card, Extra};
 
 /// The client of the current connection, while there is one.
 #[derive(Clone, Default)]
@@ -137,6 +138,68 @@ pub(crate) async fn send_text(
     Ok(Sent {
         id: sent.message_id,
     })
+}
+
+/// Sends shared contacts or a poll to `to`.
+pub(crate) async fn send_extra(
+    client: Arc<Client>,
+    to: Jid,
+    extra: Extra,
+) -> Result<Sent, ActionError> {
+    let rejected = |error: &dyn std::fmt::Display| ActionError::Rejected(error.to_string());
+    let message = match extra {
+        Extra::Poll(poll) => {
+            // Zero lets people choose any number of answers; one, a single one.
+            let selectable = u32::from(!poll.multiple);
+            // The returned secret opens the votes, which are not shown yet.
+            let (sent, _secret) = client
+                .polls()
+                .create(to, &poll.question, &poll.options, selectable)
+                .await
+                .map_err(|error| rejected(&error))?;
+            return Ok(Sent {
+                id: sent.message_id,
+            });
+        }
+        Extra::Cards(cards) => {
+            let contact = |card: &Card| wa::message::ContactMessage {
+                display_name: Some(card.name.clone()),
+                vcard: Some(vcard(card)),
+                ..Default::default()
+            };
+            match cards.as_slice() {
+                [card] => wa::Message {
+                    contact_message: MessageField::some(contact(card)),
+                    ..Default::default()
+                },
+                cards => wa::Message {
+                    contacts_array_message: MessageField::some(wa::message::ContactsArrayMessage {
+                        display_name: Some(format!("{} contacts", cards.len())),
+                        contacts: cards.iter().map(contact).collect(),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            }
+        }
+    };
+    let sent = client
+        .send_message(to, message)
+        .await
+        .map_err(|error| rejected(&error))?;
+    Ok(Sent {
+        id: sent.message_id,
+    })
+}
+
+/// The vCard WhatsApp sends for a contact: its name and number, with the
+/// `waid` that makes the number open a chat.
+fn vcard(card: &Card) -> String {
+    let name = card.name.replace(['\n', '\r', ';'], " ");
+    let phone = card.phone.as_deref().map_or_else(String::new, |digits| {
+        format!("TEL;type=CELL;waid={digits}:+{digits}\n")
+    });
+    format!("BEGIN:VCARD\nVERSION:3.0\nN:;{name};;;\nFN:{name}\n{phone}END:VCARD")
 }
 
 /// Deletes this account's own message for everyone in the chat.

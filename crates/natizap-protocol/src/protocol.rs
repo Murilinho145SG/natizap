@@ -14,6 +14,7 @@ use crate::ContentKind;
 use crate::actions::{
     self, ActionError, Anchor, Connection, Disappearing, PinFor, Reply, Sent, Unread,
 };
+use crate::content::Extra;
 use crate::fanout::Fanout;
 use crate::group::{self, GroupInfo};
 use crate::media::{self, Media};
@@ -164,6 +165,21 @@ impl Protocol {
         self.connection.run(cx, move |client| {
             actions::send_text(client, to, text, reply)
         })
+    }
+
+    /// Sends shared contacts or a poll to `chat`.
+    pub fn send_extra(
+        &self,
+        chat: &ChatId,
+        extra: Extra,
+        cx: &App,
+    ) -> Task<Result<Sent, ActionError>> {
+        let to = match actions::jid(chat) {
+            Ok(to) => to,
+            Err(error) => return Task::ready(Err(error)),
+        };
+        self.connection
+            .run(cx, move |client| actions::send_extra(client, to, extra))
     }
 
     /// Uploads `outgoing` and sends it to `chat`, optionally replying to
