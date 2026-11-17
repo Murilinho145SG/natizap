@@ -80,7 +80,10 @@ files play inside their bubble; both players share `natizap-playback`. `MessageL
 also emits `ForwardRequested`, which the binary answers with the chats'
 `ChatPicker`, handing the chosen chats back to `MessageLog::forward`. The
 conversation emits `ProfileRequested` from its header, which the binary
-answers by showing the contacts' `ProfilePanel` beside it.
+answers by showing the contacts' `ProfilePanel` beside it. `Notifier` hears
+new messages itself; the binary tells it whether the window is focused,
+which chat `MessageLog` has open and which chats `ChatList` has muted, and
+it chimes for messages anywhere else.
 
 ## Architecture: one crate per feature
 
@@ -120,6 +123,7 @@ organizing rule of the codebase.
 | `natizap-chats`    | feature | Chat list synced from WhatsApp, cached in SQLite, and its view. |
 | `natizap-contacts` | feature | Profiles of people and businesses, and their panel.       |
 | `natizap-messages` | feature | Message store, the open conversation and sending.         |
+| `natizap-notifications` | feature | Chimes for messages arriving outside the chat on screen. |
 | `natizap-playback` | shared | Media engine: static FFmpeg decoding, cpal sound, clock. |
 | `natizap-player`   | feature | The full-window video player.                            |
 | `natizap-profiles` | shared  | Profile pictures: fetched on sight, cached on disk.        |

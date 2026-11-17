@@ -46,10 +46,12 @@ end-to-end encrypted; keys and history live only on your machine.
   recorded voice notes, contacts and polls.
 - **Profiles** of people, businesses (seal, hours, banner, links) and groups
   (members and admins), with presence: online, last seen and typing.
+- **Notifications**: a chime for new messages when natizap is in the
+  background or another chat is open; muted chats stay silent.
 
 ## Not yet
 
-Calls, status, channels, notifications, poll votes and search inside a chat
+Calls, status, channels, desktop notification pop-ups, poll votes and search inside a chat
 are on the roadmap. natizap targets full parity with the phone apps, calls
 included.
 

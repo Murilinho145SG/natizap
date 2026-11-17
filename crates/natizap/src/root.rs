@@ -14,6 +14,7 @@ use natizap_messages::{
     ChatClosed, ChatRequested, ContactsRequested, ConversationView, ForwardRequested, MessageLog,
     MessageSent, MuteRequested, OpenChat, PlayRequested,
 };
+use natizap_notifications::Notifier;
 use natizap_player::{PlayerClosed, PlayerView};
 use natizap_profiles::ProfilePictures;
 use natizap_protocol::{Card, ChatId, Extra, PersonName, Protocol};
@@ -23,6 +24,7 @@ use natizap_ui::{Alert, AlertTone, window_frame};
 
 use crate::history::History;
 
+mod notify;
 mod profiles;
 
 /// The main window's content: the pairing screen until this device is linked,
@@ -44,6 +46,7 @@ pub(crate) struct Root {
     history: History<ChatId>,
     protocol: Entity<Protocol>,
     pictures: Entity<ProfilePictures>,
+    _notifier: Entity<Notifier>,
 }
 
 impl Root {
@@ -105,6 +108,8 @@ impl Root {
         Self::share_names(&chats, messages, cx);
         Self::follow_chat_menu(&conversation, cx);
         Self::share_contacts(&conversation, messages, &chats, pictures, window, cx);
+        let notifier = cx.new(|cx| Notifier::new(&protocol, cx));
+        Self::feed_notifier(&notifier, &chats, messages, window, cx);
 
         Self {
             session,
@@ -119,6 +124,7 @@ impl Root {
             history: History::default(),
             protocol,
             pictures: pictures.clone(),
+            _notifier: notifier,
         }
     }
 

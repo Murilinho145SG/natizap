@@ -3688,6 +3688,7 @@ dependencies = [
  "natizap-chats",
  "natizap-contacts",
  "natizap-messages",
+ "natizap-notifications",
  "natizap-player",
  "natizap-profiles",
  "natizap-protocol",
@@ -3738,6 +3739,16 @@ dependencies = [
  "natizap-ui",
  "rusqlite",
  "thiserror 2.0.21",
+ "tracing",
+]
+
+[[package]]
+name = "natizap-notifications"
+version = "0.1.0"
+dependencies = [
+ "gpui",
+ "natizap-playback",
+ "natizap-protocol",
  "tracing",
 ]
 
