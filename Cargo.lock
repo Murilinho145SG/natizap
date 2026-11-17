@@ -3715,6 +3715,7 @@ dependencies = [
 name = "natizap-contacts"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "gpui",
  "natizap-protocol",
  "natizap-ui",

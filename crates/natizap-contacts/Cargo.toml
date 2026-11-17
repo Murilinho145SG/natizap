@@ -9,6 +9,7 @@ publish.workspace = true
 gpui.workspace = true
 natizap-protocol.workspace = true
 natizap-ui.workspace = true
+chrono.workspace = true
 tracing.workspace = true
 
 [lints]

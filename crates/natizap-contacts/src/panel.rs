@@ -3,16 +3,21 @@ use std::sync::Arc;
 use gpui::prelude::*;
 use gpui::{
     Context, Div, Entity, EventEmitter, FontWeight, Image, ImageFormat, ObjectFit, Pixels, Point,
-    SharedString, Window, div, img, px, rgb,
+    SharedString, Stateful, Window, div, img, px, rgb,
 };
-use natizap_protocol::{ChatId, Profile, Protocol};
+use natizap_protocol::{Business, ChatId, Profile, Protocol};
 
+use crate::hours;
 use crate::sections::{ChatSettings, ChatSummary, DisappearingChosen, MuteToggled};
-use natizap_ui::theme::{LINE, MUTED, PANEL, TEXT};
-use natizap_ui::{Button, ButtonVariant, Icon, avatar, separator, skeleton, verified_seal};
+use natizap_ui::theme::{ALERT, LINE, LINK, MINT, MUTED, PANEL, TEXT};
+use natizap_ui::{Button, ButtonVariant, Icon, avatar, dialog, separator, skeleton, verified_seal};
 
 /// Size of the picture at the top of the panel.
 const PICTURE: f32 = 200.0;
+/// Size of the picture when it overlaps a banner, as on the phone.
+const COVERED_PICTURE: f32 = 140.0;
+/// Height of a business's banner.
+const COVER: f32 = 150.0;
 
 /// The user closed the panel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -24,7 +29,13 @@ pub struct ProfilePanel {
     chat: ChatId,
     title: SharedString,
     verified: bool,
+    /// The chat is this account's own.
+    own: bool,
     picture: Option<Arc<Image>>,
+    /// A business's banner.
+    cover: Option<Arc<Image>>,
+    /// The picture is shown full size over the window.
+    enlarged: bool,
     profile: Option<Profile>,
     pub(crate) summary: Option<ChatSummary>,
     pub(crate) settings: Option<ChatSettings>,
@@ -47,13 +58,8 @@ impl ProfilePanel {
         let picture = protocol.read(cx).profile_picture(&chat, true, cx);
         cx.spawn(async move |this, cx| match picture.await {
             Ok(Some(bytes)) => {
-                let format = if bytes.starts_with(b"\x89PNG") {
-                    ImageFormat::Png
-                } else {
-                    ImageFormat::Jpeg
-                };
                 let _ = this.update(cx, |panel, cx| {
-                    panel.picture = Some(Arc::new(Image::from_bytes(format, bytes)));
+                    panel.picture = Some(image(bytes));
                     cx.notify();
                 });
             }
@@ -68,16 +74,24 @@ impl ProfilePanel {
                 Profile::default()
             });
             let _ = this.update(cx, |panel, cx| {
+                panel.cover = profile
+                    .business
+                    .as_ref()
+                    .and_then(|business| business.cover.clone())
+                    .map(image);
                 panel.profile = Some(profile);
                 cx.notify();
             });
         })
         .detach();
         Self {
+            own: protocol.read(cx).is_own(&chat),
             chat,
             title,
             verified,
             picture: None,
+            cover: None,
+            enlarged: false,
             profile: None,
             summary: None,
             settings: None,
@@ -103,30 +117,7 @@ impl EventEmitter<MuteToggled> for ProfilePanel {}
 impl EventEmitter<DisappearingChosen> for ProfilePanel {}
 
 impl Render for ProfilePanel {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let business = self
-            .profile
-            .as_ref()
-            .and_then(|profile| profile.business.as_ref());
-        let heading = if business.is_some() {
-            "Business info"
-        } else {
-            "Contact info"
-        };
-        // A business shows the name WhatsApp verified, as the phone does.
-        let name: SharedString = business
-            .and_then(|business| business.name.clone())
-            .map_or_else(|| self.title.clone(), Into::into);
-        let picture = match &self.picture {
-            Some(picture) => div().size(px(PICTURE)).child(
-                img(picture.clone())
-                    .size_full()
-                    .rounded_full()
-                    .object_fit(ObjectFit::Cover),
-            ),
-            None => avatar(self.chat.as_str(), &self.title, None, px(PICTURE)),
-        };
-
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .id("profile-panel")
             .size_full()
@@ -136,26 +127,7 @@ impl Render for ProfilePanel {
             .border_l_1()
             .border_color(rgb(LINE))
             .text_color(rgb(TEXT))
-            .child(
-                div()
-                    .h(px(60.0))
-                    .flex_none()
-                    .flex()
-                    .items_center()
-                    .gap_3()
-                    .px_4()
-                    .border_b_1()
-                    .border_color(rgb(LINE))
-                    .child(
-                        Button::new("close-profile")
-                            .icon(Icon::Close)
-                            .variant(ButtonVariant::Ghost)
-                            .round()
-                            .tooltip("Close")
-                            .on_click(cx.listener(|_, _, _, cx| cx.emit(ProfileClosed))),
-                    )
-                    .child(div().font_weight(FontWeight::MEDIUM).child(heading)),
-            )
+            .child(self.title_bar(cx))
             .child(
                 div()
                     .id("profile-body")
@@ -165,36 +137,185 @@ impl Render for ProfilePanel {
                     .flex()
                     .flex_col()
                     .items_center()
-                    .gap_2()
-                    .px_6()
-                    .py_8()
-                    .child(picture)
+                    .children(self.cover.clone().map(|cover| {
+                        img(cover)
+                            .w_full()
+                            .h(px(COVER))
+                            .flex_none()
+                            .object_fit(ObjectFit::Cover)
+                    }))
                     .child(
                         div()
-                            .pt_4()
-                            .text_center()
-                            .text_size(px(22.0))
-                            // The interface font at medium weight: the display
-                            // font and heavier weights draw symbols such as ♥
-                            // in their own monochrome glyphs instead of the
-                            // emoji font's.
-                            .font_weight(FontWeight::MEDIUM)
+                            .w_full()
                             .flex()
+                            .flex_col()
                             .items_center()
                             .gap_2()
-                            .child(name)
-                            .when(self.verified, |name| name.child(verified_seal(20.0))),
-                    )
-                    .children(self.chat.phone_number().map(|phone| {
-                        div()
-                            .text_size(px(15.0))
-                            .text_color(rgb(MUTED))
-                            .child(phone)
-                    }))
-                    .child(div().w_full().py_4().child(separator()))
-                    .child(self.details())
-                    .child(self.sections(cx)),
+                            .px_6()
+                            .pb_8()
+                            .when(self.cover.is_none(), Styled::pt_8)
+                            .child(self.picture(cx))
+                            .child(self.identity())
+                            .child(div().w_full().py_4().child(separator()))
+                            .child(self.details())
+                            .child(self.sections(cx)),
+                    ),
             )
+            .when(self.enlarged, |panel| {
+                panel.children(self.picture.clone().map(|picture| {
+                    let side = window
+                        .viewport_size()
+                        .height
+                        .min(window.viewport_size().width)
+                        * 0.8;
+                    let entity = cx.weak_entity();
+                    dialog(
+                        window,
+                        img(picture)
+                            .size(side)
+                            .rounded(px(12.0))
+                            .object_fit(ObjectFit::Cover),
+                        move |_, cx| {
+                            let _ = entity.update(cx, |panel, cx| {
+                                panel.enlarged = false;
+                                cx.notify();
+                            });
+                        },
+                    )
+                }))
+            })
+    }
+}
+
+impl ProfilePanel {
+    fn title_bar(&self, cx: &mut Context<Self>) -> Div {
+        let heading = if self.business().is_some() {
+            "Business info"
+        } else {
+            "Contact info"
+        };
+        div()
+            .h(px(60.0))
+            .flex_none()
+            .flex()
+            .items_center()
+            .gap_3()
+            .px_4()
+            .border_b_1()
+            .border_color(rgb(LINE))
+            .child(
+                Button::new("close-profile")
+                    .icon(Icon::Close)
+                    .variant(ButtonVariant::Ghost)
+                    .round()
+                    .tooltip("Close")
+                    .on_click(cx.listener(|_, _, _, cx| cx.emit(ProfileClosed))),
+            )
+            .child(div().font_weight(FontWeight::MEDIUM).child(heading))
+    }
+
+    fn business(&self) -> Option<&Business> {
+        self.profile.as_ref()?.business.as_ref()
+    }
+
+    /// The picture, ringed and overlapping the banner when there is one;
+    /// clicking it shows it full size.
+    fn picture(&self, cx: &mut Context<Self>) -> Stateful<Div> {
+        let size = if self.cover.is_some() {
+            COVERED_PICTURE
+        } else {
+            PICTURE
+        };
+        let picture = match &self.picture {
+            Some(picture) => div().size(px(size)).child(
+                img(picture.clone())
+                    .size_full()
+                    .rounded_full()
+                    .object_fit(ObjectFit::Cover),
+            ),
+            None => avatar(self.chat.as_str(), &self.title, None, px(size)),
+        };
+        div()
+            .id("profile-picture")
+            .rounded_full()
+            .when(self.cover.is_some(), |ring| {
+                ring.mt(px(-size / 2.0)).border_4().border_color(rgb(PANEL))
+            })
+            .when(self.picture.is_some(), |ring| {
+                ring.cursor_pointer()
+                    .on_click(cx.listener(|panel, _, _, cx| {
+                        panel.enlarged = true;
+                        cx.notify();
+                    }))
+            })
+            .child(picture)
+    }
+
+    /// The name, number, category and opening hours under the picture.
+    fn identity(&self) -> Div {
+        let business = self.business();
+        // A business shows the name WhatsApp verified, as the phone does.
+        let mut name: String = business
+            .and_then(|business| business.name.clone())
+            .unwrap_or_else(|| self.title.to_string());
+        if self.own {
+            name.push_str(" (You)");
+        }
+        let verified = self.verified || business.is_some_and(|business| business.verified);
+        let today = business.and_then(|business| hours::today(&business.hours));
+        div()
+            .flex()
+            .flex_col()
+            .items_center()
+            .gap_1()
+            .pt_3()
+            .child(
+                div()
+                    .text_center()
+                    .text_size(px(22.0))
+                    // The interface font at medium weight: the display font
+                    // and heavier weights draw symbols such as ♥ in their
+                    // own monochrome glyphs instead of the emoji font's.
+                    .font_weight(FontWeight::MEDIUM)
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(name)
+                    .when(verified, |name| name.child(verified_seal(20.0))),
+            )
+            .children(self.chat.phone_number().map(|phone| {
+                div()
+                    .text_size(px(15.0))
+                    .text_color(rgb(MUTED))
+                    .child(phone)
+            }))
+            .children(
+                business
+                    .and_then(|business| business.category.clone())
+                    .map(|category| {
+                        div()
+                            .text_size(px(13.5))
+                            .text_color(rgb(MUTED))
+                            .child(category)
+                    }),
+            )
+            .children(today.map(|today| {
+                let status = today.open.map(|open| {
+                    let (label, color) = if open {
+                        ("Open now", MINT)
+                    } else {
+                        ("Closed now", ALERT)
+                    };
+                    div().text_color(rgb(color)).child(label)
+                });
+                div()
+                    .pt_1()
+                    .flex()
+                    .gap_1p5()
+                    .text_size(px(13.5))
+                    .children(status)
+                    .child(div().text_color(rgb(MUTED)).child(today.hours))
+            }))
     }
 }
 
@@ -221,10 +342,6 @@ impl ProfilePanel {
         let fields = [
             ("About", profile.about.clone()),
             (
-                "Category",
-                business.and_then(|business| business.category.clone()),
-            ),
-            (
                 "Description",
                 business.and_then(|business| business.description.clone()),
             ),
@@ -232,35 +349,82 @@ impl ProfilePanel {
                 "Address",
                 business.and_then(|business| business.address.clone()),
             ),
-            (
-                "Email",
-                business.and_then(|business| business.email.clone()),
-            ),
-            (
-                "Website",
-                business
-                    .map(|business| business.websites.join("\n"))
-                    .filter(|websites| !websites.is_empty()),
-            ),
         ];
-        div().w_full().flex().flex_col().gap_4().children(
-            fields
-                .into_iter()
-                .filter_map(|(label, value)| Some(field(label, value?))),
-        )
+        let email = business
+            .and_then(|business| business.email.clone())
+            .map(|email| links("Email", vec![(format!("mailto:{email}"), email)]));
+        let websites = business
+            .map(|business| {
+                business
+                    .websites
+                    .iter()
+                    .map(|site| {
+                        let target = if site.contains("://") {
+                            site.clone()
+                        } else {
+                            format!("https://{site}")
+                        };
+                        (target, site.clone())
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .filter(|websites| !websites.is_empty())
+            .map(|websites| links("Website", websites));
+        div()
+            .w_full()
+            .flex()
+            .flex_col()
+            .gap_4()
+            .children(
+                fields
+                    .into_iter()
+                    .filter_map(|(label, value)| Some(field(label, value?))),
+            )
+            .children(email)
+            .children(websites)
     }
 }
 
 fn field(label: &'static str, value: String) -> Div {
-    div()
-        .flex()
-        .flex_col()
-        .gap_1()
-        .child(
-            div()
-                .text_size(px(12.5))
-                .text_color(rgb(MUTED))
-                .child(label),
-        )
-        .child(div().text_size(px(14.5)).child(value))
+    labeled(label).child(div().text_size(px(14.5)).child(value))
+}
+
+fn labeled(label: &'static str) -> Div {
+    div().flex().flex_col().gap_1().child(
+        div()
+            .text_size(px(12.5))
+            .text_color(rgb(MUTED))
+            .child(label),
+    )
+}
+
+/// A field of `(target, text)` links, each opened by the system.
+fn links(label: &'static str, links: Vec<(String, String)>) -> Div {
+    labeled(label).children(
+        links
+            .into_iter()
+            .enumerate()
+            .map(|(index, (target, text))| {
+                div()
+                    .id((label, index))
+                    .text_size(px(14.5))
+                    .text_color(rgb(LINK))
+                    .cursor_pointer()
+                    .hover(Styled::underline)
+                    .on_click(move |_, _, cx| cx.open_url(&target))
+                    .child(text)
+            }),
+    )
+}
+
+/// Decodes a picture WhatsApp sent as JPEG, PNG or WebP.
+fn image(bytes: Vec<u8>) -> Arc<Image> {
+    let format = if bytes.starts_with(b"\x89PNG") {
+        ImageFormat::Png
+    } else if bytes.get(8..12) == Some(b"WEBP") {
+        ImageFormat::Webp
+    } else {
+        ImageFormat::Jpeg
+    };
+    Arc::new(Image::from_bytes(format, bytes))
 }

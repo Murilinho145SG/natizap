@@ -4,6 +4,7 @@
 //! [`ProfilePanel`] shows a chat's full-size picture, name, number and about
 //! line, and a business's public details, fetched when it opens.
 
+mod hours;
 mod panel;
 mod sections;
 
