@@ -3410,6 +3410,7 @@ dependencies = [
  "gpui",
  "gpui_platform",
  "gpui_tokio",
+ "natizap-chats",
  "natizap-protocol",
  "natizap-session",
  "tracing",

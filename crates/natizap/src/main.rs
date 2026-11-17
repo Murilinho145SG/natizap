@@ -1,13 +1,18 @@
 //! Entry point of the `natizap` binary: opens the main window and wires the
 //! feature crates together.
 
-use std::path::PathBuf;
+mod root;
+
+use std::path::{Path, PathBuf};
 
 use anyhow::Context as _;
 use gpui::{App, AppContext as _, Bounds, TitlebarOptions, WindowBounds, WindowOptions, px, size};
+use natizap_chats::ChatList;
 use natizap_protocol::Protocol;
-use natizap_session::{PairingView, Session};
+use natizap_session::Session;
 use tracing_subscriber::EnvFilter;
+
+use crate::root::Root;
 
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
@@ -16,10 +21,10 @@ fn main() -> anyhow::Result<()> {
         )
         .init();
 
-    let store_path = store_path()?;
+    let data_dir = data_dir()?;
     gpui_platform::application().run(move |cx: &mut App| {
         gpui_tokio::init(cx);
-        if let Err(error) = open_main_window(store_path, cx) {
+        if let Err(error) = open_main_window(&data_dir, cx) {
             tracing::error!(?error, "could not open the main window");
             cx.quit();
             return;
@@ -29,7 +34,7 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn open_main_window(store_path: PathBuf, cx: &mut App) -> anyhow::Result<()> {
+fn open_main_window(data_dir: &Path, cx: &mut App) -> anyhow::Result<()> {
     let bounds = Bounds::centered(None, size(px(1100.0), px(720.0)), cx);
     let options = WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(bounds)),
@@ -41,19 +46,20 @@ fn open_main_window(store_path: PathBuf, cx: &mut App) -> anyhow::Result<()> {
         ..Default::default()
     };
     cx.open_window(options, |_, cx| {
-        let protocol = cx.new(|cx| Protocol::new(store_path, cx));
+        let protocol = cx.new(|cx| Protocol::new(data_dir.join("session.db"), cx));
+        let chats = cx.new(|cx| ChatList::new(&protocol, data_dir.join("chats.db"), cx));
         let session = cx.new(|cx| Session::new(protocol, cx));
-        cx.new(|cx| PairingView::new(session, cx))
+        cx.new(|cx| Root::new(session, chats, cx))
     })?;
     Ok(())
 }
 
-/// Location of the session database, in the platform's per-user data
+/// Where natizap keeps its local data: the platform's per-user data
 /// directory (e.g. `~/.local/share/natizap` on Linux).
-fn store_path() -> anyhow::Result<PathBuf> {
+fn data_dir() -> anyhow::Result<PathBuf> {
     let dir = dirs::data_dir()
         .context("no per-user data directory on this platform")?
         .join("natizap");
     std::fs::create_dir_all(&dir).with_context(|| format!("could not create {}", dir.display()))?;
-    Ok(dir.join("session.db"))
+    Ok(dir)
 }
