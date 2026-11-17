@@ -28,6 +28,8 @@ const SHOWN_MESSAGES: usize = 400;
 pub struct OpenChat {
     /// The address to send to.
     pub id: ChatId,
+    /// A business WhatsApp vouches for, shown with a seal.
+    pub verified: bool,
     /// Every address the chat's messages may be filed under, `id` included.
     pub addresses: Vec<ChatId>,
     /// Name to show in the header.

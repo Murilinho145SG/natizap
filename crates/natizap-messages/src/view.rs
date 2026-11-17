@@ -11,7 +11,7 @@ use natizap_playback::Speed;
 use natizap_profiles::ProfilePictures;
 use natizap_protocol::{ChatId, Reply};
 use natizap_ui::theme::{ACCENT, LINE, MUTED, PANE, PANEL};
-use natizap_ui::{Icon, Submitted, TextInput, avatar, name_color};
+use natizap_ui::{Icon, Submitted, TextInput, avatar, name_color, verified_seal};
 
 use crate::bubble::render_item;
 use crate::emoji::{EmojiPicked, EmojiPicker};
@@ -62,6 +62,8 @@ pub struct ProfileRequested {
     pub chat: ChatId,
     /// The chat's name, shown until the profile loads.
     pub title: SharedString,
+    /// A business WhatsApp vouches for.
+    pub verified: bool,
 }
 
 impl EventEmitter<ProfileRequested> for ConversationView {}
@@ -363,11 +365,13 @@ impl Render for ConversationView {
                     .id("chat-header")
                     .cursor_pointer()
                     .on_click({
-                        let (chat, title) = (chat.id.clone(), chat.title.clone());
+                        let (verified, title) = (chat.verified, chat.title.clone());
+                        let chat = chat.id.clone();
                         cx.listener(move |_, _, _, cx| {
                             cx.emit(ProfileRequested {
                                 chat: chat.clone(),
                                 title: title.clone(),
+                                verified,
                             });
                         })
                     }),
@@ -484,12 +488,15 @@ fn header(chat: &OpenChat, picture: Option<PathBuf>) -> Div {
                 .flex_col()
                 .child(
                     div()
-                        .truncate()
+                        .flex()
+                        .items_center()
+                        .gap_1()
                         .text_size(px(16.0))
                         // Medium on purpose: at semibold, symbols such as ♥ render
                         // monochrome even with the emoji font as fallback.
                         .font_weight(FontWeight::MEDIUM)
-                        .child(chat.title.clone()),
+                        .child(div().min_w_0().truncate().child(chat.title.clone()))
+                        .when(chat.verified, |title| title.child(verified_seal(16.0))),
                 )
                 .children(subtitle.map(|subtitle| {
                     div()

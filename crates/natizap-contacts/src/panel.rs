@@ -7,7 +7,7 @@ use gpui::{
 };
 use natizap_protocol::{ChatId, Profile, Protocol};
 use natizap_ui::theme::{DISPLAY_FONT, LINE, MUTED, PANEL, TEXT};
-use natizap_ui::{Button, ButtonVariant, Icon, avatar, separator, skeleton};
+use natizap_ui::{Button, ButtonVariant, Icon, avatar, separator, skeleton, verified_seal};
 
 /// Size of the picture at the top of the panel.
 const PICTURE: f32 = 200.0;
@@ -21,6 +21,7 @@ pub struct ProfileClosed;
 pub struct ProfilePanel {
     chat: ChatId,
     title: SharedString,
+    verified: bool,
     picture: Option<Arc<Image>>,
     profile: Option<Profile>,
 }
@@ -28,11 +29,13 @@ pub struct ProfilePanel {
 impl EventEmitter<ProfileClosed> for ProfilePanel {}
 
 impl ProfilePanel {
-    /// Opens `chat`'s profile, named `title`, and fetches its details.
+    /// Opens `chat`'s profile, named `title`, with a seal when `verified`,
+    /// and fetches its details.
     pub fn new(
         protocol: &Entity<Protocol>,
         chat: ChatId,
         title: SharedString,
+        verified: bool,
         cx: &mut Context<Self>,
     ) -> Self {
         let picture = protocol.read(cx).profile_picture(&chat, true, cx);
@@ -67,6 +70,7 @@ impl ProfilePanel {
         Self {
             chat,
             title,
+            verified,
             picture: None,
             profile: None,
         }
@@ -147,7 +151,11 @@ impl Render for ProfilePanel {
                             .font_family(DISPLAY_FONT)
                             .text_size(px(22.0))
                             .font_weight(FontWeight::SEMIBOLD)
-                            .child(name),
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .child(name)
+                            .when(self.verified, |name| name.child(verified_seal(20.0))),
                     )
                     .children(self.chat.phone_number().map(|phone| {
                         div()

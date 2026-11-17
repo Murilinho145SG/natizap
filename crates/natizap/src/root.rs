@@ -92,6 +92,42 @@ impl Root {
         )
         .detach();
 
+        Self::forward_through_picker(messages, &chats, pictures, window, cx);
+        Self::open_profiles(&conversation, protocol, cx);
+
+        Self {
+            session,
+            chats,
+            pairing,
+            chat_list,
+            conversation,
+            player: None,
+            forwarding: None,
+            profile: None,
+            messages: messages.clone(),
+            history: History::default(),
+        }
+    }
+
+    /// Whether to show the chats. While connecting, cached chats mean this
+    /// device was linked before, so they show right away instead of waiting
+    /// for the connection.
+    fn shows_chats(&self, cx: &Context<Self>) -> bool {
+        let session = self.session.read(cx);
+        session.is_linked()
+            || matches!(session.state(), SessionState::Starting)
+                && !self.chats.read(cx).rows().is_empty()
+    }
+
+    /// Answers the conversation's forward requests with the chat picker,
+    /// handing the chosen chats back to the message log.
+    fn forward_through_picker(
+        messages: &Entity<MessageLog>,
+        chats: &Entity<ChatList>,
+        pictures: &Entity<ProfilePictures>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let (forward_chats, forward_pictures) = (chats.clone(), pictures.clone());
         let forward_messages = messages.clone();
         cx.subscribe_in(
@@ -124,12 +160,26 @@ impl Root {
             },
         )
         .detach();
+    }
 
+    /// Shows a chat's profile beside the conversation when its header is
+    /// clicked.
+    fn open_profiles(
+        conversation: &Entity<ConversationView>,
+        protocol: Entity<Protocol>,
+        cx: &mut Context<Self>,
+    ) {
         cx.subscribe(
-            &conversation,
+            conversation,
             move |root, _, request: &ProfileRequested, cx| {
                 let panel = cx.new(|cx| {
-                    ProfilePanel::new(&protocol, request.chat.clone(), request.title.clone(), cx)
+                    ProfilePanel::new(
+                        &protocol,
+                        request.chat.clone(),
+                        request.title.clone(),
+                        request.verified,
+                        cx,
+                    )
                 });
                 cx.subscribe(&panel, |root, _, _: &ProfileClosed, cx| {
                     root.profile = None;
@@ -141,29 +191,6 @@ impl Root {
             },
         )
         .detach();
-
-        Self {
-            session,
-            chats,
-            pairing,
-            chat_list,
-            conversation,
-            player: None,
-            forwarding: None,
-            profile: None,
-            messages: messages.clone(),
-            history: History::default(),
-        }
-    }
-
-    /// Whether to show the chats. While connecting, cached chats mean this
-    /// device was linked before, so they show right away instead of waiting
-    /// for the connection.
-    fn shows_chats(&self, cx: &Context<Self>) -> bool {
-        let session = self.session.read(cx);
-        session.is_linked()
-            || matches!(session.state(), SessionState::Starting)
-                && !self.chats.read(cx).rows().is_empty()
     }
 
     /// Shows `row`'s chat in the list and the conversation.
@@ -173,6 +200,7 @@ impl Root {
         self.chats.read(cx).open(Some(row.id.clone()));
         let chat = OpenChat {
             id: row.id.clone(),
+            verified: row.verified,
             addresses: row.addresses.to_vec(),
             title: row.title.clone(),
             unread: row.unread,
