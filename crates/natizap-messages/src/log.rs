@@ -8,7 +8,7 @@ use gpui::{App, AppContext as _, Context, Entity, EventEmitter, SharedString, Ta
 use natizap_protocol::whatsapp_rust::prelude::Event;
 use natizap_protocol::{ChatId, ContentKind, Forward, GroupInfo, Protocol, Quote, Reply, Unread};
 
-use crate::items::Item;
+use crate::items::{Item, Members};
 use crate::media::{Fetch, PosterJob};
 use crate::message::{Delivery, Message, MessageChange};
 use crate::overview::{self, ChatOverview};
@@ -54,9 +54,8 @@ enum Input {
     Event(Arc<Event>),
     Open(OpenChat),
     Apply(Box<MessageChange>),
-    /// The open chat is a community's announcements group run by these
-    /// addresses, whose messages say so.
-    CommunityAdmins(ChatId, Vec<ChatId>),
+    /// What the open group says about its members.
+    Members(ChatId, Members),
 }
 
 impl From<MessageChange> for Input {
@@ -237,9 +236,15 @@ impl MessageLog {
                 let _ = this.update(cx, |log, cx| {
                     // Another chat may have opened meanwhile.
                     if log.open.as_ref().is_some_and(|open| open.id == chat) {
-                        if group.community_announcements {
-                            log.send_input(Input::CommunityAdmins(chat, group.admins.clone()));
-                        }
+                        let members = Members {
+                            community_admins: if group.community_announcements {
+                                group.admins.clone()
+                            } else {
+                                Vec::new()
+                            },
+                            phones: group.phones.iter().cloned().collect(),
+                        };
+                        log.send_input(Input::Members(chat, members));
                         log.group = Some(group);
                         cx.notify();
                     }

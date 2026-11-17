@@ -114,16 +114,47 @@ pub(crate) struct Author {
     pub(crate) role: Option<SharedString>,
 }
 
+/// What the group says about its members, beyond each message.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct Members {
+    /// When the chat is a community's announcements group, its admins.
+    pub(crate) community_admins: Vec<ChatId>,
+    /// Each member's phone-number address by their other address.
+    pub(crate) phones: HashMap<ChatId, ChatId>,
+}
+
+/// Everything known about who wrote the messages laid out together.
+struct Senders<'a> {
+    members: &'a Members,
+    /// The name each sender chose, from whichever of their messages carries
+    /// one: older messages may have come without it.
+    names: HashMap<&'a ChatId, &'a str>,
+}
+
+impl<'a> Senders<'a> {
+    fn of(messages: &'a [Message], members: &'a Members) -> Self {
+        let names = messages
+            .iter()
+            .filter_map(|message| Some((message.sender.as_ref()?, message.author.as_deref()?)))
+            .collect();
+        Self { members, names }
+    }
+}
+
 impl Author {
-    /// The author of `message`, sent by `sender` in a group whose
-    /// community admins are `community_admins`.
-    fn of(message: &Message, sender: &ChatId, community_admins: &[ChatId]) -> Self {
-        let phone = message
+    /// The author of `message`, sent by `sender` in a group.
+    fn of(message: &Message, sender: &ChatId, senders: &Senders<'_>) -> Self {
+        let phone_address = message
             .sender_phone
             .as_ref()
-            .unwrap_or(sender)
-            .phone_number();
-        let (name, phone) = match message.author.as_deref() {
+            .or_else(|| senders.members.phones.get(sender))
+            .unwrap_or(sender);
+        let phone = phone_address.phone_number();
+        let chosen = message
+            .author
+            .as_deref()
+            .or_else(|| senders.names.get(sender).copied());
+        let (name, phone) = match chosen {
             Some(chosen) => (format!("~ {chosen}"), phone),
             None => (phone.unwrap_or_else(|| sender.as_str().to_owned()), None),
         };
@@ -132,9 +163,11 @@ impl Author {
             name: name.into(),
             phone: phone.map(Into::into),
             color: name_color(sender.as_str()),
-            role: community_admins
+            role: senders
+                .members
+                .community_admins
                 .iter()
-                .any(|admin| admin == sender || message.sender_phone.as_ref() == Some(admin))
+                .any(|admin| admin == sender || admin == phone_address)
                 .then(|| "Community admin".into()),
         }
     }
@@ -178,9 +211,10 @@ pub(crate) fn items(
     messages: &[Message],
     reactions: &HashMap<String, Vec<Reaction>>,
     contact: &str,
-    community_admins: &[ChatId],
+    members: &Members,
     now: DateTime<Local>,
 ) -> Vec<Item> {
+    let senders = Senders::of(messages, members);
     let by_id: HashMap<&str, &Message> = messages
         .iter()
         .map(|message| (message.id.as_str(), message))
@@ -202,14 +236,7 @@ pub(crate) fn items(
                     || previous.sender != message.sender
                     || message.sent_at - previous.sent_at > BURST_GAP_SECONDS
             });
-        let mut bubble = bubble(
-            message,
-            sent,
-            starts_burst,
-            &by_id,
-            contact,
-            community_admins,
-        );
+        let mut bubble = bubble(message, sent, starts_burst, &by_id, contact, &senders);
         if let Some(reactions) = reactions.get(&message.id) {
             bubble.my_reaction = reactions
                 .iter()
@@ -229,12 +256,12 @@ fn bubble(
     starts_burst: bool,
     by_id: &HashMap<&str, &Message>,
     contact: &str,
-    community_admins: &[ChatId],
+    senders: &Senders<'_>,
 ) -> Bubble {
     let sender = message
         .sender
         .as_ref()
-        .map(|sender| Author::of(message, sender, community_admins));
+        .map(|sender| Author::of(message, sender, senders));
     let author = sender.clone().filter(|_| starts_burst);
     let quote = message
         .quote
@@ -244,7 +271,7 @@ fn bubble(
                 let (author, color, phone) = match (&quoted.sender, quoted.from_me) {
                     (_, true) => ("You".into(), ACCENT, None),
                     (Some(sender), false) => {
-                        let author = Author::of(quoted, sender, &[]);
+                        let author = Author::of(quoted, sender, senders);
                         (author.name, author.color, author.phone)
                     }
                     (None, false) => (
@@ -517,6 +544,41 @@ mod tests {
     }
 
     #[test]
+    fn names_a_member_from_their_other_messages_and_the_groups_numbers() {
+        let lid = ChatId::new("208@lid");
+        let mut named = message(1_000, false, Some("208@lid"));
+        named.author = Some("Beatriz".into());
+        let mut unnamed = message(5_000, false, Some("208@lid"));
+        unnamed.author = None;
+        let members = Members {
+            community_admins: vec![ChatId::new("5511976543210@s.whatsapp.net")],
+            phones: HashMap::from([(lid, ChatId::new("5511976543210@s.whatsapp.net"))]),
+        };
+        let now = Local::now();
+        let authors: Vec<(String, Option<String>, Option<String>)> =
+            items(&[named, unnamed], &HashMap::new(), "", &members, now)
+                .into_iter()
+                .filter_map(|item| match item {
+                    Item::Bubble(bubble) => bubble.sender,
+                    Item::Day(_) => None,
+                })
+                .map(|author| {
+                    (
+                        author.name.to_string(),
+                        author.phone.map(|phone| phone.to_string()),
+                        author.role.map(|role| role.to_string()),
+                    )
+                })
+                .collect();
+        let expected = (
+            "~ Beatriz".to_owned(),
+            Some("+55 11 97654-3210".to_owned()),
+            Some("Community admin".to_owned()),
+        );
+        assert_eq!(authors, [expected.clone(), expected]);
+    }
+
+    #[test]
     fn separates_days_and_groups_bursts_by_sender_and_time() {
         let Some(now) = Local.with_ymd_and_hms(2026, 11, 16, 18, 0, 0).single() else {
             panic!("test date must exist in the local zone");
@@ -531,7 +593,13 @@ mod tests {
         ];
 
         assert_eq!(
-            layout(&items(&messages, &HashMap::new(), "Ana", &[], now)),
+            layout(&items(
+                &messages,
+                &HashMap::new(),
+                "Ana",
+                &Members::default(),
+                now
+            )),
             [
                 "[Yesterday]",
                 "+them~ Ana",

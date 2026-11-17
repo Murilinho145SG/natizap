@@ -5,11 +5,11 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use chrono::Local;
+use natizap_protocol::Unread;
 use natizap_protocol::whatsapp_rust::prelude::Event;
-use natizap_protocol::{ChatId, Unread};
 
 use super::{Input, OpenChat, Output, Pinned, SHOWN_MESSAGES};
-use crate::items::{items, summary};
+use crate::items::{Members, items, summary};
 use crate::media::{fetch_on_sight, posters_on_sight};
 use crate::message::MessageChange;
 use crate::store::MessageStore;
@@ -26,7 +26,7 @@ pub(super) async fn sync(
         return;
     };
     let mut open: Option<OpenChat> = None;
-    let mut community_admins: Vec<ChatId> = Vec::new();
+    let mut members = Members::default();
 
     while let Ok(input) = inputs.recv().await {
         let mut refresh = false;
@@ -37,12 +37,12 @@ pub(super) async fn sync(
             match input {
                 Input::Open(chat) => {
                     open = Some(chat);
-                    community_admins.clear();
+                    members = Members::default();
                     opened = true;
                 }
-                Input::CommunityAdmins(chat, admins) => {
+                Input::Members(chat, known) => {
                     if open.as_ref().is_some_and(|open| open.id == chat) {
-                        community_admins = admins;
+                        members = known;
                         refresh = true;
                     }
                 }
@@ -82,7 +82,7 @@ pub(super) async fn sync(
             }
         }
         if opened || refresh {
-            let thread = thread(&store, chat, &community_admins);
+            let thread = thread(&store, chat, &members);
             if outputs.send(thread).await.is_err() {
                 return;
             }
@@ -91,7 +91,7 @@ pub(super) async fn sync(
 }
 
 /// The open chat's rows and what they need fetched, read from `store`.
-fn thread(store: &MessageStore, chat: &OpenChat, community_admins: &[ChatId]) -> Output {
+fn thread(store: &MessageStore, chat: &OpenChat, members: &Members) -> Output {
     let messages = store
         .latest(&chat.addresses, SHOWN_MESSAGES)
         .unwrap_or_else(|error| {
@@ -102,14 +102,7 @@ fn thread(store: &MessageStore, chat: &OpenChat, community_admins: &[ChatId]) ->
         tracing::error!(%error, "could not read reactions");
         HashMap::new()
     });
-    let rows = items(
-        &messages,
-        &reactions,
-        &chat.title,
-        community_admins,
-        Local::now(),
-    )
-    .into();
+    let rows = items(&messages, &reactions, &chat.title, members, Local::now()).into();
     let fetch = fetch_on_sight(&messages);
     let posters = posters_on_sight(&messages);
     let pinned = store
