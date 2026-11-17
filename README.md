@@ -1,6 +1,6 @@
 # natizap
 
-Rust workspace. See [AGENTS.md](AGENTS.md) for contribution rules.
+Native desktop WhatsApp client built with Rust and GPUI. See [AGENTS.md](AGENTS.md) for contribution rules.
 
 ## Development
 
