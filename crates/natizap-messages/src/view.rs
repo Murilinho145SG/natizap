@@ -147,6 +147,7 @@ impl Render for ConversationView {
 fn render_item(item: &Item) -> AnyElement {
     match item {
         Item::Day(label) => div()
+            .w_full()
             .flex()
             .justify_center()
             .pt_4()
