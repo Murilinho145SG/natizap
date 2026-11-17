@@ -5,7 +5,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use chrono::Local;
 use gpui::{AppContext as _, Context, Entity, EventEmitter, SharedString, Task};
-use natizap_playback::save_poster;
 use natizap_protocol::whatsapp_rust::prelude::Event;
 use natizap_protocol::{ChatId, ContentKind, Protocol, Quote, Reply, Unread};
 
@@ -14,6 +13,8 @@ use crate::media::{Fetch, PosterJob, fetch_on_sight, posters_on_sight};
 use crate::message::{Delivery, Message, MessageChange};
 use crate::store::MessageStore;
 use crate::sync::{MESSAGE_EVENTS, changes};
+
+mod downloads;
 
 /// How many of a chat's newest messages a conversation shows.
 const SHOWN_MESSAGES: usize = 400;
@@ -259,98 +260,6 @@ impl MessageLog {
         .detach();
     }
 
-    /// Opens an attachment, downloading it first if needed.
-    pub(crate) fn open_media(&mut self, fetch: Fetch, file: Option<&Path>, cx: &mut Context<Self>) {
-        match file.filter(|file| file.exists()) {
-            Some(file) => self.reveal(fetch.kind, fetch.message_id, file.to_owned(), cx),
-            None => self.fetch(fetch, true, cx),
-        }
-    }
-
-    /// Videos play over the window and sound in its bubble; other files open
-    /// in the system's app for them.
-    fn reveal(&self, kind: ContentKind, message_id: String, file: PathBuf, cx: &mut Context<Self>) {
-        match kind {
-            ContentKind::Video => {
-                let chat = self.open.as_ref().map_or_default(|open| open.title.clone());
-                let title = format!("{} · {chat}", kind.label()).into();
-                cx.emit(PlayRequested { file, title });
-            }
-            ContentKind::VoiceMessage | ContentKind::Audio => {
-                cx.emit(SoundReady { message_id, file });
-            }
-            _ => cx.open_with_system(&file),
-        }
-    }
-
-    /// Downloads an attachment to the media folder, then records where it
-    /// went and, if asked, opens it.
-    fn fetch(&mut self, fetch: Fetch, open: bool, cx: &mut Context<Self>) {
-        if !self.fetching.insert(fetch.message_id.clone()) {
-            return;
-        }
-        let path = fetch.path_in(&self.media_dir);
-        let downloading = self.protocol.read(cx).download(fetch.kind, fetch.media, cx);
-        let (message_id, kind) = (fetch.message_id, fetch.kind);
-        cx.spawn(async move |this, cx| {
-            let saved = match downloading.await {
-                Ok(bytes) => {
-                    let path = path.clone();
-                    cx.background_spawn(async move { save(&path, &bytes) })
-                        .await
-                }
-                Err(error) => Err(error.to_string()),
-            };
-            let _ = this.update(cx, |log, cx| {
-                match saved {
-                    Ok(()) => {
-                        log.fetching.remove(&message_id);
-                        log.send_input(Input::from(MessageChange::MediaSaved {
-                            message_id: message_id.clone(),
-                            file: path.clone(),
-                        }));
-                        if open {
-                            log.reveal(kind, message_id, path, cx);
-                        }
-                    }
-                    // Stays in `fetching` so a failing file is not retried on
-                    // every refresh; a click retries it after a restart.
-                    Err(error) => tracing::warn!(%error, "could not download an attachment"),
-                }
-            });
-        })
-        .detach();
-    }
-
-    /// Takes a still from a downloaded video, then records where it went.
-    fn make_poster(&mut self, job: PosterJob, cx: &mut Context<Self>) {
-        // Also keeps a video that cannot be decoded from being retried on
-        // every refresh.
-        if !self.posters.insert(job.fetch.message_id.clone()) {
-            return;
-        }
-        let poster = job.fetch.poster_path_in(&self.media_dir);
-        let message_id = job.fetch.message_id;
-        cx.spawn(async move |this, cx| {
-            let file = poster.clone();
-            let saved = cx
-                .background_spawn(async move { save_poster(&job.video, &file) })
-                .await;
-            match saved {
-                Ok(()) => {
-                    let _ = this.update(cx, |log, _| {
-                        log.send_input(Input::from(MessageChange::PosterSaved {
-                            message_id,
-                            file: poster,
-                        }));
-                    });
-                }
-                Err(error) => tracing::warn!(%error, "could not take a still from a video"),
-            }
-        })
-        .detach();
-    }
-
     fn send_input(&self, input: Input) {
         // The channel is unbounded and the worker lives as long as `self`.
         if self.inputs.try_send(input).is_err() {
@@ -521,13 +430,6 @@ fn log_error(result: rusqlite::Result<()>, context: &str) {
     if let Err(error) = result {
         tracing::error!(%error, "{context}");
     }
-}
-
-fn save(path: &Path, bytes: &[u8]) -> Result<(), String> {
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).map_err(|error| error.to_string())?;
-    }
-    std::fs::write(path, bytes).map_err(|error| error.to_string())
 }
 
 fn unix_nanos() -> u128 {
