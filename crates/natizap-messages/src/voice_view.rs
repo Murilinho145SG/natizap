@@ -43,11 +43,10 @@ pub(crate) fn render_voice(
     };
 
     div()
-        .w(px(300.0))
+        .w(px(250.0))
         .flex()
         .items_center()
-        .gap_3()
-        .py_1()
+        .gap_2p5()
         .child(play_button(
             voice.is_some_and(|voice| voice.playing),
             voice.is_some_and(|voice| voice.loading),
@@ -59,12 +58,12 @@ pub(crate) fn render_voice(
                 .min_w_0()
                 .flex()
                 .flex_col()
-                .gap_1p5()
+                .gap_0p5()
                 .child(
                     div()
                         .flex()
                         .items_center()
-                        .gap_3()
+                        .gap_2()
                         .child(track(&id, progress, view))
                         .child(speed_menu(&id, ui, view)),
                 )
@@ -72,12 +71,12 @@ pub(crate) fn render_voice(
                     div()
                         .flex()
                         .items_center()
-                        .gap_2()
-                        .text_size(px(13.0))
+                        .gap_1p5()
+                        .text_size(px(12.0))
                         .child(
                             svg()
                                 .path(Icon::Waveform.path())
-                                .size(px(16.0))
+                                .size(px(14.0))
                                 .text_color(rgb(MUTED)),
                         )
                         .child(div().text_color(rgb(TEXT)).child(clock_label(played)))
@@ -100,7 +99,7 @@ fn play_button(
     toggle: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
     div()
-        .size(px(56.0))
+        .size(px(40.0))
         .flex_none()
         .flex()
         .items_center()
@@ -110,7 +109,7 @@ fn play_button(
         .child(
             div()
                 .id("voice-toggle")
-                .size(px(44.0))
+                .size(px(32.0))
                 .flex()
                 .items_center()
                 .justify_center()
@@ -123,10 +122,10 @@ fn play_button(
                 // Nudged right: a triangle's visual center sits left of its
                 // box's.
                 .child(
-                    div().when(!playing, |glyph| glyph.pl(px(2.0))).child(
+                    div().when(!playing, |glyph| glyph.pl(px(1.5))).child(
                         svg()
                             .path(if playing { Icon::Pause } else { Icon::Play }.path())
-                            .size(px(18.0))
+                            .size(px(14.0))
                             .text_color(rgb(HONEY_INK)),
                     ),
                 ),
@@ -162,7 +161,7 @@ fn track(
         .id("voice-track")
         .flex_1()
         .min_w_0()
-        .h(px(24.0))
+        .h(px(18.0))
         .relative()
         .flex()
         .items_center()
@@ -177,7 +176,7 @@ fn track(
         .child(
             div()
                 .w_full()
-                .h(px(6.0))
+                .h(px(4.0))
                 .rounded_full()
                 .bg(rgb(LINE))
                 .child(
@@ -191,10 +190,10 @@ fn track(
         .child(
             div()
                 .absolute()
-                .top(px(4.0))
+                .top(px(3.0))
                 .left(relative(progress))
-                .ml(px(-8.0))
-                .size(px(16.0))
+                .ml(px(-6.0))
+                .size(px(12.0))
                 .rounded_full()
                 .bg(rgb(TEXT))
                 .shadow_sm(),
@@ -231,15 +230,15 @@ fn speed_menu(id: &SharedString, ui: &VoiceUi, view: &WeakEntity<ConversationVie
                 .id("voice-speed")
                 .flex()
                 .items_center()
-                .gap_1()
-                .pl_2p5()
-                .pr_2()
-                .py_1()
+                .gap_0p5()
+                .pl_2()
+                .pr_1p5()
+                .py_0p5()
                 .rounded_full()
                 .bg(rgb(DEEP))
                 .border_1()
                 .border_color(rgb(LINE))
-                .text_size(px(13.0))
+                .text_size(px(12.0))
                 .font_weight(FontWeight::SEMIBOLD)
                 .text_color(rgb(TEXT))
                 .cursor_pointer()
@@ -249,7 +248,7 @@ fn speed_menu(id: &SharedString, ui: &VoiceUi, view: &WeakEntity<ConversationVie
                 .child(
                     svg()
                         .path(Icon::ChevronDown.path())
-                        .size(px(14.0))
+                        .size(px(12.0))
                         .text_color(rgb(MUTED)),
                 ),
         )
@@ -273,7 +272,7 @@ fn speed_list(current: Speed, view: &WeakEntity<ConversationView>) -> impl IntoE
             .bottom(relative(1.0))
             .right_0()
             .mb_1()
-            .w(px(88.0))
+            .w(px(80.0))
             .p_1()
             .flex()
             .flex_col()
@@ -289,7 +288,7 @@ fn speed_list(current: Speed, view: &WeakEntity<ConversationView>) -> impl IntoE
                     .px_2()
                     .py_1()
                     .rounded_md()
-                    .text_size(px(13.0))
+                    .text_size(px(12.0))
                     .font_weight(FontWeight::MEDIUM)
                     .text_color(rgb(if speed == current { HONEY } else { TEXT }))
                     .cursor_pointer()
