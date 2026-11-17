@@ -5,13 +5,15 @@
 //! is the clock video pictures follow. Callers only see [`Playback`]: they
 //! steer it and read where it is, and draw it however their feature needs.
 //! [`save_poster`] and [`still_jpeg`] take a still from a video, and
-//! [`probe`] reads how long a file plays and how big its pictures are.
+//! [`probe`] reads how long a file plays and how big its pictures are, and
+//! [`Recorder`] records voice notes.
 
 mod audio;
 mod clock;
 mod decode;
 mod poster;
 mod probe;
+mod record;
 mod speed;
 
 use std::path::Path;
@@ -20,6 +22,7 @@ use std::time::Duration;
 
 pub use poster::{MediaFileError, save_poster, still_jpeg};
 pub use probe::{Probe, probe};
+pub use record::{Heard, RecordError, Recorder, Recording, save as save_recording};
 pub use speed::Speed;
 
 use decode::{Command, Shared};
