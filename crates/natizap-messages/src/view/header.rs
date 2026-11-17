@@ -16,14 +16,17 @@ pub(super) fn header(
     chat: &OpenChat,
     picture: Option<PathBuf>,
     members: Option<String>,
+    presence: Option<String>,
     cx: &mut Context<ConversationView>,
 ) -> Stateful<Div> {
     let subtitle = if chat.id.is_group() {
         Some(members.unwrap_or_else(|| "Group".to_owned()))
     } else {
-        chat.id
-            .phone_number()
-            .filter(|phone| *phone != chat.title.as_ref())
+        presence.or_else(|| {
+            chat.id
+                .phone_number()
+                .filter(|phone| *phone != chat.title.as_ref())
+        })
     };
     div()
         .id("chat-header")

@@ -17,6 +17,7 @@ mod message;
 mod outbox;
 mod overview;
 mod poll_composer;
+mod presence;
 mod preview;
 mod quote;
 mod rich_text;

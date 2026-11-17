@@ -6,6 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use chrono::Local;
 use gpui::{App, AppContext as _, Context, Entity, EventEmitter, SharedString, Task};
 use natizap_protocol::whatsapp_rust::prelude::Event;
+use natizap_protocol::whatsapp_rust::types::events::EventKind;
 use natizap_protocol::{
     ActionError, Anchor, ChatId, ContentKind, Extra, Forward, GroupInfo, PersonName, Protocol,
     Quote, Reply, Sent, Unread,
@@ -15,6 +16,7 @@ use crate::items::{Item, Members, summary};
 use crate::media::{Fetch, PosterJob};
 use crate::message::{Delivery, Message, MessageChange};
 use crate::overview::{self, ChatOverview};
+use crate::presence::Presence;
 use crate::sync::MESSAGE_EVENTS;
 
 mod actions;
@@ -115,7 +117,9 @@ pub struct MessageLog {
     group: Option<GroupInfo>,
     /// What people are called, by address.
     names: Arc<HashMap<ChatId, PersonName>>,
-    _tasks: [Task<()>; 3],
+    /// Whether the person in the open one-to-one chat is around.
+    seen: Presence,
+    _tasks: [Task<()>; 4],
 }
 
 impl EventEmitter<MessageSent> for MessageLog {}
@@ -179,6 +183,22 @@ impl MessageLog {
             }
         });
         let sync = cx.background_spawn(sync(store_path.clone(), inputs, outputs_tx));
+        let presence = protocol
+            .read(cx)
+            .subscribe(&[EventKind::Presence, EventKind::ChatPresence]);
+        let seen = cx.spawn(async move |this, cx| {
+            while let Ok(event) = presence.recv().await {
+                let followed = this.update(cx, |log, cx| {
+                    let Some(open) = &log.open else { return };
+                    if log.seen.follow(&event, &open.addresses) {
+                        cx.notify();
+                    }
+                });
+                if followed.is_err() {
+                    break;
+                }
+            }
+        });
         let apply = cx.spawn(async move |this, cx| {
             while let Ok(output) = outputs.recv().await {
                 if this.update(cx, |log, cx| log.receive(output, cx)).is_err() {
@@ -200,7 +220,8 @@ impl MessageLog {
             pinned: None,
             group: None,
             names: Arc::default(),
-            _tasks: [forward, sync, apply],
+            seen: Presence::default(),
+            _tasks: [forward, sync, apply, seen],
         }
     }
 
@@ -230,6 +251,22 @@ impl MessageLog {
         if chat.id.is_group() {
             self.load_group(chat.id.clone(), cx);
         }
+        self.seen = Presence::default();
+        if !chat.id.is_group() {
+            // The phone-number address: presence is not sent for LIDs.
+            let person = chat
+                .addresses
+                .iter()
+                .find(|address| address.phone_number().is_some())
+                .unwrap_or(&chat.id);
+            let watching = self.protocol.read(cx).watch_presence(person, cx);
+            cx.background_spawn(async move {
+                if let Err(error) = watching.await {
+                    tracing::debug!(%error, "presence not watched");
+                }
+            })
+            .detach();
+        }
         self.open = Some(chat.clone());
         self.send_input(Input::Open(chat));
         cx.notify();
@@ -253,6 +290,12 @@ impl MessageLog {
             open.muted = muted;
             cx.notify();
         }
+    }
+
+    /// Whether the person in the open one-to-one chat is online, typing or
+    /// recording, or when they were last seen.
+    pub(crate) fn presence_line(&self) -> Option<String> {
+        self.seen.label(Local::now())
     }
 
     /// The media and starred messages of a chat filed under `addresses`,

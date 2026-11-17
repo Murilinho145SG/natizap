@@ -419,6 +419,7 @@ impl Render for ConversationView {
         });
         let log = self.log.read(cx);
         let members = log.members_line(cx);
+        let presence = log.presence_line();
         let Some(chat) = log.open_chat().cloned() else {
             return placeholder().into_any_element();
         };
@@ -441,7 +442,7 @@ impl Render for ConversationView {
             .flex_col()
             .bg(rgb(PANE))
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| this.key_down(event, cx)))
-            .child(header(&chat, picture, members, cx))
+            .child(header(&chat, picture, members, presence, cx))
             .children(pinned.map(|pinned| self.pinned_bar(pinned, cx)))
             .child(
                 div()
