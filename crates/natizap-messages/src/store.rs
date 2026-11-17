@@ -212,6 +212,48 @@ impl MessageStore {
         Ok(messages)
     }
 
+    /// How many photos, videos and documents `chats` hold, and the newest
+    /// `recent` photos and videos, newest first.
+    pub(crate) fn media(
+        &self,
+        chats: &[ChatId],
+        recent: usize,
+    ) -> rusqlite::Result<(usize, Vec<Message>)> {
+        let placeholders = vec!["?"; chats.len()].join(", ");
+        let addresses = || params_from_iter(chats.iter().map(ChatId::as_str));
+        let count: i64 = self.connection.query_row(
+            &format!(
+                "SELECT COUNT(*) FROM messages WHERE chat IN ({placeholders})
+                 AND deleted = 0 AND kind IN ('Photo', 'Video', 'Document')"
+            ),
+            addresses(),
+            |row| row.get(0),
+        )?;
+        let newest = self
+            .connection
+            .prepare(&format!(
+                "SELECT * FROM messages WHERE chat IN ({placeholders})
+                 AND deleted = 0 AND kind IN ('Photo', 'Video')
+                 ORDER BY sent_at DESC LIMIT {recent}"
+            ))?
+            .query_map(addresses(), message_from_row)?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok((usize::try_from(count).unwrap_or_default(), newest))
+    }
+
+    /// How many messages in `chats` this account starred.
+    pub(crate) fn starred_count(&self, chats: &[ChatId]) -> rusqlite::Result<usize> {
+        let placeholders = vec!["?"; chats.len()].join(", ");
+        let count: i64 = self.connection.query_row(
+            &format!(
+                "SELECT COUNT(*) FROM messages WHERE chat IN ({placeholders}) AND starred = 1"
+            ),
+            params_from_iter(chats.iter().map(ChatId::as_str)),
+            |row| row.get(0),
+        )?;
+        Ok(usize::try_from(count).unwrap_or_default())
+    }
+
     /// The message pinned in any of `chats` that stays pinned longest past
     /// `now` (Unix seconds), if any.
     pub(crate) fn pinned(&self, chats: &[ChatId], now: i64) -> rusqlite::Result<Option<Message>> {

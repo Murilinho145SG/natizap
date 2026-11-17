@@ -250,6 +250,33 @@ fn shows_a_pin_until_it_runs_out_or_is_undone() -> rusqlite::Result<()> {
 }
 
 #[test]
+fn counts_a_chats_media_and_starred_messages() -> rusqlite::Result<()> {
+    let mut store = MessageStore::in_memory()?;
+    let chat = ChatId::new("1@lid");
+    let mut photo = message("1@lid", "p", 10, "");
+    photo.kind = ContentKind::Photo;
+    let mut video = message("1@lid", "v", 20, "");
+    video.kind = ContentKind::Video;
+    let mut document = message("1@lid", "d", 30, "");
+    document.kind = ContentKind::Document;
+    store.apply(&[
+        MessageChange::Received(photo),
+        MessageChange::Received(video),
+        MessageChange::Received(document),
+        MessageChange::Received(message("1@lid", "t", 40, "hi")),
+        MessageChange::Starred {
+            message_id: "t".into(),
+            starred: true,
+        },
+    ])?;
+    let (count, recent) = store.media(std::slice::from_ref(&chat), 4)?;
+    let ids: Vec<&str> = recent.iter().map(|message| message.id.as_str()).collect();
+    assert_eq!((count, ids), (3, vec!["v", "p"]));
+    assert_eq!(store.starred_count(std::slice::from_ref(&chat))?, 1);
+    Ok(())
+}
+
+#[test]
 fn keeps_which_messages_are_starred() -> rusqlite::Result<()> {
     let mut store = MessageStore::in_memory()?;
     let chat = ChatId::new("1@lid");

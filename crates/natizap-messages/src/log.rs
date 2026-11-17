@@ -4,13 +4,14 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chrono::Local;
-use gpui::{AppContext as _, Context, Entity, EventEmitter, SharedString, Task};
+use gpui::{App, AppContext as _, Context, Entity, EventEmitter, SharedString, Task};
 use natizap_protocol::whatsapp_rust::prelude::Event;
 use natizap_protocol::{ChatId, ContentKind, Forward, GroupInfo, Protocol, Quote, Reply, Unread};
 
 use crate::items::Item;
 use crate::media::{Fetch, PosterJob};
 use crate::message::{Delivery, Message, MessageChange};
+use crate::overview::{self, ChatOverview};
 use crate::sync::MESSAGE_EVENTS;
 
 mod actions;
@@ -91,6 +92,7 @@ pub struct MessageLog {
     items: Arc<[Item]>,
     sent_count: u64,
     media_dir: PathBuf,
+    store_path: PathBuf,
     /// Attachments being downloaded, by message id.
     fetching: HashSet<String>,
     /// Videos whose still is being taken, by message id.
@@ -160,7 +162,7 @@ impl MessageLog {
                 }
             }
         });
-        let sync = cx.background_spawn(sync(store_path, inputs, outputs_tx));
+        let sync = cx.background_spawn(sync(store_path.clone(), inputs, outputs_tx));
         let apply = cx.spawn(async move |this, cx| {
             while let Ok(output) = outputs.recv().await {
                 if this.update(cx, |log, cx| log.receive(output, cx)).is_err() {
@@ -176,6 +178,7 @@ impl MessageLog {
             items: Arc::from([]),
             sent_count: 0,
             media_dir,
+            store_path,
             fetching: HashSet::new(),
             posters: HashSet::new(),
             pinned: None,
@@ -213,6 +216,13 @@ impl MessageLog {
         self.open = Some(chat.clone());
         self.send_input(Input::Open(chat));
         cx.notify();
+    }
+
+    /// The media and starred messages of a chat filed under `addresses`,
+    /// read off the UI thread.
+    pub fn overview(&self, addresses: Vec<ChatId>, cx: &App) -> Task<ChatOverview> {
+        let path = self.store_path.clone();
+        cx.background_spawn(async move { overview::read(&path, &addresses) })
     }
 
     /// Who runs the open group and who may write in it, once known.
@@ -294,7 +304,7 @@ impl MessageLog {
         log: &Entity<Self>,
         forward: Forward,
         file: Option<PathBuf>,
-        cx: &mut gpui::App,
+        cx: &mut App,
     ) {
         log.update(cx, |_, cx| cx.emit(ForwardRequested { forward, file }));
     }

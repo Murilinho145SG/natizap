@@ -13,6 +13,7 @@ mod media;
 mod media_view;
 mod message;
 mod outbox;
+mod overview;
 mod preview;
 mod quote;
 mod store;
@@ -22,4 +23,5 @@ mod voice;
 mod voice_view;
 
 pub use log::{ForwardRequested, MessageLog, MessageSent, OpenChat, PlayRequested};
+pub use overview::{ChatOverview, MediaTile, TileImage};
 pub use view::{ConversationView, ProfileRequested};
