@@ -106,12 +106,35 @@ impl MessageStore {
                     )?
                     .execute(params![chat.as_str(), id])?;
                 }
-                MessageChange::Accepted { chat, local_id, id } => {
+                MessageChange::Accepted {
+                    chat,
+                    local_id,
+                    id,
+                    media,
+                } => {
                     tx.prepare_cached(
                         "UPDATE messages SET id = ?3, delivery = 'sent'
                          WHERE chat = ?1 AND id = ?2",
                     )?
                     .execute(params![chat.as_str(), local_id, id])?;
+                    if let Some(media) = media {
+                        // Where the file went: what this account's other
+                        // devices, and a later download, need.
+                        tx.prepare_cached(
+                            "UPDATE messages SET media_direct_path = ?3, media_key = ?4,
+                             media_sha256 = ?5, media_enc_sha256 = ?6, media_size = ?7
+                             WHERE chat = ?1 AND id = ?2",
+                        )?
+                        .execute(params![
+                            chat.as_str(),
+                            id,
+                            media.direct_path,
+                            media.media_key,
+                            media.file_sha256,
+                            media.file_enc_sha256,
+                            media.size.and_then(|size| i64::try_from(size).ok()),
+                        ])?;
+                    }
                 }
                 MessageChange::Progressed { ids, delivery } => {
                     // Receipts arrive out of order; a message only moves

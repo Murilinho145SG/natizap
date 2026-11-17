@@ -15,6 +15,7 @@ use crate::store::MessageStore;
 use crate::sync::{MESSAGE_EVENTS, changes};
 
 mod downloads;
+mod uploads;
 
 /// How many of a chat's newest messages a conversation shows.
 const SHOWN_MESSAGES: usize = 400;
@@ -176,34 +177,12 @@ impl MessageLog {
     /// Sends `text` to the open chat, optionally replying to a message. It
     /// shows at once and is marked as failed if WhatsApp does not accept it.
     pub(crate) fn send(&mut self, text: String, reply: Option<Reply>, cx: &mut Context<Self>) {
-        let Some(chat) = self.open.as_ref().map(|open| open.id.clone()) else {
+        let Some((chat, local_id, sent_at)) = self.next_outgoing() else {
             return;
         };
-        let sent_at = Local::now().timestamp();
-        self.sent_count += 1;
-        let local_id = format!("local-{}-{}", unix_nanos(), self.sent_count);
-
-        self.send_input(Input::from(MessageChange::Sending(Message {
-            chat: chat.clone(),
-            id: local_id.clone(),
-            from_me: true,
-            sender: None,
-            author: None,
-            sent_at,
-            kind: ContentKind::Text,
-            text: Some(text.clone()),
-            edited: false,
-            deleted: false,
-            delivery: Delivery::Sending,
-            media: None,
-            media_file: None,
-            media_poster: None,
-            quote: reply.as_ref().map(|reply| Quote {
-                id: reply.id.clone(),
-                sender: reply.sender.clone(),
-                summary: Some(reply.text.clone()),
-            }),
-        })));
+        let mut message = outgoing_message(&chat, &local_id, sent_at, reply.as_ref());
+        message.text = Some(text.clone());
+        self.send_input(Input::from(MessageChange::Sending(message)));
         cx.emit(MessageSent {
             chat: chat.clone(),
             text: text.clone(),
@@ -218,6 +197,7 @@ impl MessageLog {
                     chat,
                     local_id,
                     id: sent.id,
+                    media: None,
                 },
                 Err(error) => {
                     tracing::warn!(%error, "message not sent");
@@ -228,6 +208,15 @@ impl MessageLog {
             let _ = inputs.send(Input::from(change)).await;
         })
         .detach();
+    }
+
+    /// The open chat, a fresh local id and the time, for a message about to
+    /// be sent; `None` when no chat is open.
+    fn next_outgoing(&mut self) -> Option<(ChatId, String, i64)> {
+        let chat = self.open.as_ref()?.id.clone();
+        self.sent_count += 1;
+        let local_id = format!("local-{}-{}", unix_nanos(), self.sent_count);
+        Some((chat, local_id, Local::now().timestamp()))
     }
 
     /// Reacts to a message in the open chat with `emoji`, or takes this
@@ -429,6 +418,32 @@ fn open_store(path: &Path) -> Option<MessageStore> {
 fn log_error(result: rusqlite::Result<()>, context: &str) {
     if let Err(error) = result {
         tracing::error!(%error, "{context}");
+    }
+}
+
+/// A message this computer is sending, as it shows until WhatsApp accepts
+/// it; the caller fills in what it carries.
+fn outgoing_message(chat: &ChatId, local_id: &str, sent_at: i64, reply: Option<&Reply>) -> Message {
+    Message {
+        chat: chat.clone(),
+        id: local_id.to_owned(),
+        from_me: true,
+        sender: None,
+        author: None,
+        sent_at,
+        kind: ContentKind::Text,
+        text: None,
+        edited: false,
+        deleted: false,
+        delivery: Delivery::Sending,
+        media: None,
+        media_file: None,
+        media_poster: None,
+        quote: reply.map(|reply| Quote {
+            id: reply.id.clone(),
+            sender: reply.sender.clone(),
+            summary: Some(reply.text.clone()),
+        }),
     }
 }
 

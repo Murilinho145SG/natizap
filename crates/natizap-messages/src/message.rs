@@ -97,11 +97,13 @@ pub(crate) enum MessageChange {
     Deleted { chat: ChatId, id: String },
     /// This computer started sending a message under a local id.
     Sending(Message),
-    /// WhatsApp accepted a message and gave it its real id.
+    /// WhatsApp accepted a message and gave it its real id; for a file,
+    /// also where it now lives on WhatsApp's servers.
     Accepted {
         chat: ChatId,
         local_id: String,
         id: String,
+        media: Option<Media>,
     },
     /// WhatsApp did not accept a message.
     Rejected { chat: ChatId, local_id: String },

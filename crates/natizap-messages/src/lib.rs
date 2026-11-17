@@ -12,6 +12,7 @@ mod log;
 mod media;
 mod media_view;
 mod message;
+mod outbox;
 mod preview;
 mod store;
 mod sync;

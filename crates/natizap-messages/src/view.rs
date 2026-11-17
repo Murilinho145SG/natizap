@@ -3,8 +3,8 @@ use std::time::Duration;
 
 use gpui::{
     Context, Div, Entity, FocusHandle, Focusable as _, FontWeight, KeyDownEvent, ListAlignment,
-    ListState, MouseButton, SharedString, Stateful, Window, deferred, div, list, px, relative, rgb,
-    svg,
+    ListState, MouseButton, PathPromptOptions, SharedString, Stateful, Window, deferred, div, list,
+    px, relative, rgb, svg,
 };
 use natizap_playback::Speed;
 use natizap_profiles::ProfilePictures;
@@ -162,6 +162,39 @@ impl ConversationView {
         let (fetch, file) = (media.fetch.clone(), media.file.clone());
         self.log
             .update(cx, |log, cx| log.open_media(fetch, file.as_deref(), cx));
+    }
+
+    /// Asks for files and sends them. Text in the composer becomes the first
+    /// file's caption, and a reply being composed applies to it.
+    fn attach(window: &mut Window, cx: &mut Context<Self>) {
+        let picking = cx.prompt_for_paths(PathPromptOptions {
+            files: true,
+            directories: false,
+            multiple: true,
+            prompt: Some("Send".into()),
+        });
+        cx.spawn_in(window, async move |this, cx| {
+            let paths = match picking.await {
+                Ok(Ok(Some(paths))) if !paths.is_empty() => paths,
+                Ok(Ok(_)) | Err(_) => return,
+                Ok(Err(error)) => {
+                    tracing::warn!(%error, "could not ask for files");
+                    return;
+                }
+            };
+            let _ = this.update_in(cx, |this, window, cx| {
+                let text = this.composer.read(cx).text().trim().to_owned();
+                let caption = (!text.is_empty()).then_some(text);
+                if caption.is_some() {
+                    this.composer
+                        .update(cx, |composer, cx| composer.clear(window, cx));
+                }
+                let reply = this.replying.take().map(|replying| replying.reply);
+                this.log
+                    .update(cx, |log, cx| log.send_files(paths, caption, reply, cx));
+            });
+        })
+        .detach();
     }
 
     /// Plays or pauses a voice note or audio file in its bubble.
@@ -340,6 +373,15 @@ impl ConversationView {
                     .flex()
                     .items_center()
                     .gap_3()
+                    .child(
+                        Button::new("attach")
+                            .icon(Icon::Plus)
+                            .variant(ButtonVariant::Ghost)
+                            .size(ButtonSize::Large)
+                            .round()
+                            .tooltip("Attach")
+                            .on_click(cx.listener(|_, _, window, cx| Self::attach(window, cx))),
+                    )
                     .child(
                         Button::new("emoji")
                             .icon(Icon::Emoji)

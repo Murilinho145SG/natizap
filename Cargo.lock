@@ -3724,6 +3724,7 @@ dependencies = [
  "natizap-protocol",
  "natizap-ui",
  "rusqlite",
+ "thiserror 2.0.21",
  "tracing",
 ]
 

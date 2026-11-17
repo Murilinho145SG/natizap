@@ -46,7 +46,7 @@ ffmpeg-next = { version = "9.1", default-features = false, features = [
 ] }
 futures = "0.3"
 # Must match the version GPUI uses for RenderImage frames.
-image = { version = "0.25", default-features = false, features = ["jpeg"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 phonenumber = "0.3"
 # Must share libsqlite3-sys with whatsapp-rust's SQLite store.
 rusqlite = "0.39"

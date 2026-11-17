@@ -168,6 +168,7 @@ fn a_sent_message_takes_its_real_id_once_accepted() -> rusqlite::Result<()> {
         chat: chat.clone(),
         local_id: "local-1".into(),
         id: "3EB0".into(),
+        media: None,
     }])?;
 
     let messages = store.latest(std::slice::from_ref(&chat), 10)?;
@@ -176,5 +177,48 @@ fn a_sent_message_takes_its_real_id_once_accepted() -> rusqlite::Result<()> {
         ("3EB0", Delivery::Sent)
     );
     assert_eq!(store.latest_incoming(&[chat], 5)?, []);
+    Ok(())
+}
+
+#[test]
+fn a_sent_file_records_where_it_was_uploaded() -> rusqlite::Result<()> {
+    let mut store = MessageStore::in_memory()?;
+    let chat = ChatId::new("1@lid");
+    let mut outgoing = message("1@lid", "local-2", 10, "");
+    outgoing.from_me = true;
+    outgoing.kind = ContentKind::Photo;
+    outgoing.delivery = Delivery::Sending;
+    outgoing.media = Some(Media {
+        width: Some(400),
+        thumbnail: Some(vec![0xff, 0xd8]),
+        ..Media::default()
+    });
+    store.apply(&[MessageChange::Sending(outgoing)])?;
+    let uploaded = Media {
+        direct_path: "/v/up".into(),
+        media_key: vec![9],
+        file_sha256: vec![8],
+        file_enc_sha256: vec![7],
+        size: Some(1234),
+        ..Media::default()
+    };
+    store.apply(&[MessageChange::Accepted {
+        chat: chat.clone(),
+        local_id: "local-2".into(),
+        id: "3EB1".into(),
+        media: Some(uploaded),
+    }])?;
+
+    let stored = store.latest(std::slice::from_ref(&chat), 1)?.remove(0);
+    let media = stored.media.ok_or(rusqlite::Error::QueryReturnedNoRows)?;
+    assert_eq!(
+        (
+            media.direct_path.as_str(),
+            media.media_key,
+            media.size,
+            media.width
+        ),
+        ("/v/up", vec![9], Some(1234), Some(400))
+    );
     Ok(())
 }

@@ -16,6 +16,7 @@ natizap-profiles.workspace = true
 natizap-protocol.workspace = true
 natizap-ui.workspace = true
 rusqlite.workspace = true
+thiserror.workspace = true
 tracing.workspace = true
 
 [lints]
