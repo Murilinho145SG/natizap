@@ -178,3 +178,44 @@ fn history_content(chat: &ChatId, info: &wa::WebMessageInfo) -> Option<MessageCh
         },
     }))
 }
+
+#[cfg(test)]
+mod tests {
+    use natizap_protocol::whatsapp_rust::chrono::Utc;
+    use natizap_protocol::whatsapp_rust::types::events::Receipt;
+    use natizap_protocol::whatsapp_rust::types::message::MessageSource;
+
+    use super::*;
+
+    fn receipt(r#type: ReceiptType) -> Event {
+        Event::Receipt(
+            Receipt::builder()
+                .source(MessageSource::default())
+                .message_ids(vec!["3EB0A".into(), "3EB0B".into()])
+                .timestamp(Utc::now())
+                .r#type(r#type)
+                .offline(false)
+                .build(),
+        )
+    }
+
+    #[test]
+    fn delivery_and_read_receipts_move_sent_messages_forward() {
+        let ids = vec!["3EB0A".to_owned(), "3EB0B".to_owned()];
+        assert_eq!(
+            changes(&receipt(ReceiptType::Delivered)),
+            [MessageChange::Progressed {
+                ids: ids.clone(),
+                delivery: Delivery::Delivered
+            }]
+        );
+        assert_eq!(
+            changes(&receipt(ReceiptType::Read)),
+            [MessageChange::Progressed {
+                ids,
+                delivery: Delivery::Read
+            }]
+        );
+        assert_eq!(changes(&receipt(ReceiptType::ReadSelf)), []);
+    }
+}
