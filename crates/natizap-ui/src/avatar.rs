@@ -16,9 +16,15 @@ pub fn avatar(seed: &str, title: &str, picture: Option<PathBuf>, size: Pixels) -
             .size(size)
             .flex_none()
             .rounded_full()
-            .overflow_hidden()
             .bg(rgb(AVATAR_TINTS[tint_index(seed)]))
-            .child(img(picture).size_full().object_fit(ObjectFit::Cover));
+            // Rounded on the image itself: a parent's overflow clips to its
+            // rectangle, not its rounded corners.
+            .child(
+                img(picture)
+                    .size_full()
+                    .rounded_full()
+                    .object_fit(ObjectFit::Cover),
+            );
     }
     let initial = title
         .chars()

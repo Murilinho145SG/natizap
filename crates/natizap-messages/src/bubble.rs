@@ -436,6 +436,7 @@ pub(crate) fn quote_block(
                 .w(px(48.0))
                 .flex_none()
                 .self_stretch()
+                .rounded_r(px(8.0))
                 .object_fit(ObjectFit::Cover)
         }))
 }

@@ -105,7 +105,9 @@ fn picture(media: &MediaView) -> Div {
             } else {
                 ObjectFit::Cover
             };
-            img(source).size_full().object_fit(fit)
+            // Rounded on the image itself: the frame's overflow clips to
+            // its rectangle, not its rounded corners.
+            img(source).size_full().rounded(px(11.0)).object_fit(fit)
         }))
 }
 
