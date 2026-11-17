@@ -1,17 +1,21 @@
+use std::collections::HashMap;
+use std::sync::Arc;
+
 use gpui::prelude::*;
 use gpui::{
     AnyElement, ClipboardItem, Context, Div, Entity, FontWeight, MouseButton, NavigationDirection,
     Window, div, px, rgb,
 };
 use natizap_chats::{
-    ChatList, ChatListView, ChatPicker, ChatRow, ChatSelected, ChatsPicked, PickerDismissed,
+    ChatList, ChatListView, ChatPicker, ChatRow, ChatSelected, ChatsPicked, PersonName,
+    PickerDismissed,
 };
 use natizap_contacts::{
     ChatSettings, ChatSummary, DisappearingChosen, MuteToggled, ProfileClosed, ProfilePanel, Tile,
 };
 use natizap_messages::{
-    ChatRequested, ContactsRequested, ConversationView, ForwardRequested, MessageLog, MessageSent,
-    OpenChat, PlayRequested, ProfileRequested,
+    ChatRequested, ContactsRequested, ConversationView, ForwardRequested, KnownName, MessageLog,
+    MessageSent, OpenChat, PlayRequested, ProfileRequested,
 };
 use natizap_player::{PlayerClosed, PlayerView};
 use natizap_profiles::ProfilePictures;
@@ -97,6 +101,7 @@ impl Root {
         Self::forward_through_picker(messages, &chats, pictures, window, cx);
         Self::open_profiles(&conversation, protocol, cx);
         Self::open_numbers(&conversation, cx);
+        Self::share_names(&chats, messages, cx);
         Self::share_contacts(&conversation, messages, &chats, pictures, window, cx);
 
         Self {
@@ -163,6 +168,39 @@ impl Root {
                 cx.notify();
             },
         )
+        .detach();
+    }
+
+    /// Hands the names the chat list knows to the conversation, to name
+    /// group members by, whenever they change.
+    fn share_names(
+        chats: &Entity<ChatList>,
+        messages: &Entity<MessageLog>,
+        cx: &mut Context<Self>,
+    ) {
+        let messages = messages.clone();
+        let mut shared: Option<Arc<HashMap<ChatId, PersonName>>> = None;
+        cx.observe(chats, move |_, chats, cx| {
+            let names = chats.read(cx).names();
+            if shared
+                .as_ref()
+                .is_some_and(|shared| Arc::ptr_eq(shared, names))
+            {
+                return;
+            }
+            shared = Some(Arc::clone(names));
+            let known = names
+                .iter()
+                .map(|(address, name)| {
+                    let known = KnownName {
+                        saved: name.saved.clone(),
+                        chosen: name.chosen.clone(),
+                    };
+                    (address.clone(), known)
+                })
+                .collect();
+            messages.read(cx).set_names(Arc::new(known));
+        })
         .detach();
     }
 
