@@ -84,7 +84,7 @@ fn open_components_window(cx: &mut App) -> anyhow::Result<()> {
         size(px(480.0), px(360.0)),
         cx,
     );
-    cx.open_window(options, |_, cx| cx.new(|_| Gallery))?;
+    cx.open_window(options, |_, cx| cx.new(|_| Gallery::default()))?;
     Ok(())
 }
 

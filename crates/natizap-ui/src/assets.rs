@@ -60,6 +60,8 @@ icons! {
     Chats => "chats.svg",
     /// Close the window.
     Close => "close.svg",
+    /// Copy to the clipboard.
+    Copy => "copy.svg",
     /// Pick an emoji or react.
     Emoji => "emoji.svg",
     /// A document.
@@ -88,6 +90,8 @@ icons! {
     Restore => "restore.svg",
     /// Send a message.
     Send => "send.svg",
+    /// Delete.
+    Trash => "trash.svg",
     /// A video.
     Video => "video.svg",
     /// Sound: marks voice notes.

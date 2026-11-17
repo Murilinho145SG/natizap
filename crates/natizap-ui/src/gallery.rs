@@ -5,8 +5,10 @@ use gpui::prelude::*;
 use gpui::{AnyElement, Context, Div, FontWeight, SharedString, Window, div, px, rgb};
 
 use crate::components::alert::{Alert, AlertTone};
+use crate::components::alert_dialog::AlertDialog;
 use crate::components::badge::{BadgeTone, badge, count_label};
 use crate::components::button::{Button, ButtonSize, ButtonVariant};
+use crate::components::menu::Menu;
 use crate::components::progress::progress;
 use crate::components::separator::separator;
 use crate::components::skeleton::skeleton;
@@ -15,10 +17,12 @@ use crate::{Icon, avatar, window_frame};
 
 /// The components window's content.
 #[derive(Debug, Default)]
-pub struct Gallery;
+pub struct Gallery {
+    dialog_open: bool,
+}
 
 impl Render for Gallery {
-    fn render(&mut self, window: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let title = div()
             .font_family(DISPLAY_FONT)
             .font_weight(FontWeight::BOLD)
@@ -59,7 +63,42 @@ impl Render for Gallery {
                     .child(progress(0.35))
                     .child(progress(1.0)),
             ))
-            .child(section("Alert", alerts()));
+            .child(section("Alert", alerts()))
+            .child(section(
+                "Menu",
+                Menu::new()
+                    .action(Icon::Reply, "Reply", |_, _| {})
+                    .action(Icon::Copy, "Copy", |_, _| {})
+                    .separator()
+                    .danger(Icon::Trash, "Delete", |_, _| {}),
+            ))
+            .child(section(
+                "Alert dialog",
+                row().child(
+                    Button::new("open-dialog")
+                        .label("Delete message")
+                        .variant(ButtonVariant::Secondary)
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.dialog_open = true;
+                            cx.notify();
+                        })),
+                ),
+            ))
+            .when(self.dialog_open, |sections| {
+                let gallery = cx.weak_entity();
+                let close = move |_: &mut Window, cx: &mut gpui::App| {
+                    let _ = gallery.update(cx, |gallery, cx| {
+                        gallery.dialog_open = false;
+                        cx.notify();
+                    });
+                };
+                sections.child(
+                    AlertDialog::new("Delete message?", close.clone())
+                        .description("It is deleted for everyone in this chat.")
+                        .action("Cancel", ButtonVariant::Ghost, close.clone())
+                        .action("Delete", ButtonVariant::Danger, close),
+                )
+            });
         div()
             .size_full()
             .font(base_font())
