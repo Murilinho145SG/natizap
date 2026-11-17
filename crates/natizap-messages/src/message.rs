@@ -138,6 +138,9 @@ pub(crate) enum MessageChange {
         message_id: String,
         until: Option<i64>,
     },
+    /// The name someone chose for themselves, which their older messages
+    /// may lack.
+    Named { address: ChatId, name: String },
     /// This account starred or unstarred a message, here or on another
     /// device. Matched by id.
     Starred { message_id: String, starred: bool },
@@ -174,6 +177,7 @@ impl MessageChange {
             | Self::MediaSaved { .. }
             | Self::PosterSaved { .. }
             | Self::Starred { .. }
+            | Self::Named { .. }
             | Self::Pinned { .. } => None,
         }
     }

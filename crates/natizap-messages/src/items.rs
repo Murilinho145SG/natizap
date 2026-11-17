@@ -478,6 +478,26 @@ mod tests {
     }
 
     #[test]
+    fn names_a_member_by_the_name_known_for_their_number() {
+        let mut unnamed = message(1_000, false, Some("309@lid"));
+        unnamed.author = None;
+        let phone = ChatId::new("5511912345678@s.whatsapp.net");
+        let members = Members {
+            phones: HashMap::from([(ChatId::new("309@lid"), phone.clone())]),
+            names: HashMap::from([(phone, "Bruno".to_owned())]),
+            ..Members::default()
+        };
+        let names: Vec<String> = items(&[unnamed], &HashMap::new(), "", &members, Local::now())
+            .into_iter()
+            .filter_map(|item| match item {
+                Item::Bubble(bubble) => bubble.sender.map(|sender| sender.name.to_string()),
+                Item::Day(_) => None,
+            })
+            .collect();
+        assert_eq!(names, ["~ Bruno"]);
+    }
+
+    #[test]
     fn names_a_member_from_their_other_messages_and_the_groups_numbers() {
         let lid = ChatId::new("208@lid");
         let mut named = message(1_000, false, Some("208@lid"));
@@ -487,6 +507,7 @@ mod tests {
         let members = Members {
             community_admins: vec![ChatId::new("5511976543210@s.whatsapp.net")],
             phones: HashMap::from([(lid, ChatId::new("5511976543210@s.whatsapp.net"))]),
+            names: HashMap::new(),
         };
         let now = Local::now();
         let authors: Vec<(String, Option<String>, Option<String>)> =

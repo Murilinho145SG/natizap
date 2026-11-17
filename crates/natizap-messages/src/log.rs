@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -253,6 +253,7 @@ impl MessageLog {
                                 Vec::new()
                             },
                             phones: group.phones.iter().cloned().collect(),
+                            names: HashMap::new(),
                         };
                         log.send_input(Input::Members(chat, members));
                         log.group = Some(group);

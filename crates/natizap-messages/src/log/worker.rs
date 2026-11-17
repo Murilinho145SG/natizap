@@ -106,6 +106,31 @@ fn thread(store: &MessageStore, chat: &OpenChat, members: &Members) -> (Output, 
             tracing::error!(%error, "could not read messages");
             Vec::new()
         });
+    // Names for senders whose messages came without one.
+    let mut members = members.clone();
+    let senders: Vec<ChatId> = messages
+        .iter()
+        .filter(|message| message.author.is_none())
+        .filter_map(|message| message.sender.as_ref())
+        .flat_map(|sender| {
+            [Some(sender), members.phones.get(sender)]
+                .into_iter()
+                .flatten()
+                .cloned()
+        })
+        .chain(
+            messages
+                .iter()
+                .filter_map(|message| message.sender_phone.clone()),
+        )
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
+    members.names = store.names(&senders).unwrap_or_else(|error| {
+        tracing::error!(%error, "could not read members' names");
+        HashMap::new()
+    });
+    let members = &members;
     let reactions = store.reactions(&messages).unwrap_or_else(|error| {
         tracing::error!(%error, "could not read reactions");
         HashMap::new()

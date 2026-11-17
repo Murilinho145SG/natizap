@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use natizap_protocol::{ChatId, ContentKind, HdThumbnail, Media, Quote, Unread};
-use rusqlite::{Connection, Row, params, params_from_iter};
+use rusqlite::{Connection, OptionalExtension as _, Row, params, params_from_iter};
 
 use crate::message::{Delivery, Message, MessageChange, Reaction};
 
@@ -56,6 +56,7 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE messages ADD COLUMN pinned_until INTEGER;",
     "ALTER TABLE messages ADD COLUMN sender_phone TEXT;",
     "ALTER TABLE messages ADD COLUMN extra TEXT;",
+    "CREATE TABLE names (address TEXT PRIMARY KEY, name TEXT NOT NULL);",
 ];
 
 /// Every message natizap has seen, on disk.
@@ -110,12 +111,7 @@ impl MessageStore {
                     )?
                     .execute(params![chat.as_str(), id])?;
                 }
-                MessageChange::Removed { chat, id } => {
-                    tx.prepare_cached("DELETE FROM messages WHERE chat = ?1 AND id = ?2")?
-                        .execute(params![chat.as_str(), id])?;
-                    tx.prepare_cached("DELETE FROM reactions WHERE message_id = ?1")?
-                        .execute(params![id])?;
-                }
+                MessageChange::Removed { chat, id } => remove(&tx, chat, id)?,
                 MessageChange::Accepted {
                     chat,
                     local_id,
@@ -156,6 +152,7 @@ impl MessageStore {
                     tx.prepare_cached("UPDATE messages SET pinned_until = ?2 WHERE id = ?1")?
                         .execute(params![message_id, until])?;
                 }
+                MessageChange::Named { address, name } => record_name(&tx, address, name)?,
                 MessageChange::Starred {
                     message_id,
                     starred,
@@ -330,8 +327,50 @@ impl MessageStore {
 
     /// Forgets every message.
     pub(crate) fn clear(&mut self) -> rusqlite::Result<()> {
-        self.connection.execute_batch("DELETE FROM messages;")
+        self.connection
+            .execute_batch("DELETE FROM messages; DELETE FROM names;")
     }
+
+    /// The names people chose for themselves, by whichever of `addresses`
+    /// they are known under.
+    pub(crate) fn names(&self, addresses: &[ChatId]) -> rusqlite::Result<HashMap<ChatId, String>> {
+        let mut statement = self
+            .connection
+            .prepare_cached("SELECT name FROM names WHERE address = ?1")?;
+        let mut names = HashMap::new();
+        for address in addresses {
+            if let Some(name) = statement
+                .query_row(params![address.as_str()], |row| row.get::<_, String>(0))
+                .optional()?
+            {
+                names.insert(address.clone(), name);
+            }
+        }
+        Ok(names)
+    }
+}
+
+/// Forgets a message and its reactions.
+fn remove(tx: &rusqlite::Transaction<'_>, chat: &ChatId, id: &str) -> rusqlite::Result<()> {
+    tx.prepare_cached("DELETE FROM messages WHERE chat = ?1 AND id = ?2")?
+        .execute(params![chat.as_str(), id])?;
+    tx.prepare_cached("DELETE FROM reactions WHERE message_id = ?1")?
+        .execute(params![id])?;
+    Ok(())
+}
+
+/// Keeps the name `address` chose for themselves.
+fn record_name(
+    tx: &rusqlite::Transaction<'_>,
+    address: &ChatId,
+    name: &str,
+) -> rusqlite::Result<()> {
+    tx.prepare_cached(
+        "INSERT INTO names (address, name) VALUES (?1, ?2)
+         ON CONFLICT (address) DO UPDATE SET name = excluded.name",
+    )?
+    .execute(params![address.as_str(), name])?;
+    Ok(())
 }
 
 /// Where a sent file went: what this account's other devices, and a later
