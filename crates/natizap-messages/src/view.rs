@@ -1,7 +1,7 @@
 use gpui::prelude::*;
 use gpui::{
-    Context, Div, Entity, FocusHandle, Focusable as _, FontWeight, ListAlignment, ListState,
-    SharedString, Window, div, list, px, rgb, svg,
+    Context, Div, Entity, FocusHandle, Focusable as _, FontWeight, KeyDownEvent, ListAlignment,
+    ListState, MouseButton, SharedString, Stateful, Window, div, list, px, rgb, svg,
 };
 use natizap_protocol::Reply;
 use natizap_ui::theme::{HONEY, HONEY_INK, LINE, MUTED, PANE, PANEL, RAISED, TEXT};
@@ -118,6 +118,25 @@ impl ConversationView {
             .update(cx, |log, cx| log.open_media(fetch, file.as_deref(), cx));
     }
 
+    /// Closes the quick reactions and the emoji picker.
+    pub(crate) fn close_popups(&mut self, cx: &mut Context<Self>) {
+        if self.reacting.is_some() || self.picking_emoji {
+            self.reacting = None;
+            self.picking_emoji = false;
+            cx.notify();
+        }
+    }
+
+    /// Escape backs out of whatever is open, innermost first: popups, then
+    /// the reply being composed.
+    fn escape(&mut self, cx: &mut Context<Self>) {
+        if self.reacting.is_some() || self.picking_emoji {
+            self.close_popups(cx);
+        } else if self.replying.take().is_some() {
+            cx.notify();
+        }
+    }
+
     /// Opens or closes the quick reactions of the bubble `id`.
     pub(crate) fn toggle_reactions(&mut self, id: &SharedString, cx: &mut Context<Self>) {
         self.reacting = if self.reacting.as_ref() == Some(id) {
@@ -166,10 +185,16 @@ impl ConversationView {
                         .rounded_full()
                         .cursor_pointer()
                         .hover(|style| style.bg(rgb(RAISED)))
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.replying = None;
-                            cx.notify();
-                        }))
+                        // Acts on press, so nothing else can claim the click
+                        // first.
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(|this, _, _, cx| {
+                                cx.stop_propagation();
+                                this.replying = None;
+                                cx.notify();
+                            }),
+                        )
                         .child(
                             svg()
                                 .path(Icon::Close.path())
@@ -180,8 +205,17 @@ impl ConversationView {
         )
     }
 
-    fn composer(&self, cx: &mut Context<Self>) -> Div {
+    fn composer(&self, cx: &mut Context<Self>) -> Stateful<Div> {
         div()
+            .id("composer")
+            // The picker's toggle lives inside the composer, so only clicks
+            // elsewhere close it.
+            .on_mouse_down_out(cx.listener(|this, _, _, cx| {
+                if this.picking_emoji {
+                    this.picking_emoji = false;
+                    cx.notify();
+                }
+            }))
             .flex_none()
             .flex()
             .flex_col()
@@ -284,6 +318,11 @@ impl Render for ConversationView {
             .flex()
             .flex_col()
             .bg(rgb(PANE))
+            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
+                if event.keystroke.key == "escape" {
+                    this.escape(cx);
+                }
+            }))
             .child(
                 div()
                     .h(px(60.0))

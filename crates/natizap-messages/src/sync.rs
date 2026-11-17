@@ -27,11 +27,12 @@ pub(crate) fn changes(event: &Event) -> Vec<MessageChange> {
                 // errors say nothing about where a sent message is.
                 _ => return Vec::new(),
             };
-            let ids = receipt
+            let ids: Vec<String> = receipt
                 .message_ids
                 .iter()
                 .map(ToString::to_string)
                 .collect();
+            tracing::debug!(?ids, ?delivery, "receipt");
             vec![MessageChange::Progressed { ids, delivery }]
         }
         _ => Vec::new(),

@@ -213,8 +213,15 @@ fn round_button(id: &'static str, icon: Icon) -> Stateful<Div> {
 
 /// The quick reaction strip; this account's current reaction is
 /// highlighted and picking it again takes it back.
-fn quick_reactions(bubble: &Bubble, view: &WeakEntity<ConversationView>) -> Div {
+fn quick_reactions(bubble: &Bubble, view: &WeakEntity<ConversationView>) -> Stateful<Div> {
     div()
+        .id("quick-reactions")
+        .on_mouse_down_out({
+            let view = view.clone();
+            move |_, _, cx| {
+                let _ = view.update(cx, ConversationView::close_popups);
+            }
+        })
         .flex()
         .gap_0p5()
         .p_0p5()
