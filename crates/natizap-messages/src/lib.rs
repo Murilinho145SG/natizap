@@ -15,5 +15,5 @@ mod store;
 mod sync;
 mod view;
 
-pub use log::{MessageLog, MessageSent, OpenChat};
+pub use log::{MessageLog, MessageSent, OpenChat, PlayRequested};
 pub use view::ConversationView;

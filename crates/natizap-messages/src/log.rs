@@ -84,6 +84,17 @@ pub struct MessageLog {
 }
 
 impl EventEmitter<MessageSent> for MessageLog {}
+impl EventEmitter<PlayRequested> for MessageLog {}
+
+/// The user opened a video, voice message or audio file, now on disk, so the
+/// app can play it in place.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlayRequested {
+    /// The downloaded file.
+    pub file: PathBuf,
+    /// What to call it while playing.
+    pub title: SharedString,
+}
 
 impl MessageLog {
     /// Follows `protocol`'s message events, storing messages at `store_path`
@@ -238,8 +249,21 @@ impl MessageLog {
     /// first if needed.
     pub(crate) fn open_media(&mut self, fetch: Fetch, file: Option<&Path>, cx: &mut Context<Self>) {
         match file.filter(|file| file.exists()) {
-            Some(file) => cx.open_with_system(file),
+            Some(file) => self.reveal(fetch.kind, file.to_owned(), cx),
             None => self.fetch(fetch, true, cx),
+        }
+    }
+
+    /// Plays videos and sound in the app; other files open in the system's
+    /// app for them.
+    fn reveal(&self, kind: ContentKind, file: PathBuf, cx: &mut Context<Self>) {
+        match kind {
+            ContentKind::Video | ContentKind::VoiceMessage | ContentKind::Audio => {
+                let chat = self.open.as_ref().map_or_default(|open| open.title.clone());
+                let title = format!("{} · {chat}", kind.label()).into();
+                cx.emit(PlayRequested { file, title });
+            }
+            _ => cx.open_with_system(&file),
         }
     }
 
@@ -251,7 +275,7 @@ impl MessageLog {
         }
         let path = fetch.path_in(&self.media_dir);
         let downloading = self.protocol.read(cx).download(fetch.kind, fetch.media, cx);
-        let message_id = fetch.message_id;
+        let (message_id, kind) = (fetch.message_id, fetch.kind);
         cx.spawn(async move |this, cx| {
             let saved = match downloading.await {
                 Ok(bytes) => {
@@ -270,7 +294,7 @@ impl MessageLog {
                             file: path.clone(),
                         }));
                         if open {
-                            cx.open_with_system(&path);
+                            log.reveal(kind, path, cx);
                         }
                     }
                     // Stays in `fetching` so a failing file is not retried on

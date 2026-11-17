@@ -13,7 +13,8 @@ use crate::view::ConversationView;
 
 /// The attachment of a bubble: an image for photos and stickers, a preview
 /// with a play button for videos, and a row for audio and documents.
-/// Everything but photos and stickers opens in the system's app on click.
+/// Videos and audio play in natizap on click; documents open in the system's
+/// app for them.
 pub(crate) fn render_media(media: &MediaView, view: &WeakEntity<ConversationView>) -> AnyElement {
     match media.fetch.kind {
         ContentKind::Photo | ContentKind::Sticker => picture(media).into_any_element(),
