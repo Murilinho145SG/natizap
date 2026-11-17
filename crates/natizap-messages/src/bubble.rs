@@ -13,7 +13,7 @@ use crate::items::{Body, Bubble, Item, Text};
 use crate::media_view::render_media;
 use crate::message::Delivery;
 use crate::view::ConversationView;
-use crate::voice::VoiceState;
+use crate::voice::VoiceUi;
 
 /// Quick reactions offered on every bubble, as in WhatsApp.
 pub(crate) const QUICK_REACTIONS: [&str; 6] = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
@@ -22,7 +22,7 @@ pub(crate) fn render_item(
     item: &Item,
     view: &WeakEntity<ConversationView>,
     reacting: Option<&SharedString>,
-    voice: Option<&VoiceState>,
+    voice: &VoiceUi,
 ) -> AnyElement {
     match item {
         Item::Day(label) => div()
@@ -55,7 +55,7 @@ fn render_bubble(
     bubble: &Bubble,
     view: &WeakEntity<ConversationView>,
     reacting: bool,
-    voice: Option<&VoiceState>,
+    voice: &VoiceUi,
 ) -> AnyElement {
     let message = div()
         .max_w(relative(0.72))
@@ -98,7 +98,7 @@ fn render_bubble(
 }
 
 /// The bubble itself: author, attachment, quote, content and time.
-fn shape(bubble: &Bubble, view: &WeakEntity<ConversationView>, voice: Option<&VoiceState>) -> Div {
+fn shape(bubble: &Bubble, view: &WeakEntity<ConversationView>, voice: &VoiceUi) -> Div {
     let meta = div()
         .flex()
         .items_center()

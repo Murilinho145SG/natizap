@@ -6,6 +6,7 @@ use gpui::{
     ListState, MouseButton, SharedString, Stateful, Window, deferred, div, list, px, relative, rgb,
     svg,
 };
+use natizap_playback::Speed;
 use natizap_protocol::Reply;
 use natizap_ui::theme::{HONEY, HONEY_INK, LINE, MUTED, PANE, PANEL, RAISED, TEXT};
 use natizap_ui::{Icon, Submitted, TextInput, avatar, name_color};
@@ -154,9 +155,15 @@ impl ConversationView {
         cx.notify();
     }
 
-    /// Switches voice notes to the next speed.
-    pub(crate) fn cycle_voice_speed(&mut self, cx: &mut Context<Self>) {
-        self.voices.cycle_speed();
+    /// Plays voice notes at `speed` from now on.
+    pub(crate) fn set_voice_speed(&mut self, speed: Speed, cx: &mut Context<Self>) {
+        self.voices.set_speed(speed);
+        cx.notify();
+    }
+
+    /// Opens or closes the speed menu of `message_id`'s bubble.
+    pub(crate) fn toggle_speed_menu(&mut self, message_id: &SharedString, cx: &mut Context<Self>) {
+        self.voices.toggle_speed_menu(message_id);
         cx.notify();
     }
 
@@ -183,9 +190,10 @@ impl ConversationView {
         .detach();
     }
 
-    /// Closes the quick reactions and the emoji picker.
+    /// Closes the quick reactions, the emoji picker and the speed menu.
     pub(crate) fn close_popups(&mut self, cx: &mut Context<Self>) {
-        if self.reacting.is_some() || self.picking_emoji {
+        let menu_was_open = self.voices.close_speed_menu();
+        if self.reacting.is_some() || self.picking_emoji || menu_was_open {
             self.reacting = None;
             self.picking_emoji = false;
             cx.notify();
@@ -195,7 +203,9 @@ impl ConversationView {
     /// Escape backs out of whatever is open, innermost first: popups, then
     /// the reply being composed.
     fn escape(&mut self, cx: &mut Context<Self>) {
-        if self.reacting.is_some() || self.picking_emoji {
+        if self.voices.close_speed_menu() {
+            cx.notify();
+        } else if self.reacting.is_some() || self.picking_emoji {
             self.close_popups(cx);
         } else if self.replying.take().is_some() {
             cx.notify();
@@ -378,7 +388,7 @@ impl Render for ConversationView {
         let items = log.items().clone();
         let view = cx.weak_entity();
         let reacting = self.reacting.clone();
-        let voice = self.voices.state();
+        let voice = self.voices.ui();
         let subtitle = if chat.id.is_group() {
             Some("Group".to_owned())
         } else {
@@ -452,7 +462,7 @@ impl Render for ConversationView {
                         list(self.messages.clone(), move |index, _, _| {
                             items.get(index).map_or_else(
                                 || div().into_any_element(),
-                                |item| render_item(item, &view, reacting.as_ref(), voice.as_ref()),
+                                |item| render_item(item, &view, reacting.as_ref(), &voice),
                             )
                         })
                         .flex_1()

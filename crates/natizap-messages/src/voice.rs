@@ -16,7 +16,17 @@ pub(crate) struct VoiceState {
     pub(crate) playing: bool,
     /// The file is still downloading.
     pub(crate) loading: bool,
+}
+
+/// What every voice bubble needs to draw itself.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(crate) struct VoiceUi {
+    /// The note playing, if any.
+    pub(crate) playing: Option<VoiceState>,
+    /// The speed every note plays at.
     pub(crate) speed: Speed,
+    /// The bubble whose speed menu is open.
+    pub(crate) speed_menu: Option<SharedString>,
 }
 
 /// The note playing in the open chat. One plays at a time, as on the
@@ -25,6 +35,7 @@ pub(crate) struct VoiceState {
 pub(crate) struct Voices {
     current: Option<Current>,
     speed: Speed,
+    speed_menu: Option<SharedString>,
 }
 
 #[derive(Debug)]
@@ -76,12 +87,27 @@ impl Voices {
         }
     }
 
-    /// Switches to the next speed, for this note and the ones after it.
-    pub(crate) fn cycle_speed(&mut self) {
-        self.speed = self.speed.next();
+    /// Plays this note and the ones after it at `speed`, closing the menu.
+    pub(crate) fn set_speed(&mut self, speed: Speed) {
+        self.speed = speed;
+        self.speed_menu = None;
         if let Some(playback) = self.playback() {
-            playback.set_speed(self.speed);
+            playback.set_speed(speed);
         }
+    }
+
+    /// Opens the speed menu of `message_id`'s bubble, or closes it if open.
+    pub(crate) fn toggle_speed_menu(&mut self, message_id: &SharedString) {
+        self.speed_menu = if self.speed_menu.as_ref() == Some(message_id) {
+            None
+        } else {
+            Some(message_id.clone())
+        };
+    }
+
+    /// Closes the speed menu; returns whether it was open.
+    pub(crate) fn close_speed_menu(&mut self) -> bool {
+        self.speed_menu.take().is_some()
     }
 
     /// Jumps to `fraction` of the note of `message_id`, if it is playing.
@@ -101,12 +127,22 @@ impl Voices {
     /// Stops playing, e.g. when another chat opens.
     pub(crate) fn stop(&mut self) {
         self.current = None;
+        self.speed_menu = None;
+    }
+
+    /// What the bubbles show now. See [`Self::state`].
+    pub(crate) fn ui(&mut self) -> VoiceUi {
+        VoiceUi {
+            playing: self.state(),
+            speed: self.speed,
+            speed_menu: self.speed_menu.clone(),
+        }
     }
 
     /// The playing note as its bubble shows it. A note that played to the
     /// end, or could not be played, stops here and shows as not playing,
     /// as on the phone.
-    pub(crate) fn state(&mut self) -> Option<VoiceState> {
+    fn state(&mut self) -> Option<VoiceState> {
         let current = self.current.as_ref()?;
         let Some(playback) = &current.playback else {
             return Some(VoiceState {
@@ -115,7 +151,6 @@ impl Voices {
                 progress: 0.0,
                 playing: false,
                 loading: true,
-                speed: self.speed,
             });
         };
         let status = playback.status();
@@ -137,7 +172,6 @@ impl Voices {
             progress,
             playing: !current.paused,
             loading: false,
-            speed: self.speed,
         })
     }
 
@@ -171,7 +205,8 @@ mod tests {
         let id = SharedString::from("a");
         assert!(voices.toggle(&id, None));
         let state = voices
-            .state()
+            .ui()
+            .playing
             .map(|state| (state.message_id, state.loading));
         assert_eq!(state, Some((id, true)));
         assert!(voices.is_running());
@@ -184,18 +219,30 @@ mod tests {
         voices.toggle(&"b".into(), None);
         voices.downloaded("a", Path::new("/nonexistent/a.ogg"));
         let state = voices
-            .state()
+            .ui()
+            .playing
             .map(|state| (state.message_id, state.loading));
         assert_eq!(state, Some(("b".into(), true)));
     }
 
     #[test]
-    fn the_chosen_speed_outlives_the_note() {
+    fn the_chosen_speed_outlives_the_note_and_closes_the_menu() {
         let mut voices = Voices::default();
         voices.toggle(&"a".into(), None);
-        voices.cycle_speed();
-        voices.stop();
+        voices.toggle_speed_menu(&"a".into());
+        voices.set_speed(Speed::Fast);
         voices.toggle(&"b".into(), None);
-        assert_eq!(voices.state().map(|state| state.speed), Some(Speed::Faster));
+        let ui = voices.ui();
+        assert_eq!((ui.speed, ui.speed_menu), (Speed::Fast, None));
+    }
+
+    #[test]
+    fn one_speed_menu_is_open_at_a_time() {
+        let mut voices = Voices::default();
+        voices.toggle_speed_menu(&"a".into());
+        voices.toggle_speed_menu(&"b".into());
+        assert_eq!(voices.ui().speed_menu, Some("b".into()));
+        voices.toggle_speed_menu(&"b".into());
+        assert!(!voices.close_speed_menu());
     }
 }
