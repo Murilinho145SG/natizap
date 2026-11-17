@@ -1,0 +1,18 @@
+[package]
+name = "natizap-protocol"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+async-channel.workspace = true
+futures.workspace = true
+gpui.workspace = true
+gpui_tokio.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+whatsapp-rust.workspace = true
+
+[lints]
+workspace = true

@@ -3389,22 +3389,34 @@ dependencies = [
  "gpui",
  "gpui_platform",
  "gpui_tokio",
+ "natizap-protocol",
  "natizap-session",
  "tracing",
  "tracing-subscriber",
 ]
 
 [[package]]
-name = "natizap-session"
+name = "natizap-protocol"
 version = "0.1.0"
 dependencies = [
+ "async-channel",
  "futures",
  "gpui",
  "gpui_tokio",
- "qrcode",
  "thiserror 2.0.21",
  "tracing",
  "whatsapp-rust",
+]
+
+[[package]]
+name = "natizap-session"
+version = "0.1.0"
+dependencies = [
+ "gpui",
+ "natizap-protocol",
+ "qrcode",
+ "thiserror 2.0.21",
+ "tracing",
 ]
 
 [[package]]

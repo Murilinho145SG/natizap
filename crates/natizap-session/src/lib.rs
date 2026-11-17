@@ -1,9 +1,9 @@
-//! Connection to WhatsApp as a linked device: pairing, connection state and
-//! the pairing screen.
+//! Linking natizap to the user's phone: pairing, connection state and the
+//! pairing screen.
 //!
-//! [`Session`] owns the protocol client and runs it on the Tokio runtime
-//! registered with `gpui_tokio`. [`PairingView`] renders every state before
-//! the session is connected.
+//! [`Session`] follows the protocol client's lifecycle events and exposes
+//! where the link stands; [`PairingView`] renders every state before the
+//! session is connected.
 
 mod pairing_view;
 mod qr;

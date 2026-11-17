@@ -52,7 +52,7 @@ expected split, for orientation:
 
 | Crate                      | Feature                                                    |
 | -------------------------- | ---------------------------------------------------------- |
-| `natizap-session`          | Protocol connection, device pairing (QR/code), reconnects. |
+| `natizap-session`          | Device pairing (QR/code) and connection state.             |
 | `natizap-store`            | Local persistence of keys, chats and message history.      |
 | `natizap-chats`            | Chat list: ordering, unread counts, pin, archive, mute.    |
 | `natizap-messages`         | Conversation view: send, receive, reply, react, edit, polls. |
@@ -101,7 +101,8 @@ organizing rule of the codebase.
 | Crate             | Kind    | Role                                                     |
 | ----------------- | ------- | -------------------------------------------------------- |
 | `natizap`         | binary  | Entry point; wires the feature crates together.          |
-| `natizap-session` | feature | Protocol client lifecycle, QR pairing and pairing screen. |
+| `natizap-session` | feature | Pairing lifecycle and the pairing screen.                 |
+| `natizap-protocol` | shared  | Owns the WhatsApp client; fans its events out to features. |
 
 Keep this table current when a crate is added, renamed or removed.
 
@@ -110,9 +111,14 @@ Keep this table current when a crate is added, renamed or removed.
 - GPUI owns the main thread and its own executor. The protocol client
   (`whatsapp-rust`) needs Tokio, which runs on worker threads registered with
   `gpui_tokio::init`; spawn Tokio work with `gpui_tokio::Tokio::spawn`.
-- Protocol events cross to the UI over channels and are applied to GPUI
-  entities with `entity.update`, followed by `cx.notify()`. Never block the
-  UI thread on protocol, storage or network work.
+- Only `natizap-protocol` talks to the client's lifecycle. Features call
+  `Protocol::subscribe` with the event kinds they need and translate those
+  events into their own types; `whatsapp-rust` types do not leak into a
+  feature's public API.
+- Heavy event processing (history sync, persistence) runs on GPUI's
+  background executor; only the resulting state is applied to GPUI entities
+  with `entity.update`, followed by `cx.notify()`. Never block the UI thread
+  on protocol, storage or network work.
 - GPUI comes from Zed's Git repository pinned to one commit. The root
   `[patch.crates-io]` mirrors the patches Zed applies at that commit; update
   both together when bumping the pin.

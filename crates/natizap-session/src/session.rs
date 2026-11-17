@@ -1,18 +1,11 @@
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use futures::StreamExt as _;
-use futures::channel::mpsc;
-use gpui::{Context, Task};
-use gpui_tokio::{JoinError, Tokio};
-use whatsapp_rust::prelude::*;
-use whatsapp_rust::wacore::store::DevicePropsOverride;
+use gpui::{Context, Entity, Task};
+use natizap_protocol::whatsapp_rust::prelude::{Event, EventKind};
+use natizap_protocol::{Protocol, StartError};
 
 use crate::QrMatrix;
-
-/// Name shown on the phone under "Linked devices".
-const DEVICE_NAME: &str = "natizap";
 
 /// Protocol events that move the session through its lifecycle.
 const LIFECYCLE_EVENTS: &[EventKind] = &[
@@ -58,18 +51,9 @@ pub enum SessionState {
 /// Why a session stopped.
 #[derive(Debug, thiserror::Error)]
 pub enum SessionError {
-    /// The local key and history store could not be opened.
-    #[error("could not open the local store at {path}")]
-    Store {
-        /// Location of the store on disk.
-        path: PathBuf,
-        /// Underlying storage error.
-        #[source]
-        source: whatsapp_rust::store::error::StoreError,
-    },
-    /// The protocol client could not be built.
-    #[error("could not start the WhatsApp client")]
-    Client(#[source] whatsapp_rust::bot::BotBuilderError),
+    /// The protocol client could not start.
+    #[error(transparent)]
+    Start(Arc<StartError>),
     /// WhatsApp issued a pairing payload that does not fit in a QR code.
     #[error("received a pairing code that cannot be shown as a QR code")]
     Qr(#[source] qrcode::types::QrError),
@@ -140,37 +124,44 @@ impl Update {
     }
 }
 
-/// The connection to WhatsApp as a linked device.
+/// Where the link between natizap and the user's phone stands.
 ///
-/// Create it with [`Session::new`] inside `cx.new`; it starts connecting
-/// immediately and notifies observers on every state change. Dropping it
-/// stops the client.
+/// Create it with [`Session::new`] inside `cx.new`; it notifies observers on
+/// every state change.
 #[derive(Debug)]
 pub struct Session {
-    store_path: PathBuf,
+    protocol: Entity<Protocol>,
     state: SessionState,
-    _running: Running,
-}
-
-/// The protocol client and the task applying its updates; dropping it stops
-/// both.
-#[derive(Debug)]
-struct Running {
-    _protocol: Task<Result<(), JoinError>>,
-    _updates: Task<()>,
+    _events: Task<()>,
 }
 
 impl Session {
-    /// Starts a session whose keys and history live in the SQLite database at
-    /// `store_path`.
-    ///
-    /// Requires `gpui_tokio::init` to have been called.
-    pub fn new(store_path: PathBuf, cx: &mut Context<Self>) -> Self {
-        let running = start(store_path.clone(), cx);
+    /// Follows the lifecycle of `protocol`'s client.
+    pub fn new(protocol: Entity<Protocol>, cx: &mut Context<Self>) -> Self {
+        let events = protocol.read(cx).subscribe(LIFECYCLE_EVENTS);
+        let events = cx.spawn(async move |this, cx| {
+            while let Ok(event) = events.recv().await {
+                let Some(update) = Update::from_event(&event) else {
+                    continue;
+                };
+                let applied = this.update(cx, |session, cx| {
+                    session.apply(update);
+                    cx.notify();
+                });
+                if applied.is_err() {
+                    break;
+                }
+            }
+        });
+        cx.subscribe(&protocol, |session, _, error: &Arc<StartError>, cx| {
+            session.apply(Update::Failed(SessionError::Start(error.clone())));
+            cx.notify();
+        })
+        .detach();
         Self {
-            store_path,
+            protocol,
             state: SessionState::Starting,
-            _running: running,
+            _events: events,
         }
     }
 
@@ -180,11 +171,21 @@ impl Session {
         &self.state
     }
 
-    /// Stops the current client and connects again from scratch, e.g. to get
-    /// fresh QR codes after [`SessionState::PairingExpired`].
+    /// Whether the phone has linked this device, even if the connection is
+    /// momentarily down.
+    #[must_use]
+    pub fn is_linked(&self) -> bool {
+        matches!(
+            self.state,
+            SessionState::Paired | SessionState::Connected | SessionState::Reconnecting
+        )
+    }
+
+    /// Restarts the protocol client from scratch, e.g. to get fresh QR codes
+    /// after [`SessionState::PairingExpired`].
     pub fn restart(&mut self, cx: &mut Context<Self>) {
-        // Replacing the session drops, and so stops, the running client.
-        *self = Self::new(self.store_path.clone(), cx);
+        self.protocol.update(cx, Protocol::restart);
+        self.state = SessionState::Starting;
         cx.notify();
     }
 
@@ -225,62 +226,4 @@ impl Session {
             }
         };
     }
-}
-
-/// Spawns the protocol client on Tokio and the task that applies its updates
-/// to the session.
-fn start(store_path: PathBuf, cx: &mut Context<Session>) -> Running {
-    let (tx, mut rx) = mpsc::unbounded();
-    let protocol = Tokio::spawn(cx, run_client(store_path, tx));
-    let updates = cx.spawn(async move |this, cx| {
-        while let Some(update) = rx.next().await {
-            let applied = this.update(cx, |session, cx| {
-                session.apply(update);
-                cx.notify();
-            });
-            if applied.is_err() {
-                break;
-            }
-        }
-    });
-    Running {
-        _protocol: protocol,
-        _updates: updates,
-    }
-}
-
-async fn run_client(store_path: PathBuf, tx: mpsc::UnboundedSender<Update>) {
-    if let Err(error) = connect(store_path, tx.clone()).await {
-        // The receiver only goes away when the session is dropped or
-        // restarted, and then nobody is left to show the error.
-        let _ = tx.unbounded_send(Update::Failed(error));
-    }
-}
-
-async fn connect(
-    store_path: PathBuf,
-    tx: mpsc::UnboundedSender<Update>,
-) -> Result<(), SessionError> {
-    let store = SqliteStore::new(&store_path.to_string_lossy())
-        .await
-        .map_err(|source| SessionError::Store {
-            path: store_path,
-            source,
-        })?;
-
-    let bot = Bot::builder()
-        .with_backend(store)
-        .with_device_props(DevicePropsOverride::new().with_os(DEVICE_NAME))
-        .on_event_for(LIFECYCLE_EVENTS, move |event: Arc<Event>, _client| {
-            if let Some(update) = Update::from_event(&event) {
-                let _ = tx.unbounded_send(update);
-            }
-            async {}
-        })
-        .build()
-        .await
-        .map_err(SessionError::Client)?;
-
-    bot.run().await;
-    Ok(())
 }

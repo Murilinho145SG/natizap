@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 use anyhow::Context as _;
 use gpui::{App, AppContext as _, Bounds, TitlebarOptions, WindowBounds, WindowOptions, px, size};
+use natizap_protocol::Protocol;
 use natizap_session::{PairingView, Session};
 use tracing_subscriber::EnvFilter;
 
@@ -40,7 +41,8 @@ fn open_main_window(store_path: PathBuf, cx: &mut App) -> anyhow::Result<()> {
         ..Default::default()
     };
     cx.open_window(options, |_, cx| {
-        let session = cx.new(|cx| Session::new(store_path, cx));
+        let protocol = cx.new(|cx| Protocol::new(store_path, cx));
+        let session = cx.new(|cx| Session::new(protocol, cx));
         cx.new(|cx| PairingView::new(session, cx))
     })?;
     Ok(())

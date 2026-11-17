@@ -6,13 +6,11 @@ rust-version.workspace = true
 publish.workspace = true
 
 [dependencies]
-futures.workspace = true
 gpui.workspace = true
-gpui_tokio.workspace = true
+natizap-protocol.workspace = true
 qrcode.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
-whatsapp-rust.workspace = true
 
 [lints]
 workspace = true
