@@ -7,6 +7,7 @@ use whatsapp_rust::http::HttpRequest;
 use whatsapp_rust::prelude::Client;
 
 use crate::ActionError;
+use crate::business::{self, Business};
 
 /// What a person's or business's profile shows besides their picture.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -15,23 +16,6 @@ pub struct Profile {
     pub about: Option<String>,
     /// Set for business accounts.
     pub business: Option<Business>,
-}
-
-/// A business account's public details.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Business {
-    /// The name WhatsApp verified for it, shown instead of a number.
-    pub name: Option<String>,
-    /// What kind of business it is, e.g. "Restaurant".
-    pub category: Option<String>,
-    /// How it describes itself.
-    pub description: Option<String>,
-    /// Where it is.
-    pub address: Option<String>,
-    /// How to write to it.
-    pub email: Option<String>,
-    /// Its websites.
-    pub websites: Vec<String>,
 }
 
 pub(crate) async fn profile(client: Arc<Client>, jid: Jid) -> Result<Profile, ActionError> {
@@ -47,24 +31,12 @@ pub(crate) async fn profile(client: Arc<Client>, jid: Jid) -> Result<Profile, Ac
         return Ok(Profile::default());
     };
     let business = if info.is_business {
-        let details = client
-            .get_business_profile(&jid)
-            .await
-            .map_err(|error| rejected(&error))?;
-        let non_empty = |text: String| Some(text).filter(|text| !text.trim().is_empty());
-        Some(Business {
-            name: info.verified_name.and_then(|verified| verified.name),
-            category: details
-                .as_ref()
-                .and_then(|details| details.categories.first())
-                .map(|category| category.name.clone()),
-            description: details
-                .as_ref()
-                .and_then(|details| non_empty(details.description.clone())),
-            address: details.as_ref().and_then(|details| details.address.clone()),
-            email: details.as_ref().and_then(|details| details.email.clone()),
-            websites: details.map_or_default(|details| details.website),
-        })
+        let name = info.verified_name.and_then(|verified| verified.name);
+        Some(
+            business::business(&client, &jid, name)
+                .await
+                .map_err(|error| rejected(&error))?,
+        )
     } else {
         None
     };
