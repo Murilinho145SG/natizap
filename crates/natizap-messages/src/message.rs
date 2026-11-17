@@ -1,4 +1,6 @@
-use natizap_protocol::{ChatId, ContentKind, Quote};
+use std::path::PathBuf;
+
+use natizap_protocol::{ChatId, ContentKind, Media, Quote};
 
 /// How far a message this account sent has gone. Received messages are
 /// always [`Delivery::Sent`].
@@ -72,6 +74,10 @@ pub(crate) struct Message {
     pub(crate) delivery: Delivery,
     /// The message this one replies to.
     pub(crate) quote: Option<Quote>,
+    /// The attachment, if any.
+    pub(crate) media: Option<Media>,
+    /// Where the attachment was saved once downloaded.
+    pub(crate) media_file: Option<PathBuf>,
 }
 
 /// One fact learned about the messages.
@@ -104,6 +110,8 @@ pub(crate) enum MessageChange {
         ids: Vec<String>,
         delivery: Delivery,
     },
+    /// A message's attachment was downloaded to `file`. Matched by id.
+    MediaSaved { message_id: String, file: PathBuf },
     /// Someone reacted to a message, or took their reaction back (`None`).
     /// `reactor` is `None` for this account. Matched by message id alone.
     Reacted {
@@ -132,7 +140,7 @@ impl MessageChange {
             | Self::Accepted { chat, .. }
             | Self::Rejected { chat, .. }
             | Self::Reacted { chat, .. } => Some(chat),
-            Self::Progressed { .. } => None,
+            Self::Progressed { .. } | Self::MediaSaved { .. } => None,
         }
     }
 }

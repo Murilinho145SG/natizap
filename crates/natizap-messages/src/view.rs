@@ -9,7 +9,7 @@ use natizap_ui::{Icon, Submitted, TextInput, avatar, name_color};
 
 use crate::bubble::{quote_block, render_item};
 use crate::emoji::picker;
-use crate::items::Bubble;
+use crate::items::{Bubble, MediaView};
 use crate::log::MessageLog;
 
 /// The conversation pane: header, messages and composer for the open chat,
@@ -109,6 +109,13 @@ impl ConversationView {
             color,
         });
         cx.notify();
+    }
+
+    /// Opens an attachment in the system's app, downloading it first.
+    pub(crate) fn open_media(&mut self, media: &MediaView, cx: &mut Context<Self>) {
+        let (fetch, file) = (media.fetch.clone(), media.file.clone());
+        self.log
+            .update(cx, |log, cx| log.open_media(fetch, file.as_deref(), cx));
     }
 
     /// Opens or closes the quick reactions of the bubble `id`.

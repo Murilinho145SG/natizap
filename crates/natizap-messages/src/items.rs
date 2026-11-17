@@ -1,20 +1,22 @@
 use chrono::{DateTime, Datelike as _, Local, NaiveDate, TimeZone as _};
-use gpui::SharedString;
+use gpui::{Image, ImageFormat, SharedString};
 use std::collections::HashMap;
 use std::ops::Range;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use natizap_protocol::{ChatId, ContentKind, Mark, Marked, Reply};
 use natizap_ui::name_color;
 use natizap_ui::theme::{HONEY, MUTED};
 
+use crate::media::Fetch;
 use crate::message::{Delivery, Message, Reaction};
 
 /// Messages from the same side closer than this read as one burst.
 const BURST_GAP_SECONDS: i64 = 5 * 60;
 
 /// One row of a conversation.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub(crate) enum Item {
     /// Separates days: "Today", "Yesterday", a weekday or a date.
     Day(SharedString),
@@ -23,7 +25,7 @@ pub(crate) enum Item {
 }
 
 /// A message, ready to render.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub(crate) struct Bubble {
     pub(crate) id: SharedString,
     pub(crate) from_me: bool,
@@ -31,6 +33,8 @@ pub(crate) struct Bubble {
     /// group.
     pub(crate) author: Option<(SharedString, u32)>,
     pub(crate) body: Body,
+    /// The attachment, shown above the text.
+    pub(crate) media: Option<MediaView>,
     /// The message it replies to.
     pub(crate) quote: Option<QuotePreview>,
     /// What to quote when replying to it.
@@ -61,6 +65,21 @@ pub(crate) enum Body {
         /// Changed after sending.
         edited: bool,
     },
+}
+
+/// An attachment, ready to render: a preview at display size and what to
+/// fetch or open on click.
+#[derive(Debug, Clone)]
+pub(crate) struct MediaView {
+    pub(crate) fetch: Fetch,
+    /// The downloaded file, once there is one.
+    pub(crate) file: Option<PathBuf>,
+    /// The inline preview, shown until the file is downloaded.
+    pub(crate) preview: Option<Arc<Image>>,
+    /// Display size in pixels, for photos, videos and stickers.
+    pub(crate) size: (f32, f32),
+    /// Duration, or a document's name and size.
+    pub(crate) detail: Option<SharedString>,
 }
 
 /// One emoji under a bubble and how many people reacted with it.
@@ -191,11 +210,15 @@ fn bubble(
             Body::Deleted
         } else {
             Body::Content {
-                media: (message.kind != ContentKind::Text).then(|| message.kind.label()),
+                // Downloadable attachments render themselves; the rest
+                // (locations, contacts, polls) are named.
+                media: (message.kind != ContentKind::Text && message.media.is_none())
+                    .then(|| message.kind.label()),
                 text: message.text.as_deref().map(Text::parse),
                 edited: message.edited,
             }
         },
+        media: media_view(message),
         quote,
         reactions: Vec::new(),
         my_reaction: None,
@@ -214,6 +237,70 @@ fn bubble(
         time: sent.format("%H:%M").to_string().into(),
         delivery: message.delivery,
         starts_burst,
+    }
+}
+
+/// Largest box a photo or video preview may take.
+const MEDIA_BOX: (f32, f32) = (300.0, 340.0);
+/// Stickers render at a fixed size, like on the phone.
+const STICKER_SIZE: f32 = 150.0;
+
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "image sides are far below f32's exact range"
+)]
+fn media_view(message: &Message) -> Option<MediaView> {
+    let fetch = Fetch::of(message)?;
+    let media = &fetch.media;
+    let size = match (message.kind, media.width, media.height) {
+        (ContentKind::Sticker, ..) => (STICKER_SIZE, STICKER_SIZE),
+        (_, Some(width), Some(height)) if width > 0 && height > 0 => {
+            let (width, height) = (width as f32, height as f32);
+            let scale = (MEDIA_BOX.0 / width).min(MEDIA_BOX.1 / height).min(1.0);
+            ((width * scale).max(120.0), (height * scale).max(80.0))
+        }
+        _ => (260.0, 200.0),
+    };
+    let detail = match message.kind {
+        ContentKind::Video | ContentKind::VoiceMessage | ContentKind::Audio => media
+            .seconds
+            .map(|seconds| format!("{}:{:02}", seconds / 60, seconds % 60)),
+        ContentKind::Document => Some(
+            [media.file_name.clone(), media.size.map(file_size)]
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>()
+                .join(" · "),
+        ),
+        _ => None,
+    };
+    let preview = media.thumbnail.clone().map(|bytes| {
+        let format = if bytes.starts_with(b"\x89PNG") {
+            ImageFormat::Png
+        } else {
+            ImageFormat::Jpeg
+        };
+        Arc::new(Image::from_bytes(format, bytes))
+    });
+    Some(MediaView {
+        file: message.media_file.clone(),
+        preview,
+        size,
+        detail: detail.map(Into::into),
+        fetch,
+    })
+}
+
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "a rounded size needs no exact bytes"
+)]
+fn file_size(bytes: u64) -> String {
+    match bytes {
+        0..1_000 => format!("{bytes} B"),
+        1_000..1_000_000 => format!("{:.0} kB", bytes as f64 / 1e3),
+        1_000_000..1_000_000_000 => format!("{:.1} MB", bytes as f64 / 1e6),
+        _ => format!("{:.1} GB", bytes as f64 / 1e9),
     }
 }
 
@@ -291,6 +378,8 @@ mod tests {
             deleted: false,
             delivery: Delivery::Sent,
             quote: None,
+            media: None,
+            media_file: None,
         }
     }
 

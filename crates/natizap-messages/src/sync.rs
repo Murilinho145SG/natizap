@@ -83,6 +83,8 @@ fn live_change(inbound: &InboundMessage) -> Option<MessageChange> {
         kind: content.kind,
         text: content.text,
         quote: content.quote,
+        media: content.media,
+        media_file: None,
         edited: false,
         deleted: false,
         delivery: Delivery::Sent,
@@ -164,6 +166,8 @@ fn history_content(chat: &ChatId, info: &wa::WebMessageInfo) -> Option<MessageCh
         kind: content.kind,
         text: content.text,
         quote: content.quote,
+        media: content.media,
+        media_file: None,
         edited: false,
         deleted: false,
         delivery: if from_me {

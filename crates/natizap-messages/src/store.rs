@@ -1,7 +1,7 @@
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use natizap_protocol::{ChatId, ContentKind, Quote, Unread};
+use natizap_protocol::{ChatId, ContentKind, Media, Quote, Unread};
 use rusqlite::{Connection, Row, params, params_from_iter};
 
 use crate::message::{Delivery, Message, MessageChange, Reaction};
@@ -35,6 +35,18 @@ const MIGRATIONS: &[&str] = &[
         emoji TEXT NOT NULL,
         PRIMARY KEY (message_id, reactor)
     );",
+    "ALTER TABLE messages ADD COLUMN media_mime TEXT;
+    ALTER TABLE messages ADD COLUMN media_name TEXT;
+    ALTER TABLE messages ADD COLUMN media_size INTEGER;
+    ALTER TABLE messages ADD COLUMN media_width INTEGER;
+    ALTER TABLE messages ADD COLUMN media_height INTEGER;
+    ALTER TABLE messages ADD COLUMN media_seconds INTEGER;
+    ALTER TABLE messages ADD COLUMN media_thumbnail BLOB;
+    ALTER TABLE messages ADD COLUMN media_direct_path TEXT;
+    ALTER TABLE messages ADD COLUMN media_key BLOB;
+    ALTER TABLE messages ADD COLUMN media_sha256 BLOB;
+    ALTER TABLE messages ADD COLUMN media_enc_sha256 BLOB;
+    ALTER TABLE messages ADD COLUMN media_file TEXT;",
 ];
 
 /// Every message natizap has seen, on disk.
@@ -75,29 +87,7 @@ impl MessageStore {
                 // History and live delivery can repeat a message; the first
                 // copy wins, and edits and deletions are applied on top.
                 MessageChange::Received(message) | MessageChange::Sending(message) => {
-                    let quote = message.quote.as_ref();
-                    tx.prepare_cached(
-                        "INSERT OR IGNORE INTO messages (chat, id, from_me, sender, author, sent_at,
-                         kind, text, edited, deleted, delivery, quoted_id, quoted_sender,
-                         quoted_summary)
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
-                    )?
-                    .execute(params![
-                        message.chat.as_str(),
-                        message.id,
-                        message.from_me,
-                        message.sender.as_ref().map(ChatId::as_str),
-                        message.author,
-                        message.sent_at,
-                        message.kind.label(),
-                        message.text,
-                        message.edited,
-                        message.deleted,
-                        message.delivery.name(),
-                        quote.map(|quote| &quote.id),
-                        quote.and_then(|quote| quote.sender.as_ref()).map(ChatId::as_str),
-                        quote.and_then(|quote| quote.summary.as_ref()),
-                    ])?;
+                    insert(&tx, message)?;
                 }
                 MessageChange::Edited { chat, id, text } => {
                     tx.prepare_cached(
@@ -134,6 +124,10 @@ impl MessageStore {
                     for id in ids {
                         progress.execute(params![delivery.name(), id])?;
                     }
+                }
+                MessageChange::MediaSaved { message_id, file } => {
+                    tx.prepare_cached("UPDATE messages SET media_file = ?2 WHERE id = ?1")?
+                        .execute(params![message_id, file.to_string_lossy()])?;
                 }
                 MessageChange::Reacted {
                     message_id,
@@ -241,6 +235,85 @@ impl MessageStore {
     }
 }
 
+/// Files a message unless a copy is already there.
+fn insert(tx: &rusqlite::Transaction<'_>, message: &Message) -> rusqlite::Result<()> {
+    let quote = message.quote.as_ref();
+    let media = message.media.as_ref();
+    tx.prepare_cached(
+        "INSERT OR IGNORE INTO messages (chat, id, from_me, sender, author, sent_at,
+             kind, text, edited, deleted, delivery, quoted_id, quoted_sender,
+             quoted_summary, media_mime, media_name, media_size, media_width,
+             media_height, media_seconds, media_thumbnail, media_direct_path,
+             media_key, media_sha256, media_enc_sha256, media_file)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14,
+             ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26)",
+    )?
+    .execute(params![
+        message.chat.as_str(),
+        message.id,
+        message.from_me,
+        message.sender.as_ref().map(ChatId::as_str),
+        message.author,
+        message.sent_at,
+        message.kind.label(),
+        message.text,
+        message.edited,
+        message.deleted,
+        message.delivery.name(),
+        quote.map(|quote| &quote.id),
+        quote
+            .and_then(|quote| quote.sender.as_ref())
+            .map(ChatId::as_str),
+        quote.and_then(|quote| quote.summary.as_ref()),
+        media.and_then(|media| media.mime.as_ref()),
+        media.and_then(|media| media.file_name.as_ref()),
+        media
+            .and_then(|media| media.size)
+            .and_then(|size| i64::try_from(size).ok()),
+        media.and_then(|media| media.width),
+        media.and_then(|media| media.height),
+        media.and_then(|media| media.seconds),
+        media.and_then(|media| media.thumbnail.as_ref()),
+        media.map(|media| &media.direct_path),
+        media.map(|media| &media.media_key),
+        media.map(|media| &media.file_sha256),
+        media.map(|media| &media.file_enc_sha256),
+        message
+            .media_file
+            .as_ref()
+            .map(|file| file.to_string_lossy()),
+    ])?;
+
+    Ok(())
+}
+
+fn media_from_row(row: &Row<'_>) -> rusqlite::Result<Option<Media>> {
+    let Some(direct_path) = row.get::<_, Option<String>>("media_direct_path")? else {
+        return Ok(None);
+    };
+    Ok(Some(Media {
+        mime: row.get("media_mime")?,
+        file_name: row.get("media_name")?,
+        size: row
+            .get::<_, Option<i64>>("media_size")?
+            .and_then(|size| u64::try_from(size).ok()),
+        width: row.get("media_width")?,
+        height: row.get("media_height")?,
+        seconds: row.get("media_seconds")?,
+        thumbnail: row.get("media_thumbnail")?,
+        direct_path,
+        media_key: row
+            .get::<_, Option<Vec<u8>>>("media_key")?
+            .unwrap_or_default(),
+        file_sha256: row
+            .get::<_, Option<Vec<u8>>>("media_sha256")?
+            .unwrap_or_default(),
+        file_enc_sha256: row
+            .get::<_, Option<Vec<u8>>>("media_enc_sha256")?
+            .unwrap_or_default(),
+    }))
+}
+
 fn quote_from_row(row: &Row<'_>) -> rusqlite::Result<Option<Quote>> {
     let Some(id) = row.get::<_, Option<String>>("quoted_id")? else {
         return Ok(None);
@@ -271,6 +344,10 @@ fn message_from_row(row: &Row<'_>) -> rusqlite::Result<Message> {
         deleted: row.get("deleted")?,
         delivery: Delivery::from_name(&delivery).unwrap_or(Delivery::Sent),
         quote: quote_from_row(row)?,
+        media: media_from_row(row)?,
+        media_file: row
+            .get::<_, Option<String>>("media_file")?
+            .map(PathBuf::from),
     })
 }
 
@@ -292,6 +369,8 @@ mod tests {
             deleted: false,
             delivery: Delivery::Sent,
             quote: None,
+            media: None,
+            media_file: None,
         }
     }
 
@@ -388,6 +467,32 @@ mod tests {
             .map(|r| (r.emoji.as_str(), r.mine))
             .collect();
         assert_eq!(summary, [("❤️", false), ("😂", true)]);
+        Ok(())
+    }
+
+    #[test]
+    fn keeps_media_details_and_where_the_file_was_saved() -> rusqlite::Result<()> {
+        let mut store = MessageStore::in_memory()?;
+        let chat = ChatId::new("1@lid");
+        let mut photo = message("1@lid", "p", 10, "beach");
+        photo.kind = ContentKind::Photo;
+        photo.media = Some(Media {
+            width: Some(800),
+            thumbnail: Some(vec![0xff, 0xd8]),
+            direct_path: "/v/1".into(),
+            media_key: vec![1],
+            size: Some(5_000_000_000),
+            ..Media::default()
+        });
+        store.apply(&[MessageChange::Received(photo.clone())])?;
+        store.apply(&[MessageChange::MediaSaved {
+            message_id: "p".into(),
+            file: PathBuf::from("/tmp/p.jpg"),
+        }])?;
+
+        let stored = store.latest(std::slice::from_ref(&chat), 1)?.remove(0);
+        assert_eq!(stored.media, photo.media);
+        assert_eq!(stored.media_file, Some(PathBuf::from("/tmp/p.jpg")));
         Ok(())
     }
 

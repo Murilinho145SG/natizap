@@ -8,6 +8,8 @@ mod bubble;
 mod emoji;
 mod items;
 mod log;
+mod media;
+mod media_view;
 mod message;
 mod store;
 mod sync;

@@ -57,6 +57,8 @@ icons! {
     Close => "close.svg",
     /// Pick an emoji or react.
     Emoji => "emoji.svg",
+    /// A document.
+    File => "file.svg",
     /// End-to-end encryption.
     Lock => "lock.svg",
     /// Maximize the window.
@@ -67,6 +69,8 @@ icons! {
     Muted => "muted.svg",
     /// Pinned to the top.
     Pin => "pin.svg",
+    /// Play a video or audio.
+    Play => "play.svg",
     /// Reply to a message.
     Reply => "reply.svg",
     /// Restore a maximized window.

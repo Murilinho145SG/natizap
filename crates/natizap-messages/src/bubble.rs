@@ -10,6 +10,7 @@ use natizap_ui::Icon;
 use natizap_ui::theme::{ALERT, DEEP, LINE, MINT, MUTED, OUTGOING, PANEL, RAISED};
 
 use crate::items::{Body, Bubble, Item, Text};
+use crate::media_view::render_media;
 use crate::message::Delivery;
 use crate::view::ConversationView;
 
@@ -57,7 +58,7 @@ fn render_bubble(
         .gap_0p5()
         .when(bubble.from_me, Styled::items_end)
         .when(!bubble.from_me, Styled::items_start)
-        .child(shape(bubble).max_w_full())
+        .child(shape(bubble, view).max_w_full())
         .when(!bubble.reactions.is_empty(), |message| {
             message.child(reaction_chips(bubble))
         });
@@ -90,8 +91,8 @@ fn render_bubble(
         .into_any_element()
 }
 
-/// The bubble itself: author, quote, content and time.
-fn shape(bubble: &Bubble) -> Div {
+/// The bubble itself: author, attachment, quote, content and time.
+fn shape(bubble: &Bubble, view: &WeakEntity<ConversationView>) -> Div {
     let meta = div()
         .flex()
         .items_center()
@@ -151,6 +152,7 @@ fn shape(bubble: &Bubble) -> Div {
                 .text_color(rgb(color))
                 .child(name)
         }))
+        .children(bubble.media.as_ref().map(|media| render_media(media, view)))
         .children(
             bubble
                 .quote

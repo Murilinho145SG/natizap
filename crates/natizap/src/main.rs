@@ -63,8 +63,14 @@ fn open_main_window(data_dir: &Path, cx: &mut App) -> anyhow::Result<()> {
     cx.open_window(options, |window, cx| {
         let protocol = cx.new(|cx| Protocol::new(data_dir.join("session.db"), cx));
         let chats = cx.new(|cx| ChatList::new(&protocol, data_dir.join("chats.db"), cx));
-        let messages =
-            cx.new(|cx| MessageLog::new(protocol.clone(), data_dir.join("messages.db"), cx));
+        let messages = cx.new(|cx| {
+            MessageLog::new(
+                protocol.clone(),
+                data_dir.join("messages.db"),
+                data_dir.join("media"),
+                cx,
+            )
+        });
         let session = cx.new(|cx| Session::new(protocol, cx));
         cx.new(|cx| Root::new(session, chats, &messages, window, cx))
     })?;

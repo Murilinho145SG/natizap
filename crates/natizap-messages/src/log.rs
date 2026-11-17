@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -9,6 +9,7 @@ use natizap_protocol::whatsapp_rust::prelude::Event;
 use natizap_protocol::{ChatId, ContentKind, Protocol, Quote, Reply, Unread};
 
 use crate::items::{Item, items};
+use crate::media::{Fetch, fetch_on_sight};
 use crate::message::{Delivery, Message, MessageChange};
 use crate::store::MessageStore;
 use crate::sync::{MESSAGE_EVENTS, changes};
@@ -43,12 +44,25 @@ pub struct MessageSent {
 enum Input {
     Event(Arc<Event>),
     Open(OpenChat),
-    Apply(MessageChange),
+    Apply(Box<MessageChange>),
+}
+
+impl From<MessageChange> for Input {
+    fn from(change: MessageChange) -> Self {
+        Self::Apply(Box::new(change))
+    }
 }
 
 enum Output {
-    Thread { chat: ChatId, items: Arc<[Item]> },
-    Unread { chat: ChatId, messages: Vec<Unread> },
+    Thread {
+        chat: ChatId,
+        items: Arc<[Item]>,
+        fetch: Vec<Fetch>,
+    },
+    Unread {
+        chat: ChatId,
+        messages: Vec<Unread>,
+    },
 }
 
 /// Every message natizap has, and the one conversation on screen.
@@ -63,14 +77,23 @@ pub struct MessageLog {
     open: Option<OpenChat>,
     items: Arc<[Item]>,
     sent_count: u64,
+    media_dir: PathBuf,
+    /// Attachments being downloaded, by message id.
+    fetching: HashSet<String>,
     _tasks: [Task<()>; 3],
 }
 
 impl EventEmitter<MessageSent> for MessageLog {}
 
 impl MessageLog {
-    /// Follows `protocol`'s message events, storing messages at `store_path`.
-    pub fn new(protocol: Entity<Protocol>, store_path: PathBuf, cx: &mut Context<Self>) -> Self {
+    /// Follows `protocol`'s message events, storing messages at `store_path`
+    /// and downloaded attachments in `media_dir`.
+    pub fn new(
+        protocol: Entity<Protocol>,
+        store_path: PathBuf,
+        media_dir: PathBuf,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let (inputs_tx, inputs) = async_channel::unbounded();
         let (outputs_tx, outputs) = async_channel::unbounded();
 
@@ -98,6 +121,8 @@ impl MessageLog {
             open: None,
             items: Arc::from([]),
             sent_count: 0,
+            media_dir,
+            fetching: HashSet::new(),
             _tasks: [forward, sync, apply],
         }
     }
@@ -133,7 +158,7 @@ impl MessageLog {
         self.sent_count += 1;
         let local_id = format!("local-{}-{}", unix_nanos(), self.sent_count);
 
-        self.send_input(Input::Apply(MessageChange::Sending(Message {
+        self.send_input(Input::from(MessageChange::Sending(Message {
             chat: chat.clone(),
             id: local_id.clone(),
             from_me: true,
@@ -145,6 +170,8 @@ impl MessageLog {
             edited: false,
             deleted: false,
             delivery: Delivery::Sending,
+            media: None,
+            media_file: None,
             quote: reply.as_ref().map(|reply| Quote {
                 id: reply.id.clone(),
                 sender: reply.sender.clone(),
@@ -172,7 +199,7 @@ impl MessageLog {
                 }
             };
             // Only fails while shutting down, when nothing is left to update.
-            let _ = inputs.send(Input::Apply(change)).await;
+            let _ = inputs.send(Input::from(change)).await;
         })
         .detach();
     }
@@ -189,7 +216,7 @@ impl MessageLog {
         let Some(chat) = self.open.as_ref().map(|open| open.id.clone()) else {
             return;
         };
-        self.send_input(Input::Apply(MessageChange::Reacted {
+        self.send_input(Input::from(MessageChange::Reacted {
             chat: chat.clone(),
             message_id: message_id.clone(),
             reactor: None,
@@ -207,6 +234,54 @@ impl MessageLog {
         .detach();
     }
 
+    /// Opens an attachment in the system's default app, downloading it
+    /// first if needed.
+    pub(crate) fn open_media(&mut self, fetch: Fetch, file: Option<&Path>, cx: &mut Context<Self>) {
+        match file.filter(|file| file.exists()) {
+            Some(file) => cx.open_with_system(file),
+            None => self.fetch(fetch, true, cx),
+        }
+    }
+
+    /// Downloads an attachment to the media folder, then records where it
+    /// went and, if asked, opens it.
+    fn fetch(&mut self, fetch: Fetch, open: bool, cx: &mut Context<Self>) {
+        if !self.fetching.insert(fetch.message_id.clone()) {
+            return;
+        }
+        let path = fetch.path_in(&self.media_dir);
+        let downloading = self.protocol.read(cx).download(fetch.kind, fetch.media, cx);
+        let message_id = fetch.message_id;
+        cx.spawn(async move |this, cx| {
+            let saved = match downloading.await {
+                Ok(bytes) => {
+                    let path = path.clone();
+                    cx.background_spawn(async move { save(&path, &bytes) })
+                        .await
+                }
+                Err(error) => Err(error.to_string()),
+            };
+            let _ = this.update(cx, |log, cx| {
+                match saved {
+                    Ok(()) => {
+                        log.fetching.remove(&message_id);
+                        log.send_input(Input::from(MessageChange::MediaSaved {
+                            message_id,
+                            file: path.clone(),
+                        }));
+                        if open {
+                            cx.open_with_system(&path);
+                        }
+                    }
+                    // Stays in `fetching` so a failing file is not retried on
+                    // every refresh; a click retries it after a restart.
+                    Err(error) => tracing::warn!(%error, "could not download an attachment"),
+                }
+            });
+        })
+        .detach();
+    }
+
     fn send_input(&self, input: Input) {
         // The channel is unbounded and the worker lives as long as `self`.
         if self.inputs.try_send(input).is_err() {
@@ -216,9 +291,12 @@ impl MessageLog {
 
     fn receive(&mut self, output: Output, cx: &mut Context<Self>) {
         match output {
-            Output::Thread { chat, items } => {
+            Output::Thread { chat, items, fetch } => {
                 if self.open.as_ref().is_some_and(|open| open.id == chat) {
                     self.items = items;
+                    for fetch in fetch {
+                        self.fetch(fetch, false, cx);
+                    }
                     cx.notify();
                 }
             }
@@ -271,7 +349,7 @@ async fn sync(
                 }
                 Input::Apply(change) => {
                     refresh |= touches(open.as_ref(), std::slice::from_ref(&change));
-                    log_error(store.apply(&[change]), "could not store a message");
+                    log_error(store.apply(&[*change]), "could not store a message");
                 }
             }
             next = inputs.try_recv().ok();
@@ -305,10 +383,12 @@ async fn sync(
                 HashMap::new()
             });
             let rows = items(&messages, &reactions, Local::now()).into();
+            let fetch = fetch_on_sight(&messages);
             if outputs
                 .send(Output::Thread {
                     chat: chat.id.clone(),
                     items: rows,
+                    fetch,
                 })
                 .await
                 .is_err()
@@ -362,6 +442,13 @@ fn log_error(result: rusqlite::Result<()>, context: &str) {
     if let Err(error) = result {
         tracing::error!(%error, "{context}");
     }
+}
+
+fn save(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|error| error.to_string())?;
+    }
+    std::fs::write(path, bytes).map_err(|error| error.to_string())
 }
 
 fn unix_nanos() -> u128 {
