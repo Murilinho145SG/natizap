@@ -41,6 +41,8 @@ pub struct ChatRow {
     pub muted: bool,
     /// A business WhatsApp vouches for, shown with a seal.
     pub verified: bool,
+    /// Known to be a business, seal or not.
+    pub(crate) business: bool,
     /// How long new messages last, when they disappear.
     pub disappearing: Option<Disappearing>,
 }
@@ -70,6 +72,7 @@ impl ChatRow {
             pinned: chat.pinned_at.is_some(),
             muted: chat.is_muted(now),
             verified: book.verified(chat, aliases),
+            business: book.business(chat, aliases),
             disappearing: chat.disappearing.and_then(Disappearing::from_seconds),
         }
     }
@@ -215,20 +218,21 @@ impl ChatList {
     }
 
     /// Asks, one at a time, whether chats known only by their number are
-    /// businesses, to show their verified name: chats from before natizap
-    /// read business names from messages have none. Each chat is asked
-    /// once per launch.
+    /// businesses, and whether businesses without a seal have one: chats
+    /// from before natizap read business names from messages have neither.
+    /// Each chat is asked once per launch.
     fn name_businesses(&mut self, cx: &mut Context<Self>) {
         if self.asking {
             return;
         }
         let unnamed = self.snapshot.rows.iter().find(|row| {
+            let unnamed = row
+                .addresses
+                .iter()
+                .any(|address| address.phone_number().as_deref() == Some(&*row.title));
             !row.id.is_group()
                 && !self.asked.contains(&row.id)
-                && row
-                    .addresses
-                    .iter()
-                    .any(|address| address.phone_number().as_deref() == Some(&*row.title))
+                && (unnamed || (row.business && !row.verified))
         });
         let Some(row) = unnamed else {
             return;
@@ -245,10 +249,12 @@ impl ChatList {
         let asking = self.protocol.read(cx).profile(&phone, cx);
         self.asking = true;
         cx.spawn(async move |this, cx| {
-            let name = asking.await.ok().and_then(|profile| profile.business?.name);
+            let business = asking.await.ok().and_then(|profile| profile.business);
+            let named = business.and_then(|business| Some((business.name?, business.verified)));
             let _ = this.update(cx, |list, cx| {
-                if let Some(name) = name {
-                    list.send(Input::Change(ChatChange::BusinessName(id, name, false)));
+                if let Some((name, verified)) = named {
+                    let change = ChatChange::BusinessName(id, name, Some(verified));
+                    list.send(Input::Change(change));
                 }
                 list.asking = false;
                 list.name_businesses(cx);

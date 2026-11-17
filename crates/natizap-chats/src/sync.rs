@@ -129,7 +129,7 @@ fn message_changes(inbound: &InboundMessage) -> Vec<ChatChange> {
             .filter(|_| !source.is_from_me && !source.is_group);
         if let Some(name) = business {
             let vouched = inbound.info.verified_level.as_deref() == Some("high");
-            changes.push(ChatChange::BusinessName(chat.clone(), name, vouched));
+            changes.push(ChatChange::BusinessName(chat.clone(), name, Some(vouched)));
         }
         if !source.is_from_me && !inbound.info.push_name.is_empty() {
             changes.push(ChatChange::PushName(
@@ -188,7 +188,7 @@ fn history_changes(history: &LazyHistorySync) -> Vec<ChatChange> {
             .find_map(|info| info.verified_biz_name.clone())
             .filter(|_| !id.is_group());
         if let Some(name) = business {
-            changes.push(ChatChange::BusinessName(id.clone(), name, false));
+            changes.push(ChatChange::BusinessName(id.clone(), name, None));
         }
         changes.push(ChatChange::History(
             id.clone(),

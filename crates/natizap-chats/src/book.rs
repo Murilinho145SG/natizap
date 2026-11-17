@@ -153,8 +153,8 @@ pub(crate) enum ChatChange {
     /// Name the person chose for themselves.
     PushName(ChatId, String),
     /// A business account's verified name, and whether WhatsApp vouches for
-    /// it with a seal.
-    BusinessName(ChatId, String, bool),
+    /// it with a seal, when the source says.
+    BusinessName(ChatId, String, Option<bool>),
     /// Pinned at the given time, or unpinned.
     Pinned(ChatId, Option<i64>),
     /// Muted, or unmuted.
@@ -263,7 +263,9 @@ impl ChatBook {
             ChatChange::BusinessName(id, name, verified) => {
                 let person = self.person(id);
                 person.business_name = Some(name);
-                person.verified = verified;
+                if let Some(verified) = verified {
+                    person.verified = verified;
+                }
             }
             ChatChange::Pinned(id, at) => self.update(&id, |chat| chat.pinned_at = at),
             ChatChange::Muted(id, mute) => self.update(&id, |chat| chat.mute = mute),
@@ -323,6 +325,15 @@ impl ChatBook {
             })
             .or_else(|| addresses().find_map(ChatId::phone_number))
             .unwrap_or_else(|| "Unknown contact".to_owned())
+    }
+
+    /// Whether `chat` is known to be a business.
+    #[must_use]
+    pub(crate) fn business(&self, chat: &Chat, aliases: &[&ChatId]) -> bool {
+        std::iter::once(&chat.id)
+            .chain(aliases.iter().copied())
+            .filter_map(|address| self.people.get(address))
+            .any(|person| person.business_name.is_some())
     }
 
     /// Whether `chat` is a business WhatsApp vouches for.
