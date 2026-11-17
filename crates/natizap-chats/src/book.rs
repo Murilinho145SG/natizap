@@ -29,12 +29,8 @@ pub(crate) enum Mute {
 pub(crate) struct Chat {
     /// The chat's address.
     pub(crate) id: ChatId,
-    /// Name saved in the phone's address book.
-    pub(crate) contact_name: Option<String>,
     /// Group subject, or the name WhatsApp attached to the chat.
     pub(crate) subject: Option<String>,
-    /// Name the other person chose for themselves.
-    pub(crate) push_name: Option<String>,
     /// The latest message.
     pub(crate) preview: Option<Preview>,
     /// Latest activity, in Unix seconds; orders the list.
@@ -55,9 +51,7 @@ impl Chat {
     fn new(id: ChatId) -> Self {
         Self {
             id,
-            contact_name: None,
             subject: None,
-            push_name: None,
             preview: None,
             active_at: 0,
             unread: 0,
@@ -66,18 +60,6 @@ impl Chat {
             mute: None,
             archived: false,
         }
-    }
-
-    /// The name to show: the address book wins, as on the phone, then the
-    /// chat's own name, the person's self-chosen name, and the phone number.
-    #[must_use]
-    pub(crate) fn title(&self) -> String {
-        self.contact_name
-            .clone()
-            .or_else(|| self.subject.clone())
-            .or_else(|| self.push_name.as_ref().map(|name| format!("~ {name}")))
-            .or_else(|| self.id.phone_number())
-            .unwrap_or_else(|| self.id.as_str().to_owned())
     }
 
     /// Whether notifications are silenced at Unix time `now`.
@@ -102,9 +84,7 @@ impl Chat {
     }
 
     fn absorb(&mut self, other: Chat) {
-        self.contact_name = self.contact_name.take().or(other.contact_name);
         self.subject = self.subject.take().or(other.subject);
-        self.push_name = self.push_name.take().or(other.push_name);
         if let Some(preview) = other.preview {
             self.show(preview);
         }
@@ -115,6 +95,16 @@ impl Chat {
         self.mute = self.mute.or(other.mute);
         self.archived &= other.archived;
     }
+}
+
+/// What a person is called. Kept apart from chats: names arrive for
+/// everyone in the address book, not only for people with a chat.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct Person {
+    /// Name saved in the phone's address book.
+    pub(crate) contact_name: Option<String>,
+    /// Name the person chose for themselves.
+    pub(crate) push_name: Option<String>,
 }
 
 /// Snapshot of one chat from a history sync. History can arrive after live
@@ -174,6 +164,8 @@ pub(crate) struct Dirty {
     pub(crate) chats: HashSet<ChatId>,
     /// New `(alias, chat)` pairs.
     pub(crate) aliases: Vec<(ChatId, ChatId)>,
+    /// People whose names changed.
+    pub(crate) people: HashSet<ChatId>,
 }
 
 /// Every known chat, and the rules for folding changes into them.
@@ -181,16 +173,20 @@ pub(crate) struct Dirty {
 pub(crate) struct ChatBook {
     chats: HashMap<ChatId, Chat>,
     aliases: HashMap<ChatId, ChatId>,
+    /// Names by the address they arrived under; a chat finds them through any
+    /// of its addresses.
+    people: HashMap<ChatId, Person>,
     /// The chat on screen: what arrives there is read as it arrives.
     open: Option<ChatId>,
     dirty: Dirty,
 }
 
 impl ChatBook {
-    /// Rebuilds a book from persisted chats and aliases.
+    /// Rebuilds a book from persisted chats, aliases and people.
     pub(crate) fn restore(
         chats: impl IntoIterator<Item = Chat>,
         aliases: impl IntoIterator<Item = (ChatId, ChatId)>,
+        people: impl IntoIterator<Item = (ChatId, Person)>,
     ) -> Self {
         Self {
             chats: chats
@@ -198,6 +194,7 @@ impl ChatBook {
                 .map(|chat| (chat.id.clone(), chat))
                 .collect(),
             aliases: aliases.into_iter().collect(),
+            people: people.into_iter().collect(),
             open: None,
             dirty: Dirty::default(),
         }
@@ -244,10 +241,10 @@ impl ChatBook {
                     chat.show(preview);
                 });
             }
-            ChatChange::ContactName(id, name) => self.update(&id, |chat| {
-                chat.contact_name = Some(name);
-            }),
-            ChatChange::PushName(id, name) => self.update(&id, |chat| chat.push_name = Some(name)),
+            ChatChange::ContactName(id, name) => {
+                self.person(id).contact_name = Some(name);
+            }
+            ChatChange::PushName(id, name) => self.person(id).push_name = Some(name),
             ChatChange::Pinned(id, at) => self.update(&id, |chat| chat.pinned_at = at),
             ChatChange::Muted(id, mute) => self.update(&id, |chat| chat.mute = mute),
             ChatChange::Archived(id, archived) => self.update(&id, |chat| chat.archived = archived),
@@ -285,6 +282,30 @@ impl ChatBook {
         addresses
     }
 
+    /// The name to show for `chat`, given its other addresses: the address
+    /// book wins, as on the phone, then the chat's own name, the person's
+    /// self-chosen name, and the phone number.
+    #[must_use]
+    pub(crate) fn title(&self, chat: &Chat, aliases: &[&ChatId]) -> String {
+        let addresses = || std::iter::once(&chat.id).chain(aliases.iter().copied());
+        let people = || addresses().filter_map(|address| self.people.get(address));
+        people()
+            .find_map(|person| person.contact_name.clone())
+            .or_else(|| chat.subject.clone())
+            .or_else(|| {
+                people()
+                    .find_map(|person| person.push_name.as_ref())
+                    .map(|name| format!("~ {name}"))
+            })
+            .or_else(|| addresses().find_map(ChatId::phone_number))
+            .unwrap_or_else(|| "Unknown contact".to_owned())
+    }
+
+    /// A person's names, for persistence.
+    pub(crate) fn person_named(&self, id: &ChatId) -> Option<&Person> {
+        self.people.get(id)
+    }
+
     /// Marks `id` as the chat on screen, or none.
     pub(crate) fn set_open(&mut self, id: Option<&ChatId>) {
         self.open = id.map(|id| self.resolve(id).clone());
@@ -299,6 +320,11 @@ impl ChatBook {
     /// Returns and forgets what changed since the previous call.
     pub(crate) fn take_dirty(&mut self) -> Dirty {
         std::mem::take(&mut self.dirty)
+    }
+
+    fn person(&mut self, id: ChatId) -> &mut Person {
+        self.dirty.people.insert(id.clone());
+        self.people.entry(id).or_default()
     }
 
     fn resolve<'a>(&'a self, id: &'a ChatId) -> &'a ChatId {
@@ -501,24 +527,56 @@ mod tests {
         assert_eq!(book.listed().len(), 0);
     }
 
+    fn title(book: &ChatBook, chat: &ChatId) -> Option<String> {
+        let addresses = book.addresses();
+        let chat = book.get(chat)?;
+        let aliases = addresses.get(&chat.id).map_or(&[][..], Vec::as_slice);
+        Some(book.title(chat, aliases))
+    }
+
     #[test]
     fn title_prefers_the_address_book_then_falls_back_to_the_number() {
         let mut book = ChatBook::default();
         let chat = id("5511999@s.whatsapp.net");
         book.apply(ChatChange::Message(chat.clone(), message("hi", 1, false)));
-        assert_eq!(
-            book.get(&chat).map(Chat::title).as_deref(),
-            Some("+5511999")
-        );
+        assert_eq!(title(&book, &chat).as_deref(), Some("+5511999"));
 
         book.apply(ChatChange::PushName(chat.clone(), "Ana".into()));
-        assert_eq!(book.get(&chat).map(Chat::title).as_deref(), Some("~ Ana"));
+        assert_eq!(title(&book, &chat).as_deref(), Some("~ Ana"));
 
         book.apply(ChatChange::ContactName(chat.clone(), "Ana Souza".into()));
-        assert_eq!(
-            book.get(&chat).map(Chat::title).as_deref(),
-            Some("Ana Souza")
-        );
+        assert_eq!(title(&book, &chat).as_deref(), Some("Ana Souza"));
+    }
+
+    #[test]
+    fn a_lid_chat_finds_names_saved_under_the_phone_number() {
+        let mut book = ChatBook::default();
+        let lid = id("123@lid");
+        book.apply(ChatChange::Message(lid.clone(), message("hi", 1, false)));
+        assert_eq!(title(&book, &lid).as_deref(), Some("Unknown contact"));
+
+        book.apply(ChatChange::ContactName(
+            id("5511999@s.whatsapp.net"),
+            "Ana".into(),
+        ));
+        book.apply(ChatChange::SameChat(
+            lid.clone(),
+            id("5511999@s.whatsapp.net"),
+        ));
+        assert_eq!(title(&book, &lid).as_deref(), Some("Ana"));
+    }
+
+    #[test]
+    fn names_alone_do_not_create_chats() {
+        let mut book = ChatBook::default();
+        book.apply(ChatChange::PushName(id("1@lid"), "Ana".into()));
+        book.apply(ChatChange::ContactName(
+            id("2@s.whatsapp.net"),
+            "Bruno".into(),
+        ));
+
+        assert_eq!(book.listed().len(), 0);
+        assert_eq!(book.take_dirty().people.len(), 2);
     }
 
     #[test]

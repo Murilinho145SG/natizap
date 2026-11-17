@@ -4,13 +4,13 @@ use rusqlite::{Connection, Row, params};
 
 use natizap_protocol::ChatId;
 
-use crate::book::{Chat, ChatBook, Dirty, Mute, Preview};
+use crate::book::{Chat, ChatBook, Dirty, Mute, Person, Preview};
 
-/// Bumped when the schema changes; older caches are rebuilt from WhatsApp.
-const SCHEMA_VERSION: i64 = 1;
-
-const SCHEMA: &str = "
-    CREATE TABLE chats (
+/// Schema history: `MIGRATIONS[n]` upgrades a cache from version `n` to
+/// `n + 1`. Caches are migrated, never rebuilt: WhatsApp sends the history
+/// only once, right after linking, so a dropped cache cannot be refilled.
+const MIGRATIONS: &[&str] = &[
+    "CREATE TABLE chats (
         id TEXT PRIMARY KEY,
         contact_name TEXT,
         subject TEXT,
@@ -29,8 +29,20 @@ const SCHEMA: &str = "
     CREATE TABLE aliases (
         alias TEXT PRIMARY KEY,
         chat TEXT NOT NULL
+    );",
+    // Names move to their own table; chats that only existed because a name
+    // arrived for them are dropped.
+    "CREATE TABLE people (
+        id TEXT PRIMARY KEY,
+        contact_name TEXT,
+        push_name TEXT
     );
-";
+    INSERT INTO people SELECT id, contact_name, push_name FROM chats
+        WHERE contact_name IS NOT NULL OR push_name IS NOT NULL;
+    DELETE FROM chats WHERE preview_text IS NULL AND active_at = 0;
+    ALTER TABLE chats DROP COLUMN contact_name;
+    ALTER TABLE chats DROP COLUMN push_name;",
+];
 
 /// `muted_until` value for [`Mute::Forever`].
 const MUTED_FOREVER: i64 = -1;
@@ -53,15 +65,7 @@ impl ChatStore {
     }
 
     fn init(connection: Connection) -> rusqlite::Result<Self> {
-        let version: i64 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-        if version != SCHEMA_VERSION {
-            // The cache only mirrors what WhatsApp syncs again, so an
-            // outdated one is dropped instead of migrated.
-            connection.execute_batch(&format!(
-                "DROP TABLE IF EXISTS chats; DROP TABLE IF EXISTS aliases; {SCHEMA}
-                 PRAGMA user_version = {SCHEMA_VERSION};"
-            ))?;
-        }
+        migrate(&connection)?;
         connection.pragma_update(None, "journal_mode", "WAL")?;
         Ok(Self { connection })
     }
@@ -83,13 +87,26 @@ impl ChatStore {
                 ))
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
-        Ok(ChatBook::restore(chats, aliases))
+        let people = self
+            .connection
+            .prepare("SELECT id, contact_name, push_name FROM people")?
+            .query_map([], |row| {
+                Ok((
+                    ChatId::new(&row.get::<_, String>(0)?),
+                    Person {
+                        contact_name: row.get(1)?,
+                        push_name: row.get(2)?,
+                    },
+                ))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(ChatBook::restore(chats, aliases, people))
     }
 
     /// Forgets every chat.
     pub(crate) fn clear(&mut self) -> rusqlite::Result<()> {
         self.connection
-            .execute_batch("DELETE FROM chats; DELETE FROM aliases;")
+            .execute_batch("DELETE FROM chats; DELETE FROM aliases; DELETE FROM people;")
     }
 
     /// Writes what changed in `book`, in one transaction.
@@ -97,8 +114,10 @@ impl ChatStore {
         let tx = self.connection.transaction()?;
         {
             let mut upsert = tx.prepare_cached(
-                "INSERT OR REPLACE INTO chats VALUES
-                 (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                "INSERT OR REPLACE INTO chats (id, subject, preview_text, preview_sent_at,
+                 preview_from_me, preview_author, active_at, unread, marked_unread, pinned_at,
+                 muted_until, archived)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             )?;
             let mut delete = tx.prepare_cached("DELETE FROM chats WHERE id = ?1")?;
             for id in &dirty.chats {
@@ -107,9 +126,7 @@ impl ChatStore {
                         let preview = chat.preview.as_ref();
                         upsert.execute(params![
                             chat.id.as_str(),
-                            chat.contact_name,
                             chat.subject,
-                            chat.push_name,
                             preview.map(|p| &p.text),
                             preview.map(|p| p.sent_at),
                             preview.map(|p| p.from_me),
@@ -134,6 +151,13 @@ impl ChatStore {
             for (from, to) in &dirty.aliases {
                 alias.execute(params![from.as_str(), to.as_str()])?;
             }
+            let mut person =
+                tx.prepare_cached("INSERT OR REPLACE INTO people VALUES (?1, ?2, ?3)")?;
+            for id in &dirty.people {
+                if let Some(names) = book.person_named(id) {
+                    person.execute(params![id.as_str(), names.contact_name, names.push_name])?;
+                }
+            }
         }
         tx.commit()
     }
@@ -143,6 +167,19 @@ impl ChatStore {
         self.connection
             .query_row("SELECT COUNT(*) FROM chats", [], |row| row.get(0))
     }
+}
+
+/// Brings the cache up to the latest schema, one migration per transaction.
+fn migrate(connection: &Connection) -> rusqlite::Result<()> {
+    let version: i64 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    let applied = usize::try_from(version).unwrap_or(0);
+    for (from, migration) in MIGRATIONS.iter().enumerate().skip(applied) {
+        connection.execute_batch(&format!(
+            "BEGIN; {migration} PRAGMA user_version = {}; COMMIT;",
+            from + 1
+        ))?;
+    }
+    Ok(())
 }
 
 fn chat_from_row(row: &Row<'_>) -> rusqlite::Result<Chat> {
@@ -157,9 +194,7 @@ fn chat_from_row(row: &Row<'_>) -> rusqlite::Result<Chat> {
     };
     Ok(Chat {
         id: ChatId::new(&row.get::<_, String>("id")?),
-        contact_name: row.get("contact_name")?,
         subject: row.get("subject")?,
-        push_name: row.get("push_name")?,
         preview,
         active_at: row.get("active_at")?,
         unread: row.get("unread")?,
@@ -180,6 +215,31 @@ fn chat_from_row(row: &Row<'_>) -> rusqlite::Result<Chat> {
 mod tests {
     use super::*;
     use crate::book::ChatChange;
+
+    #[test]
+    fn upgrades_a_version_1_cache_keeping_chats_and_names() -> rusqlite::Result<()> {
+        let connection = Connection::open_in_memory()?;
+        connection.execute_batch(&format!("{} PRAGMA user_version = 1;", MIGRATIONS[0]))?;
+        connection.execute_batch(
+            "INSERT INTO chats VALUES
+                ('1@lid', 'Ana', NULL, NULL, 'hi', 5, 0, NULL, 5, 0, 0, NULL, NULL, 0),
+                ('2@lid', NULL, NULL, 'Bia', NULL, NULL, NULL, NULL, 0, 0, 0, NULL, NULL, 0);",
+        )?;
+
+        let store = ChatStore::init(connection)?;
+        let book = store.load()?;
+        let listed: Vec<&str> = book.listed().iter().map(|chat| chat.id.as_str()).collect();
+        assert_eq!(listed, ["1@lid"]);
+        let ana = book
+            .person_named(&ChatId::new("1@lid"))
+            .and_then(|p| p.contact_name.clone());
+        assert_eq!(ana.as_deref(), Some("Ana"));
+        let bia = book
+            .person_named(&ChatId::new("2@lid"))
+            .and_then(|p| p.push_name.clone());
+        assert_eq!(bia.as_deref(), Some("Bia"));
+        Ok(())
+    }
 
     #[test]
     fn round_trips_chats_aliases_and_deletions() -> rusqlite::Result<()> {

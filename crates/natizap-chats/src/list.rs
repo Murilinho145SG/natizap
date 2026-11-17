@@ -36,7 +36,7 @@ pub struct ChatRow {
 }
 
 impl ChatRow {
-    fn new(chat: &Chat, aliases: &[&ChatId], now: i64) -> Self {
+    fn new(book: &ChatBook, chat: &Chat, aliases: &[&ChatId], now: i64) -> Self {
         let preview = chat.preview.as_ref().map(|preview| {
             let text = match (&preview.author, preview.from_me) {
                 (_, true) => format!("You: {}", preview.text),
@@ -51,7 +51,7 @@ impl ChatRow {
                 .chain(aliases.iter().copied())
                 .cloned()
                 .collect(),
-            title: chat.title().into(),
+            title: book.title(chat, aliases).into(),
             preview,
             sent_at: chat.preview.as_ref().map(|preview| preview.sent_at),
             unread: chat.unread,
@@ -242,7 +242,7 @@ fn snapshot(book: &ChatBook) -> Snapshot {
             .into_iter()
             .map(|chat| {
                 let aliases = addresses.get(&chat.id).map_or(&[][..], Vec::as_slice);
-                ChatRow::new(chat, aliases, now)
+                ChatRow::new(book, chat, aliases, now)
             })
             .collect(),
         archived: book.archived_count(),
