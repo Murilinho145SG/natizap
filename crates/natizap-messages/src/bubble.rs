@@ -96,10 +96,6 @@ fn render_bubble(
         .gap_1()
         .pt(px(if bubble.starts_burst { 8.0 } else { 2.0 }))
         .when(bubble.from_me, Styled::justify_end)
-        .on_mouse_down(MouseButton::Right, {
-            let (view, bubble) = (view.clone(), bubble.clone());
-            move |_, _, cx| reply_to(&view, &bubble, cx)
-        })
         .map(|row| {
             // Actions sit on the open side of the bubble.
             if bubble.from_me {
