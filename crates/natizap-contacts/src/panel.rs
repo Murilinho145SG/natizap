@@ -5,7 +5,10 @@ use gpui::{
     Context, Div, Entity, EventEmitter, FontWeight, Image, ImageFormat, ObjectFit, Pixels, Point,
     SharedString, Stateful, Window, div, img, px, rgb,
 };
-use natizap_protocol::{Business, ChatId, Profile, Protocol};
+use std::collections::HashMap;
+
+use natizap_profiles::ProfilePictures;
+use natizap_protocol::{Business, ChatId, GroupInfo, PersonName, Profile, Protocol};
 
 use crate::hours;
 use crate::sections::{ChatSettings, ChatSummary, DisappearingChosen, MuteToggled};
@@ -25,6 +28,11 @@ pub struct ProfileClosed;
 
 /// A chat's profile, beside the conversation.
 #[derive(Debug)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "verified, own, enlarged and all members listed are independent \
+              facts about what the panel shows"
+)]
 pub struct ProfilePanel {
     chat: ChatId,
     title: SharedString,
@@ -37,6 +45,14 @@ pub struct ProfilePanel {
     /// The picture is shown full size over the window.
     enlarged: bool,
     profile: Option<Profile>,
+    /// A group's details, for a group's profile.
+    group: Option<GroupInfo>,
+    pub(crate) protocol: Entity<Protocol>,
+    pub(crate) pictures: Entity<ProfilePictures>,
+    /// What people are called, to name a group's members.
+    pub(crate) names: Arc<HashMap<ChatId, PersonName>>,
+    /// Every member is listed, not only the first.
+    pub(crate) all_members: bool,
     pub(crate) summary: Option<ChatSummary>,
     pub(crate) settings: Option<ChatSettings>,
     /// Where the disappearing messages choices are open.
@@ -50,11 +66,13 @@ impl ProfilePanel {
     /// and fetches its details.
     pub fn new(
         protocol: &Entity<Protocol>,
+        pictures: &Entity<ProfilePictures>,
         chat: ChatId,
         title: SharedString,
         verified: bool,
         cx: &mut Context<Self>,
     ) -> Self {
+        cx.observe(pictures, |_, _, cx| cx.notify()).detach();
         let picture = protocol.read(cx).profile_picture(&chat, true, cx);
         cx.spawn(async move |this, cx| match picture.await {
             Ok(Some(bytes)) => {
@@ -67,6 +85,19 @@ impl ProfilePanel {
             Err(error) => tracing::debug!(%error, "no full-size picture"),
         })
         .detach();
+        if chat.is_group() {
+            let group = protocol.read(cx).group_info(&chat, cx);
+            cx.spawn(async move |this, cx| match group.await {
+                Ok(group) => {
+                    let _ = this.update(cx, |panel, cx| {
+                        panel.group = Some(group);
+                        cx.notify();
+                    });
+                }
+                Err(error) => tracing::debug!(%error, "group details unavailable"),
+            })
+            .detach();
+        }
         let profile = protocol.read(cx).profile(&chat, cx);
         cx.spawn(async move |this, cx| {
             let profile = profile.await.unwrap_or_else(|error| {
@@ -93,10 +124,21 @@ impl ProfilePanel {
             cover: None,
             enlarged: false,
             profile: None,
+            group: None,
+            protocol: protocol.clone(),
+            pictures: pictures.clone(),
+            names: Arc::default(),
+            all_members: false,
             summary: None,
             settings: None,
             timer_menu: None,
         }
+    }
+
+    /// Names a group's members by `names`, by address.
+    pub fn set_names(&mut self, names: Arc<HashMap<ChatId, PersonName>>, cx: &mut Context<Self>) {
+        self.names = names;
+        cx.notify();
     }
 
     /// Shows the chat's media and starred messages.
@@ -158,7 +200,8 @@ impl Render for ProfilePanel {
                             .child(self.identity())
                             .child(div().w_full().py_4().child(separator()))
                             .child(self.details())
-                            .child(self.sections(cx)),
+                            .child(self.sections(cx))
+                            .children(self.group.clone().map(|group| self.members(&group, cx))),
                     ),
             )
             .when(self.enlarged, |panel| {
@@ -189,7 +232,9 @@ impl Render for ProfilePanel {
 
 impl ProfilePanel {
     fn title_bar(&self, cx: &mut Context<Self>) -> Div {
-        let heading = if self.business().is_some() {
+        let heading = if self.chat.is_group() {
+            "Group info"
+        } else if self.business().is_some() {
             "Business info"
         } else {
             "Contact info"
@@ -289,6 +334,17 @@ impl ProfilePanel {
                     .text_color(rgb(MUTED))
                     .child(phone)
             }))
+            .children(self.group.as_ref().map(|group| {
+                let kind = if group.community.is_some() {
+                    "Community group"
+                } else {
+                    "Group"
+                };
+                div()
+                    .text_size(px(15.0))
+                    .text_color(rgb(MUTED))
+                    .child(format!("{kind} · {} members", group.members.len()))
+            }))
             .children(
                 business
                     .and_then(|business| business.category.clone())
@@ -323,7 +379,15 @@ impl ProfilePanel {
     /// The about line and a business's details, or placeholders while they
     /// load.
     fn details(&self) -> Div {
-        let Some(profile) = &self.profile else {
+        if let Some(group) = &self.group {
+            return div().w_full().flex().flex_col().gap_4().children(
+                group
+                    .description
+                    .clone()
+                    .map(|description| field("Description", description)),
+            );
+        }
+        let Some(profile) = &self.profile.as_ref().filter(|_| !self.chat.is_group()) else {
             return div()
                 .w_full()
                 .flex()

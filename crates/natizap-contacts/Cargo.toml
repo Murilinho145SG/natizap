@@ -7,6 +7,7 @@ publish.workspace = true
 
 [dependencies]
 gpui.workspace = true
+natizap-profiles.workspace = true
 natizap-protocol.workspace = true
 natizap-ui.workspace = true
 chrono.workspace = true

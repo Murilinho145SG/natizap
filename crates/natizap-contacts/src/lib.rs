@@ -5,6 +5,7 @@
 //! line, and a business's public details, fetched when it opens.
 
 mod hours;
+mod members;
 mod panel;
 mod sections;
 
