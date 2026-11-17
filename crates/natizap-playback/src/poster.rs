@@ -1,5 +1,6 @@
 //! A still from a video, to show in place of the video until it plays.
 
+use std::io::Cursor;
 use std::path::Path;
 use std::time::Duration;
 
@@ -9,6 +10,7 @@ use ffmpeg::media::Type;
 use ffmpeg::software::scaling;
 use ffmpeg::util::frame;
 use ffmpeg_next as ffmpeg;
+use image::codecs::jpeg::JpegEncoder;
 
 use crate::decode::{fit, packed_rows, seconds};
 
@@ -18,20 +20,20 @@ const POSTER_WIDTH: u32 = 640;
 /// black or fading frame, so a second in looks more like the video.
 const STILL_AT: i64 = 1_000_000;
 
-/// Why a poster could not be made.
+/// Why a media file could not be read, or a still of it made.
 #[derive(Debug, thiserror::Error)]
-pub enum PosterError {
-    /// FFmpeg could not open or decode the video.
+pub enum MediaFileError {
+    /// FFmpeg could not open or decode the file.
     #[error("{0}")]
     Media(#[from] ffmpeg::Error),
     /// The file has no picture to take a still from.
     #[error("the file has no video")]
     NoVideo,
     /// The still could not be encoded.
-    #[error("could not encode the poster: {0}")]
+    #[error("could not encode the still: {0}")]
     Encode(#[from] image::ImageError),
-    /// The poster could not be written.
-    #[error("could not write the poster: {0}")]
+    /// The still could not be written.
+    #[error("could not write the still: {0}")]
     Write(#[from] std::io::Error),
 }
 
@@ -43,7 +45,24 @@ pub enum PosterError {
 ///
 /// Fails when the video cannot be decoded or has no picture, or the poster
 /// cannot be written. A failed attempt leaves no file at `poster`.
-pub fn save_poster(video: &Path, poster: &Path) -> Result<(), PosterError> {
+pub fn save_poster(video: &Path, poster: &Path) -> Result<(), MediaFileError> {
+    let jpeg = still_jpeg(video, POSTER_WIDTH)?;
+    // Written aside and renamed, so a half-written poster never shows.
+    let partial = poster.with_extension("part");
+    std::fs::write(&partial, jpeg)?;
+    std::fs::rename(&partial, poster)?;
+    Ok(())
+}
+
+/// A JPEG still of `video`, at most `max_width` pixels wide, e.g. the
+/// small preview sent along with a video.
+///
+/// Blocks while it decodes; run it off the UI thread.
+///
+/// # Errors
+///
+/// Fails when the video cannot be decoded or has no picture.
+pub fn still_jpeg(video: &Path, max_width: u32) -> Result<Vec<u8>, MediaFileError> {
     ffmpeg::init()?;
     let mut input = ffmpeg::format::input(video)?;
     let still_at = if input.duration() > 2 * STILL_AT {
@@ -54,7 +73,7 @@ pub fn save_poster(video: &Path, poster: &Path) -> Result<(), PosterError> {
     };
     let still = decode_still(&mut input, still_at)?;
 
-    let (width, height) = fit(still.width(), still.height(), POSTER_WIDTH);
+    let (width, height) = fit(still.width(), still.height(), max_width);
     let mut scaler = scaling::Context::get(
         still.format(),
         still.width(),
@@ -67,19 +86,14 @@ pub fn save_poster(video: &Path, poster: &Path) -> Result<(), PosterError> {
     let mut rgb = frame::Video::empty();
     scaler.run(&still, &mut rgb)?;
     let pixels = packed_rows(&rgb, width as usize * 3, height as usize);
-
-    // Written aside and renamed, so a half-written poster never shows.
-    let partial = poster.with_extension("part");
-    image::save_buffer_with_format(
-        &partial,
+    let mut jpeg = Cursor::new(Vec::new());
+    JpegEncoder::new_with_quality(&mut jpeg, 85).encode(
         &pixels,
         width,
         height,
         image::ExtendedColorType::Rgb8,
-        image::ImageFormat::Jpeg,
     )?;
-    std::fs::rename(&partial, poster)?;
-    Ok(())
+    Ok(jpeg.into_inner())
 }
 
 /// The first picture at or after `still_at`, or the last one if the video
@@ -87,12 +101,12 @@ pub fn save_poster(video: &Path, poster: &Path) -> Result<(), PosterError> {
 fn decode_still(
     input: &mut ffmpeg::format::context::Input,
     still_at: Duration,
-) -> Result<frame::Video, PosterError> {
+) -> Result<frame::Video, MediaFileError> {
     let (index, time_base, parameters) = {
         let stream = input
             .streams()
             .best(Type::Video)
-            .ok_or(PosterError::NoVideo)?;
+            .ok_or(MediaFileError::NoVideo)?;
         (stream.index(), stream.time_base(), stream.parameters())
     };
     let mut decoder = codec::context::Context::from_parameters(parameters)?
@@ -121,7 +135,7 @@ fn decode_still(
     if found {
         Ok(still)
     } else {
-        Err(PosterError::NoVideo)
+        Err(MediaFileError::NoVideo)
     }
 }
 
@@ -134,7 +148,7 @@ mod tests {
         let dir = std::env::temp_dir().join("natizap-poster-test");
         let poster = dir.join("missing.jpg");
         let result = save_poster(&dir.join("missing.mp4"), &poster);
-        assert!(matches!(result, Err(PosterError::Media(_))));
+        assert!(matches!(result, Err(MediaFileError::Media(_))));
         assert!(!poster.exists());
     }
 }
