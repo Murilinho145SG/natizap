@@ -80,6 +80,8 @@ icons! {
     Pin => "pin.svg",
     /// Play a video or audio.
     Play => "play.svg",
+    /// Add something, e.g. attach a file.
+    Plus => "plus.svg",
     /// Reply to a message.
     Reply => "reply.svg",
     /// Restore a maximized window.
