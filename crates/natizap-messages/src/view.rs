@@ -110,10 +110,15 @@ impl Render for ConversationView {
                             .flex()
                             .flex_col()
                             .child(
+                                // Medium, like the chat list: at heavier weights
+                                // the system's font fallback picks monochrome
+                                // emoji, and GPUI cannot be told to prefer an
+                                // emoji font (it rejects fallbacks without
+                                // Latin glyphs).
                                 div()
                                     .truncate()
-                                    .text_size(px(15.5))
-                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_size(px(16.0))
+                                    .font_weight(FontWeight::MEDIUM)
                                     .child(chat.title.clone()),
                             )
                             .children(subtitle.map(|subtitle| {
@@ -233,7 +238,9 @@ fn render_bubble(bubble: &Bubble) -> AnyElement {
                 .flex_wrap()
                 .items_end()
                 .gap_x_2()
-                .child(body)
+                // Without a max width the text keeps its unwrapped width and
+                // overflows the bubble.
+                .child(body.min_w_0().max_w_full())
                 .child(meta.ml_auto().pb(px(1.0))),
         );
 
