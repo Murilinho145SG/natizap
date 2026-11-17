@@ -1,4 +1,5 @@
 use gpui::prelude::*;
+use std::path::PathBuf;
 use std::time::Duration;
 
 use gpui::{
@@ -14,8 +15,8 @@ use natizap_ui::{Icon, Submitted, TextInput, avatar, name_color};
 
 use crate::bubble::render_item;
 use crate::emoji::{EmojiPicked, EmojiPicker};
-use crate::items::{Bubble, MediaView};
-use crate::log::{MessageLog, SoundReady};
+use crate::items::{Bubble, Item, MediaView};
+use crate::log::{MessageLog, OpenChat, SoundReady};
 use crate::voice::Voices;
 
 mod composer;
@@ -153,7 +154,7 @@ impl ConversationView {
         let reply = bubble.reply.clone();
         let (author, color) = match (&reply.sender, &bubble.sender) {
             (None, _) => ("You".into(), ACCENT),
-            (Some(_), Some(group_sender)) => group_sender.clone(),
+            (Some(_), Some(group_sender)) => (group_sender.name.clone(), group_sender.color),
             (Some(sender), None) => {
                 let title = self.log.read(cx).open_chat().map(|chat| chat.title.clone());
                 (title.unwrap_or_default(), name_color(sender.as_str()))
@@ -323,16 +324,10 @@ impl Render for ConversationView {
         };
         let items = log.items().clone();
         let pinned = log.pinned().cloned();
+        let pictures = self.pictures.clone();
         let view = cx.weak_entity();
         let reacting = self.reacting.clone();
         let voice = self.voices.ui();
-        let subtitle = if chat.id.is_group() {
-            Some("Group".to_owned())
-        } else {
-            chat.id
-                .phone_number()
-                .filter(|phone| *phone != chat.title.as_ref())
-        };
 
         div()
             .size_full()
@@ -344,40 +339,7 @@ impl Render for ConversationView {
                     this.step_back(cx);
                 }
             }))
-            .child(
-                div()
-                    .h(px(60.0))
-                    .flex_none()
-                    .flex()
-                    .items_center()
-                    .gap_3()
-                    .px_4()
-                    .bg(rgb(PANEL))
-                    .border_b_1()
-                    .border_color(rgb(LINE))
-                    .child(avatar(chat.id.as_str(), &chat.title, picture, px(38.0)))
-                    .child(
-                        div()
-                            .min_w_0()
-                            .flex()
-                            .flex_col()
-                            .child(
-                                div()
-                                    .truncate()
-                                    .text_size(px(16.0))
-                                    // Medium on purpose: at semibold, symbols such as ♥ render
-                                    // monochrome even with the emoji font as fallback.
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .child(chat.title.clone()),
-                            )
-                            .children(subtitle.map(|subtitle| {
-                                div()
-                                    .text_size(px(12.5))
-                                    .text_color(rgb(MUTED))
-                                    .child(subtitle)
-                            })),
-                    ),
-            )
+            .child(header(chat, picture))
             .children(pinned.map(|pinned| self.pinned_bar(pinned, cx)))
             .child(
                 div()
@@ -397,11 +359,19 @@ impl Render for ConversationView {
                         }),
                     )
                     .child(
-                        list(self.messages.clone(), move |index, _, _| {
-                            items.get(index).map_or_else(
-                                || div().into_any_element(),
-                                |item| render_item(item, &view, reacting.as_ref(), &voice),
-                            )
+                        list(self.messages.clone(), move |index, _, cx| {
+                            let Some(item) = items.get(index) else {
+                                return div().into_any_element();
+                            };
+                            // Only a burst's first message shows its sender.
+                            let picture = match item {
+                                Item::Bubble(bubble) => bubble.author.as_ref().and_then(|author| {
+                                    pictures
+                                        .update(cx, |pictures, cx| pictures.picture(&author.id, cx))
+                                }),
+                                Item::Day(_) => None,
+                            };
+                            render_item(item, &view, reacting.as_ref(), &voice, picture)
                         })
                         .flex_1()
                         .px(px(56.0))
@@ -449,5 +419,48 @@ fn placeholder() -> Div {
                         .text_color(rgb(MUTED)),
                 )
                 .child("End-to-end encrypted"),
+        )
+}
+
+/// The chat's picture, name and, for a person, their number.
+fn header(chat: &OpenChat, picture: Option<PathBuf>) -> Div {
+    let subtitle = if chat.id.is_group() {
+        Some("Group".to_owned())
+    } else {
+        chat.id
+            .phone_number()
+            .filter(|phone| *phone != chat.title.as_ref())
+    };
+    div()
+        .h(px(60.0))
+        .flex_none()
+        .flex()
+        .items_center()
+        .gap_3()
+        .px_4()
+        .bg(rgb(PANEL))
+        .border_b_1()
+        .border_color(rgb(LINE))
+        .child(avatar(chat.id.as_str(), &chat.title, picture, px(38.0)))
+        .child(
+            div()
+                .min_w_0()
+                .flex()
+                .flex_col()
+                .child(
+                    div()
+                        .truncate()
+                        .text_size(px(16.0))
+                        // Medium on purpose: at semibold, symbols such as ♥ render
+                        // monochrome even with the emoji font as fallback.
+                        .font_weight(FontWeight::MEDIUM)
+                        .child(chat.title.clone()),
+                )
+                .children(subtitle.map(|subtitle| {
+                    div()
+                        .text_size(px(12.5))
+                        .text_color(rgb(MUTED))
+                        .child(subtitle)
+                })),
         )
 }

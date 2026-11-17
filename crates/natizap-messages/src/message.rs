@@ -87,6 +87,9 @@ pub(crate) struct Message {
     pub(crate) media_poster: Option<PathBuf>,
     /// Starred by this account.
     pub(crate) starred: bool,
+    /// The sender's phone-number address, in groups where `sender` is a
+    /// privacy-preserving LID that shows no number.
+    pub(crate) sender_phone: Option<ChatId>,
 }
 
 /// One fact learned about the messages.

@@ -515,6 +515,7 @@ fn outgoing_message(chat: &ChatId, local_id: &str, sent_at: i64, reply: Option<&
         media_file: None,
         media_poster: None,
         starred: false,
+        sender_phone: None,
         quote: reply.map(|reply| Quote {
             id: reply.id.clone(),
             sender: reply.sender.clone(),

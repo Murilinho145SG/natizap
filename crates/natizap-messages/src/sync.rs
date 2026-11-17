@@ -116,6 +116,11 @@ fn live_change(inbound: &InboundMessage) -> Option<MessageChange> {
         media_file: None,
         media_poster: None,
         starred: false,
+        sender_phone: in_group
+            .then_some(source.sender_alt.as_ref())
+            .flatten()
+            .map(|alt| ChatId::new(&alt.to_string()))
+            .filter(|alt| alt.phone_number().is_some()),
         edited: false,
         deleted: false,
         delivery: Delivery::Sent,
@@ -201,6 +206,7 @@ fn history_content(chat: &ChatId, info: &wa::WebMessageInfo) -> Option<MessageCh
         media_file: None,
         media_poster: None,
         starred: false,
+        sender_phone: None,
         edited: false,
         deleted: false,
         delivery: if from_me {

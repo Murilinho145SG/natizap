@@ -32,7 +32,7 @@ pub(crate) struct Bubble {
     pub(crate) from_me: bool,
     /// Sender name and its color; only on the first bubble of a burst in a
     /// group.
-    pub(crate) author: Option<(SharedString, u32)>,
+    pub(crate) author: Option<Author>,
     pub(crate) body: Body,
     /// The attachment, shown above the text.
     pub(crate) media: Option<MediaView>,
@@ -45,7 +45,7 @@ pub(crate) struct Bubble {
     /// The emoji this account reacted with, if any.
     pub(crate) my_reaction: Option<String>,
     /// Who wrote it and their color, in groups; shown when replying.
-    pub(crate) sender: Option<(SharedString, u32)>,
+    pub(crate) sender: Option<Author>,
     pub(crate) time: SharedString,
     pub(crate) delivery: Delivery,
     /// Starred by this account.
@@ -99,10 +99,46 @@ pub(crate) struct ReactionChip {
     pub(crate) count: usize,
 }
 
+/// Who wrote a group message, as its bubble names them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Author {
+    /// Their address, for their picture.
+    pub(crate) id: ChatId,
+    /// The name they chose, marked with `~` as the phone does for people not
+    /// in the address book, or else their number.
+    pub(crate) name: SharedString,
+    /// Their number beside a chosen name, when known.
+    pub(crate) phone: Option<SharedString>,
+    pub(crate) color: u32,
+}
+
+impl Author {
+    /// The author of `message`, sent by `sender` in a group.
+    fn of(message: &Message, sender: &ChatId) -> Self {
+        let phone = message
+            .sender_phone
+            .as_ref()
+            .unwrap_or(sender)
+            .phone_number();
+        let (name, phone) = match message.author.as_deref() {
+            Some(chosen) => (format!("~ {chosen}"), phone),
+            None => (phone.unwrap_or_else(|| sender.as_str().to_owned()), None),
+        };
+        Self {
+            id: sender.clone(),
+            name: name.into(),
+            phone: phone.map(Into::into),
+            color: name_color(sender.as_str()),
+        }
+    }
+}
+
 /// The quoted message shown at the top of a reply.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct QuotePreview {
     pub(crate) author: SharedString,
+    /// The author's number beside a chosen name, in groups.
+    pub(crate) phone: Option<SharedString>,
     pub(crate) color: u32,
     pub(crate) text: SharedString,
     /// What the quoted message carries, for its icon.
@@ -179,27 +215,31 @@ fn bubble(
     by_id: &HashMap<&str, &Message>,
     contact: &str,
 ) -> Bubble {
-    let sender: Option<(SharedString, u32)> = message.sender.as_ref().map(|sender| {
-        (
-            sender_name(message, sender).into(),
-            name_color(sender.as_str()),
-        )
-    });
+    let sender = message
+        .sender
+        .as_ref()
+        .map(|sender| Author::of(message, sender));
     let author = sender.clone().filter(|_| starts_burst);
     let quote = message
         .quote
         .as_ref()
         .map(|quote| match by_id.get(quote.id.as_str()) {
             Some(quoted) => {
-                let (author, color) = match (&quoted.sender, quoted.from_me) {
-                    (_, true) => ("You".to_owned(), ACCENT),
+                let (author, color, phone) = match (&quoted.sender, quoted.from_me) {
+                    (_, true) => ("You".into(), ACCENT, None),
                     (Some(sender), false) => {
-                        (sender_name(quoted, sender), name_color(sender.as_str()))
+                        let author = Author::of(quoted, sender);
+                        (author.name, author.color, author.phone)
                     }
-                    (None, false) => (contact.to_owned(), name_color(quoted.chat.as_str())),
+                    (None, false) => (
+                        contact.to_owned().into(),
+                        name_color(quoted.chat.as_str()),
+                        None,
+                    ),
                 };
                 QuotePreview {
-                    author: author.into(),
+                    author,
+                    phone,
                     color,
                     text: quote_text(quoted).into(),
                     kind: quoted.kind,
@@ -225,6 +265,7 @@ fn bubble(
                     .and_then(ChatId::phone_number)
                     .unwrap_or_else(|| "Message".to_owned())
                     .into(),
+                phone: None,
                 color: MUTED,
                 text: quote
                     .summary
@@ -369,14 +410,6 @@ fn chips(reactions: &[Reaction]) -> Vec<ReactionChip> {
         .collect()
 }
 
-fn sender_name(message: &Message, sender: &ChatId) -> String {
-    message
-        .author
-        .clone()
-        .or_else(|| sender.phone_number())
-        .unwrap_or_else(|| sender.as_str().to_owned())
-}
-
 /// The quoted message's line: its caption or text, a voice note's length,
 /// or else what it is. The icon beside it already says it is a photo, so a
 /// caption stands alone.
@@ -445,6 +478,7 @@ mod tests {
             media_file: None,
             media_poster: None,
             starred: false,
+            sender_phone: None,
         }
     }
 
@@ -456,7 +490,10 @@ mod tests {
                 Item::Bubble(bubble) => {
                     let side = if bubble.from_me { "me" } else { "them" };
                     let burst = if bubble.starts_burst { "+" } else { "" };
-                    let author = bubble.author.as_ref().map_or("", |(name, _)| name.as_ref());
+                    let author = bubble
+                        .author
+                        .as_ref()
+                        .map_or("", |author| author.name.as_ref());
                     format!("{burst}{side}{author}")
                 }
             })
@@ -481,9 +518,9 @@ mod tests {
             layout(&items(&messages, &HashMap::new(), "Ana", now)),
             [
                 "[Yesterday]",
-                "+themAna",
+                "+them~ Ana",
                 "[Today]",
-                "+themAna",
+                "+them~ Ana",
                 "them",
                 "+me",
                 "+me"

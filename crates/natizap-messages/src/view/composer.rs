@@ -69,6 +69,7 @@ impl ConversationView {
                 .child(
                     quote_block(
                         replying.author.clone(),
+                        None,
                         replying.color,
                         replying.reply.text.clone().into(),
                         ContentKind::Text,

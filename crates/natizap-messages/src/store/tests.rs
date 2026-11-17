@@ -18,6 +18,7 @@ fn message(chat: &str, id: &str, sent_at: i64, text: &str) -> Message {
         media_file: None,
         media_poster: None,
         starred: false,
+        sender_phone: None,
     }
 }
 

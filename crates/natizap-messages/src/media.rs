@@ -170,6 +170,7 @@ mod tests {
             media_file: file,
             media_poster: poster,
             starred: false,
+            sender_phone: None,
         }
     }
 

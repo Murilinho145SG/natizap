@@ -10,7 +10,8 @@ use natizap_protocol::{ContentKind, Mark};
 use natizap_ui::theme::{
     ALERT, DEEP, LINE, MINT, MUTED, OUTGOING, PANEL, RAISED, SCRIM, TEXT, glass,
 };
-use natizap_ui::{Button, ButtonSize, ButtonVariant, Icon};
+use natizap_ui::{Button, ButtonSize, ButtonVariant, Icon, avatar};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::items::{Body, Bubble, Item, MediaView, QuotePreview, Text};
@@ -20,6 +21,9 @@ use crate::view::ConversationView;
 use crate::voice::VoiceUi;
 use crate::voice_view::render_voice;
 
+/// Size of a group sender's picture beside their messages.
+const SENDER_PICTURE: f32 = 28.0;
+
 /// Quick reactions offered on every bubble, as in WhatsApp.
 pub(crate) const QUICK_REACTIONS: [&str; 6] = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
@@ -28,6 +32,7 @@ pub(crate) fn render_item(
     view: &WeakEntity<ConversationView>,
     reacting: Option<&SharedString>,
     voice: &VoiceUi,
+    picture: Option<PathBuf>,
 ) -> AnyElement {
     match item {
         Item::Day(label) => div()
@@ -52,6 +57,7 @@ pub(crate) fn render_item(
             view,
             reacting.is_some_and(|id| *id == bubble.id),
             voice,
+            picture,
         ),
     }
 }
@@ -61,7 +67,27 @@ fn render_bubble(
     view: &WeakEntity<ConversationView>,
     reacting: bool,
     voice: &VoiceUi,
+    picture: Option<PathBuf>,
 ) -> AnyElement {
+    // In groups, others' messages make room on the left for their sender's
+    // picture, shown beside the first of a burst, as on the phone.
+    let gutter = bubble
+        .sender
+        .as_ref()
+        .filter(|_| !bubble.from_me)
+        .map(|sender| {
+            div().w(px(SENDER_PICTURE)).flex_none().self_start().when(
+                bubble.author.is_some(),
+                |gutter| {
+                    gutter.child(avatar(
+                        sender.id.as_str(),
+                        sender.name.trim_start_matches("~ "),
+                        picture,
+                        px(SENDER_PICTURE),
+                    ))
+                },
+            )
+        });
     let message = div()
         .max_w(relative(0.72))
         .flex()
@@ -96,6 +122,7 @@ fn render_bubble(
         .gap_1()
         .pt(px(if bubble.starts_burst { 8.0 } else { 2.0 }))
         .when(bubble.from_me, Styled::justify_end)
+        .children(gutter)
         .map(|row| {
             // Actions sit on the open side of the bubble.
             if bubble.from_me {
@@ -270,14 +297,37 @@ fn frame(bubble: &Bubble) -> Div {
 }
 
 /// Who wrote a group message.
+/// Who wrote a group message: their name in their color, and their
+/// number on the right beside a chosen name.
 fn author(bubble: &Bubble) -> Option<Div> {
-    bubble.author.clone().map(|(name, color)| {
-        div()
-            .text_size(px(13.0))
-            .font_weight(FontWeight::SEMIBOLD)
-            .text_color(rgb(color))
-            .child(name)
-    })
+    bubble
+        .author
+        .as_ref()
+        .map(|author| name_and_phone(author.name.clone(), author.color, author.phone.clone()))
+}
+
+fn name_and_phone(name: SharedString, color: u32, phone: Option<SharedString>) -> Div {
+    div()
+        .flex()
+        .items_baseline()
+        .justify_between()
+        .gap_4()
+        .child(
+            div()
+                .min_w_0()
+                .truncate()
+                .text_size(px(13.0))
+                .font_weight(FontWeight::SEMIBOLD)
+                .text_color(rgb(color))
+                .child(name),
+        )
+        .children(phone.map(|phone| {
+            div()
+                .flex_none()
+                .text_size(px(12.0))
+                .text_color(rgb(MUTED))
+                .child(phone)
+        }))
 }
 
 /// Reply and react buttons, shown while the pointer is over the bubble.
@@ -397,6 +447,7 @@ fn reply_to(view: &WeakEntity<ConversationView>, bubble: &Bubble, cx: &mut App) 
 fn quoted(quote: &QuotePreview) -> Div {
     quote_block(
         quote.author.clone(),
+        quote.phone.clone(),
         quote.color,
         quote.text.clone(),
         quote.kind,
@@ -409,6 +460,7 @@ fn quoted(quote: &QuotePreview) -> Div {
 /// right, as in WhatsApp.
 pub(crate) fn quote_block(
     author: SharedString,
+    phone: Option<SharedString>,
     color: u32,
     text: SharedString,
     kind: ContentKind,
@@ -438,13 +490,7 @@ pub(crate) fn quote_block(
                 .flex_col()
                 .px_2()
                 .py_1()
-                .child(
-                    div()
-                        .text_size(px(12.5))
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .text_color(rgb(color))
-                        .child(author),
-                )
+                .child(name_and_phone(author, color, phone))
                 .child(
                     div()
                         .flex()
