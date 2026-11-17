@@ -12,6 +12,11 @@ use natizap_ui::theme::{DEEP, MUTED, SCRIM, TEXT};
 use crate::items::MediaView;
 use crate::view::ConversationView;
 
+/// Width of a document's card.
+const DOCUMENT_WIDTH: f32 = 300.0;
+/// Height of the first page shown on a document's card.
+const DOCUMENT_PREVIEW: f32 = 110.0;
+
 /// The attachment of a bubble: an image for photos and stickers, a preview
 /// with a play button for videos, and a row for documents. Videos play over
 /// the window and documents open in the system's app for them; voice notes
@@ -53,40 +58,65 @@ pub(crate) fn render_media(media: &MediaView, view: &WeakEntity<ConversationView
             .cursor_pointer()
             .on_click(open(media, view))
             .into_any_element(),
-        kind => div()
-            .id("media")
-            .min_w(px(220.0))
-            .flex()
-            .items_center()
-            .gap_3()
-            .p_2()
-            .rounded(px(10.0))
-            .bg(rgb(DEEP))
-            .cursor_pointer()
-            .on_click(open(media, view))
-            .child(round_icon(
-                if kind == ContentKind::Document {
-                    Icon::File
-                } else {
-                    Icon::Play
-                },
-                36.0,
-            ))
-            .child(
-                div()
-                    .min_w_0()
-                    .flex()
-                    .flex_col()
-                    .child(div().font_weight(FontWeight::MEDIUM).child(kind.label()))
-                    .children(media.detail.clone().map(|detail| {
-                        div()
-                            .truncate()
-                            .text_size(px(12.5))
-                            .text_color(rgb(MUTED))
-                            .child(detail)
-                    })),
-            )
-            .into_any_element(),
+        kind => {
+            let row = div()
+                .flex()
+                .items_center()
+                .gap_3()
+                .p_2()
+                .child(round_icon(
+                    if kind == ContentKind::Document {
+                        Icon::File
+                    } else {
+                        Icon::Play
+                    },
+                    36.0,
+                ))
+                .child(
+                    div()
+                        .min_w_0()
+                        .flex()
+                        .flex_col()
+                        .child(
+                            div()
+                                .font_weight(FontWeight::MEDIUM)
+                                .child(media.name.clone().unwrap_or_else(|| kind.label().into())),
+                        )
+                        .children(media.detail.clone().map(|detail| {
+                            div()
+                                .truncate()
+                                .text_size(px(12.5))
+                                .text_color(rgb(MUTED))
+                                .child(detail)
+                        })),
+                );
+            div()
+                .id("media")
+                .w(px(DOCUMENT_WIDTH))
+                .flex()
+                .flex_col()
+                .rounded(px(10.0))
+                .overflow_hidden()
+                .bg(rgb(DEEP))
+                .cursor_pointer()
+                .on_click(open(media, view))
+                // A document's first page, as its sender's phone drew it.
+                .children(
+                    media
+                        .preview
+                        .clone()
+                        .filter(|_| kind == ContentKind::Document)
+                        .map(|preview| {
+                            img(preview)
+                                .w_full()
+                                .h(px(DOCUMENT_PREVIEW))
+                                .rounded_t(px(10.0))
+                                .object_fit(ObjectFit::Cover)
+                        }),
+                )
+                .child(row)
+                .into_any_element()
+        }
     }
 }
 

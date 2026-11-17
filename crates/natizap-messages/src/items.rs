@@ -94,7 +94,9 @@ pub(crate) struct MediaView {
     pub(crate) preview: Option<Arc<Image>>,
     /// Display size in pixels, for photos, videos and stickers.
     pub(crate) size: (f32, f32),
-    /// Duration, or a document's name and size.
+    /// A document's name.
+    pub(crate) name: Option<SharedString>,
+    /// Duration, or a document's pages, type and size.
     pub(crate) detail: Option<SharedString>,
 }
 
@@ -322,11 +324,22 @@ fn media_view(message: &Message) -> Option<MediaView> {
             .seconds
             .map(|seconds| format!("{}:{:02}", seconds / 60, seconds % 60)),
         ContentKind::Document => Some(
-            [media.file_name.clone(), media.size.map(file_size)]
-                .into_iter()
-                .flatten()
-                .collect::<Vec<_>>()
-                .join(" · "),
+            [
+                media.pages.map(|pages| match pages {
+                    1 => "1 page".to_owned(),
+                    pages => format!("{pages} pages"),
+                }),
+                media
+                    .file_name
+                    .as_deref()
+                    .and_then(|name| name.rsplit_once('.'))
+                    .map(|(_, extension)| extension.to_uppercase()),
+                media.size.map(file_size),
+            ]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>()
+            .join(" · "),
         ),
         _ => None,
     };
@@ -350,6 +363,7 @@ fn media_view(message: &Message) -> Option<MediaView> {
         poster,
         preview,
         size,
+        name: media.file_name.clone().map(Into::into),
         detail: detail.map(Into::into),
         fetch,
     })

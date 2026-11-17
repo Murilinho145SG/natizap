@@ -57,6 +57,7 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE messages ADD COLUMN sender_phone TEXT;",
     "ALTER TABLE messages ADD COLUMN extra TEXT;",
     "ALTER TABLE messages ADD COLUMN forwarding INTEGER;",
+    "ALTER TABLE messages ADD COLUMN media_pages INTEGER;",
 ];
 
 /// Every message natizap has seen, on disk.
@@ -374,10 +375,10 @@ fn insert(tx: &rusqlite::Transaction<'_>, message: &Message) -> rusqlite::Result
              media_height, media_seconds, media_thumbnail, media_direct_path,
              media_key, media_sha256, media_enc_sha256, media_file, media_waveform,
              media_hd_thumbnail_path, media_hd_thumbnail_sha256,
-             media_hd_thumbnail_enc_sha256, sender_phone, extra, forwarding)
+             media_hd_thumbnail_enc_sha256, sender_phone, extra, forwarding, media_pages)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14,
              ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28,
-             ?29, ?30, ?31, ?32, ?33)
+             ?29, ?30, ?31, ?32, ?33, ?34)
              ON CONFLICT (chat, id) DO UPDATE SET
                  media_mime = coalesce(media_mime, excluded.media_mime),
                  media_name = coalesce(media_name, excluded.media_name),
@@ -396,7 +397,8 @@ fn insert(tx: &rusqlite::Transaction<'_>, message: &Message) -> rusqlite::Result
                  media_hd_thumbnail_enc_sha256 = coalesce(media_hd_thumbnail_enc_sha256, excluded.media_hd_thumbnail_enc_sha256),
                  sender_phone = coalesce(sender_phone, excluded.sender_phone),
                  extra = coalesce(extra, excluded.extra),
-                 forwarding = coalesce(forwarding, excluded.forwarding)",
+                 forwarding = coalesce(forwarding, excluded.forwarding),
+                 media_pages = coalesce(media_pages, excluded.media_pages)",
     )?
     .execute(params![
         message.chat.as_str(),
@@ -442,6 +444,7 @@ fn insert(tx: &rusqlite::Transaction<'_>, message: &Message) -> rusqlite::Result
             Forwarding::Once => 1,
             Forwarding::Often => 2,
         }),
+        media.and_then(|media| media.pages),
     ])?;
 
     Ok(())
@@ -462,6 +465,7 @@ fn media_from_row(row: &Row<'_>) -> rusqlite::Result<Option<Media>> {
         seconds: row.get("media_seconds")?,
         thumbnail: row.get("media_thumbnail")?,
         waveform: row.get("media_waveform")?,
+        pages: row.get("media_pages")?,
         hd_thumbnail: hd_thumbnail_from_row(row)?,
         direct_path,
         media_key: row
