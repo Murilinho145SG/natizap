@@ -6,10 +6,14 @@ mod root;
 use std::path::{Path, PathBuf};
 
 use anyhow::Context as _;
-use gpui::{App, AppContext as _, Bounds, TitlebarOptions, WindowBounds, WindowOptions, px, size};
+use gpui::{
+    App, AppContext as _, Bounds, TitlebarOptions, WindowBackgroundAppearance, WindowBounds,
+    WindowDecorations, WindowOptions, px, size,
+};
 use natizap_chats::ChatList;
 use natizap_protocol::Protocol;
 use natizap_session::Session;
+use natizap_ui::{Assets, load_fonts};
 use tracing_subscriber::EnvFilter;
 
 use crate::root::Root;
@@ -22,15 +26,21 @@ fn main() -> anyhow::Result<()> {
         .init();
 
     let data_dir = data_dir()?;
-    gpui_platform::application().run(move |cx: &mut App| {
-        gpui_tokio::init(cx);
-        if let Err(error) = open_main_window(&data_dir, cx) {
-            tracing::error!(?error, "could not open the main window");
-            cx.quit();
-            return;
-        }
-        cx.activate(true);
-    });
+    gpui_platform::application()
+        .with_assets(Assets)
+        .run(move |cx: &mut App| {
+            gpui_tokio::init(cx);
+            if let Err(error) = load_fonts(cx) {
+                // System fonts still render every screen, just less consistently.
+                tracing::error!(?error, "could not load the bundled fonts");
+            }
+            if let Err(error) = open_main_window(&data_dir, cx) {
+                tracing::error!(?error, "could not open the main window");
+                cx.quit();
+                return;
+            }
+            cx.activate(true);
+        });
     Ok(())
 }
 
@@ -43,6 +53,9 @@ fn open_main_window(data_dir: &Path, cx: &mut App) -> anyhow::Result<()> {
             ..Default::default()
         }),
         app_id: Some("natizap".into()),
+        window_decorations: Some(WindowDecorations::Client),
+        window_background: WindowBackgroundAppearance::Transparent,
+        window_min_size: Some(size(px(720.0), px(480.0))),
         ..Default::default()
     };
     cx.open_window(options, |_, cx| {

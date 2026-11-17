@@ -1,7 +1,9 @@
 use gpui::prelude::*;
-use gpui::{Context, Entity, Window, div, px, rgb};
+use gpui::{AnyElement, Context, Div, Entity, FontWeight, Window, div, px, rgb, svg};
 use natizap_chats::{ChatList, ChatListView};
 use natizap_session::{PairingView, Session, SessionState};
+use natizap_ui::theme::{ALERT, DISPLAY_FONT, HONEY, LINE, MINT, MUTED, PANE, TEXT, UI_FONT};
+use natizap_ui::{Icon, window_frame};
 
 /// The main window's content: the pairing screen until this device is linked,
 /// then the chat list beside the conversation pane.
@@ -39,50 +41,107 @@ impl Root {
             || matches!(session.state(), SessionState::Starting)
                 && !self.chats.read(cx).rows().is_empty()
     }
-}
 
-impl Render for Root {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn content(&self, cx: &Context<Self>) -> AnyElement {
         if !self.shows_chats(cx) {
-            return div().size_full().child(self.pairing.clone());
+            return self.pairing.clone().into_any_element();
         }
-        let status = match self.session.read(cx).state() {
-            SessionState::Starting | SessionState::Reconnecting => Some("Connecting…"),
-            SessionState::Paired => Some("Syncing chats from your phone…"),
-            _ => None,
-        };
         div()
             .size_full()
             .flex()
             .child(
                 div()
-                    .w(px(400.0))
+                    .w(px(380.0))
                     .h_full()
-                    .flex()
-                    .flex_col()
+                    .flex_none()
                     .border_r_1()
-                    .border_color(rgb(0x22_2d_34))
-                    .children(status.map(|status| {
-                        div()
-                            .px_4()
-                            .py_2()
-                            .text_sm()
-                            .bg(rgb(0x18_2a_33))
-                            .text_color(rgb(0x86_96_a0))
-                            .child(status)
-                    }))
-                    .child(div().flex_1().min_h_0().child(self.chat_list.clone())),
+                    .border_color(rgb(LINE))
+                    .child(self.chat_list.clone()),
             )
-            .child(
-                div()
-                    .flex_1()
-                    .h_full()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .bg(rgb(0x22_2e_35))
-                    .text_color(rgb(0x86_96_a0))
-                    .child("Select a chat to start messaging"),
-            )
+            .child(conversation_placeholder())
+            .into_any_element()
     }
+}
+
+impl Render for Root {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let title = wordmark(self.session.read(cx).state());
+        let content = self.content(cx);
+        div()
+            .size_full()
+            .font_family(UI_FONT)
+            .text_color(rgb(TEXT))
+            .child(window_frame(window, title, content))
+    }
+}
+
+/// The app name with a dot that tells, at a glance, whether natizap is
+/// connected; anything but connected is spelled out next to it.
+fn wordmark(state: &SessionState) -> Div {
+    let (dot, label) = match state {
+        SessionState::Connected => (MINT, None),
+        SessionState::Starting | SessionState::Reconnecting => (HONEY, Some("Connecting…")),
+        SessionState::Paired => (HONEY, Some("Syncing chats…")),
+        SessionState::AwaitingPairing(_) | SessionState::PairingExpired => {
+            (LINE, Some("Not linked"))
+        }
+        SessionState::LoggedOut => (ALERT, Some("Unlinked")),
+        SessionState::Failed(_) => (ALERT, Some("Offline")),
+    };
+    div()
+        .flex()
+        .items_center()
+        .gap_2()
+        .child(
+            div()
+                .font_family(DISPLAY_FONT)
+                .font_weight(FontWeight::BOLD)
+                .text_size(px(17.0))
+                .child("natizap"),
+        )
+        .child(div().size(px(7.0)).rounded_full().bg(rgb(dot)))
+        .children(label.map(|label| {
+            div()
+                .text_size(px(12.5))
+                .text_color(rgb(MUTED))
+                .child(label)
+        }))
+}
+
+fn conversation_placeholder() -> Div {
+    div()
+        .flex_1()
+        .h_full()
+        .flex()
+        .flex_col()
+        .items_center()
+        .justify_center()
+        .gap_3()
+        .bg(rgb(PANE))
+        .child(
+            svg()
+                .path(Icon::Chats.path())
+                .size(px(56.0))
+                .text_color(rgb(LINE)),
+        )
+        .child(
+            div()
+                .font_weight(FontWeight::MEDIUM)
+                .child("Pick a chat to read it here"),
+        )
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap_1p5()
+                .text_size(px(12.5))
+                .text_color(rgb(MUTED))
+                .child(
+                    svg()
+                        .path(Icon::Lock.path())
+                        .size(px(13.0))
+                        .text_color(rgb(MUTED)),
+                )
+                .child("End-to-end encrypted"),
+        )
 }
