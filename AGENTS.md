@@ -66,7 +66,11 @@ Each feature crate owns its GPUI views, logic and local cache together
 (colocation); `natizap-ui` holds only components that several features
 share. Local data lives in the platform's per-user data directory, one
 file per owner (`session.db` for protocol keys, `chats.db` for the chat
-list, `messages.db` for messages).
+list, `messages.db` for messages, `media/` for downloaded attachments).
+
+Local stores are migrated, never dropped and rebuilt: WhatsApp sends the
+history only once, right after linking, so lost data cannot be synced
+again. Each store keeps an append-only `MIGRATIONS` list.
 
 Features talk to each other only through the binary: the chat list emits
 `ChatSelected`, the binary opens that chat in `MessageLog` and tells
