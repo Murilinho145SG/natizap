@@ -137,6 +137,26 @@ impl Protocol {
         })
     }
 
+    /// Reacts to a message in `chat` with `emoji`, or removes this account's
+    /// reaction when `emoji` is `None`. `sender` is who wrote the message;
+    /// `None` for this account's own.
+    pub fn react(
+        &self,
+        chat: &ChatId,
+        message_id: String,
+        sender: Option<ChatId>,
+        emoji: Option<String>,
+        cx: &App,
+    ) -> Task<Result<(), ActionError>> {
+        let chat = match actions::jid(chat) {
+            Ok(chat) => chat,
+            Err(error) => return Task::ready(Err(error)),
+        };
+        self.connection.run(cx, move |client| {
+            actions::react(client, chat, message_id, sender, emoji)
+        })
+    }
+
     /// Tells WhatsApp, and so the user's other devices, that `messages` in
     /// `chat` were read.
     pub fn mark_read(

@@ -128,6 +128,49 @@ pub(crate) async fn send_text(
     })
 }
 
+pub(crate) async fn react(
+    client: Arc<Client>,
+    chat: Jid,
+    message_id: String,
+    sender: Option<ChatId>,
+    emoji: Option<String>,
+) -> Result<(), ActionError> {
+    let from_me = sender.is_none();
+    // Only group messages name their author in the key.
+    let participant = match &sender {
+        Some(sender) if chat.to_string().ends_with("@g.us") => Some(jid(sender)?.to_string()),
+        _ => None,
+    };
+    let reaction = wa::Message {
+        reaction_message: MessageField::some(wa::message::ReactionMessage {
+            key: MessageField::some(wa::MessageKey {
+                remote_jid: Some(chat.to_string()),
+                from_me: Some(from_me),
+                id: Some(message_id),
+                participant,
+            }),
+            // An empty reaction removes the previous one.
+            text: Some(emoji.unwrap_or_default()),
+            sender_timestamp_ms: Some(now_ms()),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    client
+        .send_message(chat, reaction)
+        .await
+        .map_err(|error| ActionError::Rejected(error.to_string()))?;
+    Ok(())
+}
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| {
+            i64::try_from(elapsed.as_millis()).unwrap_or(i64::MAX)
+        })
+}
+
 pub(crate) async fn mark_read(
     client: Arc<Client>,
     chat: Jid,
