@@ -59,6 +59,12 @@ impl ChatListView {
         }
     }
 
+    /// Marks `chat` as the one on screen, e.g. after going back to it.
+    pub fn show(&mut self, chat: &ChatId, cx: &mut Context<Self>) {
+        self.selected = Some(chat.clone());
+        cx.notify();
+    }
+
     fn select(&mut self, row: ChatRow, cx: &mut Context<Self>) {
         self.selected = Some(row.id.clone());
         cx.emit(ChatSelected(row));
