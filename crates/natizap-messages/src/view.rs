@@ -318,6 +318,7 @@ impl Render for ConversationView {
             return placeholder().into_any_element();
         };
         let items = log.items().clone();
+        let pinned = log.pinned().cloned();
         let view = cx.weak_entity();
         let reacting = self.reacting.clone();
         let voice = self.voices.ui();
@@ -373,6 +374,7 @@ impl Render for ConversationView {
                             })),
                     ),
             )
+            .children(pinned.map(|pinned| self.pinned_bar(pinned, cx)))
             .child(
                 div()
                     .flex_1()

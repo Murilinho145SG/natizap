@@ -1,11 +1,14 @@
 //! What a right click on a message offers, and the question deleting asks.
 
 use gpui::prelude::*;
-use gpui::{ClipboardItem, Context, Pixels, Point, SharedString};
+use gpui::{ClipboardItem, Context, Pixels, Point, SharedString, div, px, rgb, svg};
+use natizap_protocol::PinFor;
+use natizap_ui::theme::{LINE, MUTED, PANEL, RAISED, TEXT};
 use natizap_ui::{AlertDialog, ButtonVariant, Icon, Menu};
 
 use super::ConversationView;
 use crate::items::{Body, Bubble, Item};
+use crate::log::Pinned;
 
 /// The message a menu or the delete question is about.
 #[derive(Debug, Clone)]
@@ -14,6 +17,8 @@ pub(super) enum MessagePopup {
     Menu(SharedString, Point<Pixels>),
     /// Asking how to delete.
     Deleting(SharedString),
+    /// Asking how long to pin for.
+    Pinning(SharedString),
 }
 
 impl ConversationView {
@@ -45,18 +50,31 @@ impl ConversationView {
         match self.message_popup.as_ref()? {
             MessagePopup::Menu(id, position) => {
                 let bubble = self.bubble(id, cx)?;
-                Some(Self::menu(&bubble, cx).at(*position).into_any_element())
+                let pinned = self
+                    .log
+                    .read(cx)
+                    .pinned()
+                    .is_some_and(|pinned| pinned.id == bubble.id);
+                Some(
+                    Self::menu(&bubble, pinned, cx)
+                        .at(*position)
+                        .into_any_element(),
+                )
             }
             MessagePopup::Deleting(id) => {
                 let bubble = self.bubble(id, cx)?;
                 Some(Self::delete_dialog(&bubble, cx).into_any_element())
+            }
+            MessagePopup::Pinning(id) => {
+                let bubble = self.bubble(id, cx)?;
+                Some(Self::pin_dialog(&bubble, cx).into_any_element())
             }
         }
     }
 
     /// Reply, copy, react and delete, as on the phone. Copy only shows for
     /// messages with text, and only delete for deleted ones.
-    fn menu(bubble: &Bubble, cx: &mut Context<Self>) -> Menu {
+    fn menu(bubble: &Bubble, pinned: bool, cx: &mut Context<Self>) -> Menu {
         let view = cx.weak_entity();
         let close = {
             let view = view.clone();
@@ -94,6 +112,29 @@ impl ConversationView {
                     view.toggle_reactions(&id, cx);
                 });
             });
+            let pinning = view.clone();
+            let (id, from_me, sender) = (
+                bubble.id.clone(),
+                bubble.from_me,
+                bubble.reply.sender.clone(),
+            );
+            menu = menu.action(
+                Icon::Pin,
+                if pinned { "Unpin" } else { "Pin" },
+                move |_, cx| {
+                    let _ = pinning.update(cx, |view, cx| {
+                        if pinned {
+                            view.close_message_popup(cx);
+                            view.log.update(cx, |log, cx| {
+                                log.set_pinned(id.to_string(), from_me, sender.as_ref(), None, cx);
+                            });
+                        } else {
+                            view.message_popup = Some(MessagePopup::Pinning(id.clone()));
+                            cx.notify();
+                        }
+                    });
+                },
+            );
             let starring = view.clone();
             let (id, from_me, sender, starred) = (
                 bubble.id.to_string(),
@@ -171,6 +212,82 @@ impl ConversationView {
             );
         }
         dialog
+    }
+
+    /// How long to pin for: 24 hours, 7 days or 30 days, as on the phone.
+    fn pin_dialog(bubble: &Bubble, cx: &mut Context<Self>) -> AlertDialog {
+        let view = cx.weak_entity();
+        let close = {
+            let view = view.clone();
+            move |_: &mut gpui::Window, cx: &mut gpui::App| {
+                let _ = view.update(cx, ConversationView::close_message_popup);
+            }
+        };
+        let mut dialog = AlertDialog::new("Choose how long your pin lasts", close.clone())
+            .description("You can unpin at any time.")
+            .action("Cancel", ButtonVariant::Ghost, close);
+        for pin in PinFor::ALL {
+            let view = view.clone();
+            let (id, from_me, sender) = (
+                bubble.id.to_string(),
+                bubble.from_me,
+                bubble.reply.sender.clone(),
+            );
+            dialog = dialog.action(pin.label(), ButtonVariant::Secondary, move |_, cx| {
+                let _ = view.update(cx, |view, cx| {
+                    view.close_message_popup(cx);
+                    view.log.update(cx, |log, cx| {
+                        log.set_pinned(id.clone(), from_me, sender.as_ref(), Some(pin), cx);
+                    });
+                });
+            });
+        }
+        dialog
+    }
+
+    /// The pinned message under the header; clicking it scrolls to the
+    /// message when it is among those loaded.
+    pub(super) fn pinned_bar(&self, pinned: Pinned, cx: &mut Context<Self>) -> impl IntoElement {
+        let index = self
+            .log
+            .read(cx)
+            .items()
+            .iter()
+            .position(|item| matches!(item, Item::Bubble(bubble) if bubble.id == pinned.id));
+        div()
+            .id("pinned")
+            .h(px(40.0))
+            .flex_none()
+            .flex()
+            .items_center()
+            .gap_3()
+            .px_4()
+            .bg(rgb(PANEL))
+            .border_b_1()
+            .border_color(rgb(LINE))
+            .text_size(px(13.5))
+            .when(index.is_some(), |bar| {
+                bar.cursor_pointer().hover(|bar| bar.bg(rgb(RAISED)))
+            })
+            .on_click(cx.listener(move |this, _, _, _| {
+                if let Some(index) = index {
+                    this.messages.scroll_to_reveal_item(index);
+                }
+            }))
+            .child(
+                svg()
+                    .path(Icon::Pin.path())
+                    .size(px(15.0))
+                    .flex_none()
+                    .text_color(rgb(MUTED)),
+            )
+            .child(
+                div()
+                    .min_w_0()
+                    .truncate()
+                    .text_color(rgb(TEXT))
+                    .child(pinned.text),
+            )
     }
 
     pub(super) fn close_message_popup(&mut self, cx: &mut Context<Self>) {

@@ -127,6 +127,12 @@ pub(crate) enum MessageChange {
     MediaSaved { message_id: String, file: PathBuf },
     /// A still of a message's video was saved to `file`. Matched by id.
     PosterSaved { message_id: String, file: PathBuf },
+    /// Someone pinned a message for everyone until `until` (Unix seconds),
+    /// or unpinned it (`None`). Matched by id.
+    Pinned {
+        message_id: String,
+        until: Option<i64>,
+    },
     /// This account starred or unstarred a message, here or on another
     /// device. Matched by id.
     Starred { message_id: String, starred: bool },
@@ -162,7 +168,8 @@ impl MessageChange {
             Self::Progressed { .. }
             | Self::MediaSaved { .. }
             | Self::PosterSaved { .. }
-            | Self::Starred { .. } => None,
+            | Self::Starred { .. }
+            | Self::Pinned { .. } => None,
         }
     }
 }

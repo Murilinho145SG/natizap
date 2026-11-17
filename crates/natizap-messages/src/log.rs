@@ -6,9 +6,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use chrono::Local;
 use gpui::{AppContext as _, Context, Entity, EventEmitter, SharedString, Task};
 use natizap_protocol::whatsapp_rust::prelude::Event;
-use natizap_protocol::{ChatId, ContentKind, Protocol, Quote, Reply, Unread};
+use natizap_protocol::{ChatId, ContentKind, PinFor, Protocol, Quote, Reply, Unread};
 
-use crate::items::{Item, items};
+use crate::items::{Item, items, summary};
 use crate::media::{Fetch, PosterJob, fetch_on_sight, posters_on_sight};
 use crate::message::{Delivery, Message, MessageChange};
 use crate::store::MessageStore;
@@ -62,6 +62,7 @@ enum Output {
         items: Arc<[Item]>,
         fetch: Vec<Fetch>,
         posters: Vec<PosterJob>,
+        pinned: Option<Pinned>,
     },
     Unread {
         chat: ChatId,
@@ -86,6 +87,7 @@ pub struct MessageLog {
     fetching: HashSet<String>,
     /// Videos whose still is being taken, by message id.
     posters: HashSet<String>,
+    pinned: Option<Pinned>,
     _tasks: [Task<()>; 3],
 }
 
@@ -101,6 +103,13 @@ pub struct PlayRequested {
     pub file: PathBuf,
     /// What to call it while playing.
     pub title: SharedString,
+}
+
+/// The open chat's pinned message, as the bar over the messages shows it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Pinned {
+    pub(crate) id: SharedString,
+    pub(crate) text: SharedString,
 }
 
 /// A voice note or audio file asked to play finished downloading.
@@ -149,6 +158,7 @@ impl MessageLog {
             media_dir,
             fetching: HashSet::new(),
             posters: HashSet::new(),
+            pinned: None,
             _tasks: [forward, sync, apply],
         }
     }
@@ -161,6 +171,11 @@ impl MessageLog {
 
     pub(crate) fn items(&self) -> &Arc<[Item]> {
         &self.items
+    }
+
+    /// The open chat's pinned message, if any.
+    pub(crate) fn pinned(&self) -> Option<&Pinned> {
+        self.pinned.as_ref()
     }
 
     /// Shows `chat` and acknowledges its unread messages.
@@ -268,6 +283,33 @@ impl MessageLog {
         .detach();
     }
 
+    /// Pins a message in the open chat for everyone for `pin`, or unpins it
+    /// when `pin` is `None`. `sender` wrote it, in groups, unless `from_me`.
+    pub(crate) fn set_pinned(
+        &mut self,
+        message_id: String,
+        from_me: bool,
+        sender: Option<&ChatId>,
+        pin: Option<PinFor>,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(chat) = self.open.as_ref().map(|open| open.id.clone()) else {
+            return;
+        };
+        let pinning =
+            self.protocol
+                .read(cx)
+                .pin(&chat, message_id.clone(), from_me, sender, pin, cx);
+        let until = pin.map(|pin| Local::now().timestamp() + pin.seconds());
+        self.send_input(Input::from(MessageChange::Pinned { message_id, until }));
+        cx.background_spawn(async move {
+            if let Err(error) = pinning.await {
+                tracing::warn!(%error, "pin not sent");
+            }
+        })
+        .detach();
+    }
+
     /// Stars or unstars a message in the open chat on all of this account's
     /// devices. `sender` wrote it, in groups, unless `from_me`.
     pub(crate) fn set_starred(
@@ -341,9 +383,11 @@ impl MessageLog {
                 items,
                 fetch,
                 posters,
+                pinned,
             } => {
                 if self.open.as_ref().is_some_and(|open| open.id == chat) {
                     self.items = items;
+                    self.pinned = pinned;
                     for fetch in fetch {
                         self.fetch(fetch, false, cx);
                     }
@@ -438,12 +482,23 @@ async fn sync(
             let rows = items(&messages, &reactions, &chat.title, Local::now()).into();
             let fetch = fetch_on_sight(&messages);
             let posters = posters_on_sight(&messages);
+            let pinned = store
+                .pinned(&chat.addresses, Local::now().timestamp())
+                .unwrap_or_else(|error| {
+                    tracing::error!(%error, "could not read the pinned message");
+                    None
+                })
+                .map(|message| Pinned {
+                    id: message.id.clone().into(),
+                    text: summary(&message).into(),
+                });
             if outputs
                 .send(Output::Thread {
                     chat: chat.id.clone(),
                     items: rows,
                     fetch,
                     posters,
+                    pinned,
                 })
                 .await
                 .is_err()

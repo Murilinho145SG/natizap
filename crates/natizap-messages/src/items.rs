@@ -390,7 +390,7 @@ fn quote_text(message: &Message) -> String {
 }
 
 /// One plain line describing a message.
-fn summary(message: &Message) -> String {
+pub(crate) fn summary(message: &Message) -> String {
     let text = message.text.as_deref().map(|text| Marked::parse(text).text);
     match (text, message.kind) {
         (Some(text), ContentKind::Text) => text,

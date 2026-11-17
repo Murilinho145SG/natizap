@@ -225,6 +225,30 @@ fn a_sent_file_records_where_it_was_uploaded() -> rusqlite::Result<()> {
 }
 
 #[test]
+fn shows_a_pin_until_it_runs_out_or_is_undone() -> rusqlite::Result<()> {
+    let mut store = MessageStore::in_memory()?;
+    let chat = ChatId::new("1@lid");
+    store.apply(&[MessageChange::Received(message("1@lid", "a", 10, "plan"))])?;
+    let pinned_id = |store: &MessageStore, now| {
+        store
+            .pinned(std::slice::from_ref(&chat), now)
+            .map(|pinned| pinned.map(|message| message.id))
+    };
+    store.apply(&[MessageChange::Pinned {
+        message_id: "a".into(),
+        until: Some(1_000),
+    }])?;
+    assert_eq!(pinned_id(&store, 500)?.as_deref(), Some("a"));
+    assert_eq!(pinned_id(&store, 1_500)?, None);
+    store.apply(&[MessageChange::Pinned {
+        message_id: "a".into(),
+        until: None,
+    }])?;
+    assert_eq!(pinned_id(&store, 500)?, None);
+    Ok(())
+}
+
+#[test]
 fn keeps_which_messages_are_starred() -> rusqlite::Result<()> {
     let mut store = MessageStore::in_memory()?;
     let chat = ChatId::new("1@lid");

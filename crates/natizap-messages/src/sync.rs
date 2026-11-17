@@ -59,6 +59,28 @@ fn live_change(inbound: &InboundMessage) -> Option<MessageChange> {
         });
     }
 
+    if let Some(pin) = base.pin_in_chat_message.as_option() {
+        use wa::message::pin_in_chat_message::Type;
+        let message_id = pin.key.as_option()?.id.clone()?;
+        let until = match pin.r#type? {
+            Type::PinForAll => {
+                // The pin lasts from when it was sent for the length its
+                // sender chose; 7 days is WhatsApp's default.
+                let since = pin.sender_timestamp_ms.unwrap_or_default() / 1000;
+                let length = inbound
+                    .message
+                    .message_context_info
+                    .as_option()
+                    .and_then(|context| context.message_add_on_duration_in_secs)
+                    .unwrap_or(7 * 86_400);
+                Some(since + i64::from(length))
+            }
+            Type::UnpinForAll => None,
+            Type::UnknownType => return None,
+        };
+        return Some(MessageChange::Pinned { message_id, until });
+    }
+
     if let Some(protocol) = base.protocol_message.as_option() {
         use wa::message::protocol_message::Type;
         let id = protocol.key.as_option()?.id.clone()?;

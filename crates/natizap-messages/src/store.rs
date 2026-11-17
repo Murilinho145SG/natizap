@@ -53,6 +53,7 @@ const MIGRATIONS: &[&str] = &[
     ALTER TABLE messages ADD COLUMN media_hd_thumbnail_sha256 BLOB;
     ALTER TABLE messages ADD COLUMN media_hd_thumbnail_enc_sha256 BLOB;",
     "ALTER TABLE messages ADD COLUMN starred INTEGER NOT NULL DEFAULT 0;",
+    "ALTER TABLE messages ADD COLUMN pinned_until INTEGER;",
 ];
 
 /// Every message natizap has seen, on disk.
@@ -149,6 +150,10 @@ impl MessageStore {
                     tx.prepare_cached("UPDATE messages SET media_file = ?2 WHERE id = ?1")?
                         .execute(params![message_id, file.to_string_lossy()])?;
                 }
+                MessageChange::Pinned { message_id, until } => {
+                    tx.prepare_cached("UPDATE messages SET pinned_until = ?2 WHERE id = ?1")?
+                        .execute(params![message_id, until])?;
+                }
                 MessageChange::Starred {
                     message_id,
                     starred,
@@ -204,6 +209,25 @@ impl MessageStore {
             .collect::<rusqlite::Result<Vec<_>>>()?;
         messages.reverse();
         Ok(messages)
+    }
+
+    /// The message pinned in any of `chats` that stays pinned longest past
+    /// `now` (Unix seconds), if any.
+    pub(crate) fn pinned(&self, chats: &[ChatId], now: i64) -> rusqlite::Result<Option<Message>> {
+        let placeholders = vec!["?"; chats.len()].join(", ");
+        let mut statement = self.connection.prepare(&format!(
+            "SELECT * FROM messages WHERE chat IN ({placeholders}) AND pinned_until > ?
+             ORDER BY pinned_until DESC LIMIT 1"
+        ))?;
+        let mut values: Vec<rusqlite::types::Value> = chats
+            .iter()
+            .map(|chat| chat.as_str().to_owned().into())
+            .collect();
+        values.push(now.into());
+        statement
+            .query_map(params_from_iter(values), message_from_row)?
+            .next()
+            .transpose()
     }
 
     /// The reactions on each of `messages`, by message id.
