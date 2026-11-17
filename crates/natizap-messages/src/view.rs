@@ -24,6 +24,7 @@ mod attach;
 mod composer;
 mod header;
 mod message_menu;
+mod viewer;
 
 pub use attach::ContactsRequested;
 use header::header;
@@ -64,6 +65,8 @@ pub struct ConversationView {
     poll_draft: Option<Entity<PollComposer>>,
     /// Text selected in a message.
     selection: Option<Selection>,
+    /// The photo shown large.
+    viewing: Option<MediaView>,
 }
 
 /// The user clicked the conversation's header to see the chat's profile.
@@ -162,6 +165,7 @@ impl ConversationView {
             attach_at: None,
             poll_draft: None,
             selection: None,
+            viewing: None,
             reaction_emojis,
         }
     }
@@ -316,7 +320,9 @@ impl ConversationView {
     /// question, popups, then the reply being composed. Returns whether
     /// anything was open; escape and the back button both use it.
     pub fn step_back(&mut self, cx: &mut Context<Self>) -> bool {
-        if self.message_popup.is_some() {
+        if self.viewing.take().is_some() {
+            cx.notify();
+        } else if self.message_popup.is_some() {
             self.close_message_popup(cx);
         } else if self.voices.close_speed_menu() {
             cx.notify();
@@ -473,6 +479,7 @@ impl Render for ConversationView {
             .children(self.reaction_picker(cx))
             .children(self.attach_menu(cx))
             .children(self.poll_dialog(window, cx))
+            .children(self.picture_viewer(window, cx))
             .into_any_element()
     }
 }

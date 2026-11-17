@@ -18,7 +18,17 @@ use crate::view::ConversationView;
 /// get their own player (`voice_view`).
 pub(crate) fn render_media(media: &MediaView, view: &WeakEntity<ConversationView>) -> AnyElement {
     match media.fetch.kind {
-        ContentKind::Photo | ContentKind::Sticker => picture(media).into_any_element(),
+        ContentKind::Photo => picture(media)
+            .id("media")
+            .cursor_pointer()
+            .on_click({
+                let (media, view) = (media.clone(), view.clone());
+                move |_, _, cx| {
+                    let _ = view.update(cx, |view, cx| view.view_picture(&media, cx));
+                }
+            })
+            .into_any_element(),
+        ContentKind::Sticker => picture(media).into_any_element(),
         ContentKind::Video => picture(media)
             .relative()
             .child(
