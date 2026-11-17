@@ -38,10 +38,9 @@ pub(crate) fn picker(
                 .items_center()
                 .justify_center()
                 .rounded_md()
-                .text_size(px(21.0))
                 .cursor_pointer()
                 .hover(|style| style.bg(rgb(RAISED)))
                 .on_click(move |_, window, cx| on_pick(emoji, window, cx))
-                .child(emoji)
+                .child(natizap_ui::emoji(emoji, px(24.0)))
         }))
 }

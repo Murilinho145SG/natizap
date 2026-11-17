@@ -231,7 +231,6 @@ fn quick_reactions(bubble: &Bubble, view: &WeakEntity<ConversationView>) -> Div 
                 .items_center()
                 .justify_center()
                 .rounded_full()
-                .text_size(px(19.0))
                 .cursor_pointer()
                 .when(mine, |button| button.bg(rgb(RAISED)))
                 .hover(|style| style.bg(rgb(RAISED)))
@@ -241,7 +240,7 @@ fn quick_reactions(bubble: &Bubble, view: &WeakEntity<ConversationView>) -> Div 
                         let _ = view.update(cx, |view, cx| view.react(&bubble, emoji, cx));
                     }
                 })
-                .child(emoji)
+                .child(natizap_ui::emoji(emoji, px(22.0)))
         }))
 }
 
@@ -260,7 +259,7 @@ fn reaction_chips(bubble: &Bubble) -> Div {
                 .border_1()
                 .border_color(rgb(LINE))
                 .text_size(px(13.0))
-                .child(chip.emoji.clone())
+                .child(natizap_ui::emoji(&chip.emoji, px(15.0)))
                 .when(chip.count > 1, |chip_view| {
                     chip_view.child(div().text_color(rgb(MUTED)).child(chip.count.to_string()))
                 })
