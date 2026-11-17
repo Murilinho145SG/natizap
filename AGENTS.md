@@ -62,7 +62,6 @@ expected split, for orientation:
 | `natizap-status`           | Status updates: view, post, privacy.                       |
 | `natizap-channels`         | Channels: follow, read, react.                             |
 | `natizap-notifications`    | Native desktop notifications.                              |
-| `natizap-ui`               | Shared GPUI theme and reusable components.                 |
 
 Each feature crate owns its GPUI views, logic and local cache together
 (colocation); `natizap-ui` holds only components that several features
@@ -106,6 +105,7 @@ organizing rule of the codebase.
 | `natizap-session` | feature | Pairing lifecycle and the pairing screen.                 |
 | `natizap-protocol` | shared  | Owns the WhatsApp client; fans its events out to features. |
 | `natizap-chats`    | feature | Chat list synced from WhatsApp, cached in SQLite, and its view. |
+| `natizap-ui`       | shared  | Theme tokens, bundled fonts and icons, window frame.      |
 
 Keep this table current when a crate is added, renamed or removed.
 
@@ -126,6 +126,19 @@ Keep this table current when a crate is added, renamed or removed.
   `[patch.crates-io]` mirrors the patches Zed applies at that commit; update
   both together when bumping the pin.
 - `whatsapp-rust` is used without its `simd` feature, which needs nightly.
+
+### Visual design
+
+- Every color, font and icon comes from `natizap-ui` (`theme`, `Icon`);
+  feature crates never hard-code hex colors or font names, so the look
+  changes in one place.
+- Palette: deep green slate surfaces (`DEEP`, `PANEL`, `PANE`, `RAISED`,
+  `LINE`) with a single honey accent (`HONEY`) reserved for unread counts and
+  primary actions. `MINT` and `ALERT` only signal state.
+- Type: Figtree (`UI_FONT`) for interface text; Bricolage Grotesque
+  (`DISPLAY_FONT`) only for the wordmark, headings and avatar initials.
+- The app draws its own title bar and window frame (`window_frame`), since
+  GNOME on Wayland leaves decorations to the client.
 
 ## Workspace conventions
 
