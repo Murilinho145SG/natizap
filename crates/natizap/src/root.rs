@@ -1,7 +1,7 @@
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, Context, Div, Entity, FontWeight, MouseButton, NavigationDirection, Window, div,
-    px, rgb,
+    AnyElement, ClipboardItem, Context, Div, Entity, FontWeight, MouseButton, NavigationDirection,
+    Window, div, px, rgb,
 };
 use natizap_chats::{
     ChatList, ChatListView, ChatPicker, ChatRow, ChatSelected, ChatsPicked, PickerDismissed,
@@ -10,8 +10,8 @@ use natizap_contacts::{
     ChatSettings, ChatSummary, DisappearingChosen, MuteToggled, ProfileClosed, ProfilePanel, Tile,
 };
 use natizap_messages::{
-    ConversationView, ForwardRequested, MessageLog, MessageSent, OpenChat, PlayRequested,
-    ProfileRequested,
+    ChatRequested, ConversationView, ForwardRequested, MessageLog, MessageSent, OpenChat,
+    PlayRequested, ProfileRequested,
 };
 use natizap_player::{PlayerClosed, PlayerView};
 use natizap_profiles::ProfilePictures;
@@ -96,6 +96,7 @@ impl Root {
 
         Self::forward_through_picker(messages, &chats, pictures, window, cx);
         Self::open_profiles(&conversation, protocol, cx);
+        Self::open_numbers(&conversation, cx);
 
         Self {
             session,
@@ -166,6 +167,30 @@ impl Root {
 
     /// Shows a chat's profile beside the conversation when its header is
     /// clicked.
+    /// Opens the chat with a number clicked in a message. Without one, copies
+    /// the number, since a chat cannot open before it has a message.
+    fn open_numbers(conversation: &Entity<ConversationView>, cx: &mut Context<Self>) {
+        cx.subscribe(conversation, |root, _, ChatRequested { phone }, cx| {
+            let row = root
+                .chats
+                .read(cx)
+                .rows()
+                .iter()
+                .find(|row| row.addresses.contains(phone))
+                .cloned();
+            if let Some(row) = row {
+                root.history.visit(row.id.clone());
+                root.open_chat(&row, cx);
+            } else {
+                let number = phone
+                    .phone_number()
+                    .unwrap_or_else(|| phone.as_str().to_owned());
+                cx.write_to_clipboard(ClipboardItem::new_string(number));
+            }
+        })
+        .detach();
+    }
+
     fn open_profiles(
         conversation: &Entity<ConversationView>,
         protocol: Entity<Protocol>,
