@@ -26,6 +26,26 @@ pub enum ContentKind {
 }
 
 impl ContentKind {
+    /// Every kind, e.g. to read a stored [`ContentKind::label`] back.
+    pub const ALL: [Self; 10] = [
+        Self::Text,
+        Self::Photo,
+        Self::Video,
+        Self::VoiceMessage,
+        Self::Audio,
+        Self::Document,
+        Self::Sticker,
+        Self::Location,
+        Self::Contact,
+        Self::Poll,
+    ];
+
+    /// The kind whose [`ContentKind::label`] is `label`.
+    #[must_use]
+    pub fn from_label(label: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|kind| kind.label() == label)
+    }
+
     /// Short name, shown where the content itself cannot be.
     #[must_use]
     pub fn label(self) -> &'static str {
@@ -131,6 +151,13 @@ mod tests {
         let photo = Content::of(&photo);
         assert_eq!(photo.as_ref().map(|c| c.kind), Some(ContentKind::Photo));
         assert_eq!(photo.map(|c| c.summary()).as_deref(), Some("Photo: beach"));
+    }
+
+    #[test]
+    fn every_kind_has_a_distinct_label() {
+        for kind in ContentKind::ALL {
+            assert_eq!(ContentKind::from_label(kind.label()), Some(kind));
+        }
     }
 
     #[test]
