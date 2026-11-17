@@ -369,6 +369,29 @@ impl Protocol {
             .run(cx, move |client| profile::picture(client, jid, full))
     }
 
+    /// Asks to hear when `chat`'s person comes online, leaves, types or
+    /// records, as presence and chat presence events. WhatsApp only tells
+    /// devices that are online themselves, so this one says it is.
+    pub fn watch_presence(&self, chat: &ChatId, cx: &App) -> Task<Result<(), ActionError>> {
+        let jid = match actions::jid(chat) {
+            Ok(jid) => jid,
+            Err(error) => return Task::ready(Err(error)),
+        };
+        self.connection.run(cx, move |client| async move {
+            let rejected = |error: &dyn std::fmt::Display| ActionError::Rejected(error.to_string());
+            client
+                .presence()
+                .set_available()
+                .await
+                .map_err(|error| rejected(&error))?;
+            client
+                .presence()
+                .subscribe(jid)
+                .await
+                .map_err(|error| rejected(&error))
+        })
+    }
+
     /// Whether `chat` is this account's own, where people message
     /// themselves. Unknown, so `false`, until the device is linked.
     #[must_use]
