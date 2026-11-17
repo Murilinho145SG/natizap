@@ -9,10 +9,10 @@ use std::rc::Rc;
 
 use gpui::prelude::*;
 use gpui::{
-    Action, App, Bounds, ClipboardItem, Context, CursorStyle, EntityInputHandler, EventEmitter,
-    FocusHandle, Focusable, KeyBinding, KeyBindingContextPredicate, MouseButton, MouseDownEvent,
-    MouseMoveEvent, MouseUpEvent, Pixels, Point, ShapedLine, SharedString, UTF16Selection, Window,
-    actions, div, point,
+    Action, App, Bounds, ClipboardEntry, ClipboardItem, Context, CursorStyle, EntityInputHandler,
+    EventEmitter, FocusHandle, Focusable, KeyBinding, KeyBindingContextPredicate, MouseButton,
+    MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, ShapedLine, SharedString,
+    UTF16Selection, Window, actions, div, point,
 };
 use unicode_segmentation::UnicodeSegmentation as _;
 
@@ -96,6 +96,18 @@ pub struct TextInput {
 }
 
 impl EventEmitter<Submitted> for TextInput {}
+
+/// The user pasted copied files or pictures into a [`TextInput`]; the
+/// owner decides what to do with them.
+#[derive(Debug, Clone, Default)]
+pub struct FilesPasted {
+    /// Copied files.
+    pub paths: Vec<std::path::PathBuf>,
+    /// Copied pictures, such as screenshots.
+    pub images: Vec<gpui::Image>,
+}
+
+impl EventEmitter<FilesPasted> for TextInput {}
 
 impl Focusable for TextInput {
     fn focus_handle(&self, _: &App) -> FocusHandle {
@@ -196,7 +208,24 @@ impl TextInput {
     }
 
     fn paste(&mut self, _: &Paste, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) {
+        let Some(item) = cx.read_from_clipboard() else {
+            return;
+        };
+        // Copied files and pictures go to the owner, not into the text: a
+        // file manager also offers the files' paths as text.
+        let mut pasted = FilesPasted::default();
+        for entry in item.entries() {
+            match entry {
+                ClipboardEntry::ExternalPaths(paths) => {
+                    pasted.paths.extend(paths.paths().iter().cloned());
+                }
+                ClipboardEntry::Image(image) => pasted.images.push(image.clone()),
+                ClipboardEntry::String(_) => {}
+            }
+        }
+        if !pasted.paths.is_empty() || !pasted.images.is_empty() {
+            cx.emit(pasted);
+        } else if let Some(text) = item.text() {
             self.replace_text_in_range(None, &text.replace('\n', " "), window, cx);
         }
     }

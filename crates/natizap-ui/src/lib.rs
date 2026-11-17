@@ -33,4 +33,4 @@ pub use components::switch::Switch;
 pub use components::tooltip::Tooltip;
 pub use frame::window_frame;
 pub use gallery::Gallery;
-pub use input::{Submitted, TextInput, bind_text_input_keys};
+pub use input::{FilesPasted, Submitted, TextInput, bind_text_input_keys};
