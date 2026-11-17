@@ -117,7 +117,7 @@ organizing rule of the codebase.
 | `natizap-messages` | feature | Message store, the open conversation and sending.         |
 | `natizap-playback` | shared | Media engine: static FFmpeg decoding, cpal sound, clock. |
 | `natizap-player`   | feature | The full-window video player.                            |
-| `natizap-ui`       | shared  | Theme tokens, fonts, icons, window frame, text input.     |
+| `natizap-ui`       | shared  | Theme, fonts, icons, window frame and the component library. |
 
 Keep this table current when a crate is added, renamed or removed.
 
@@ -161,6 +161,13 @@ Keep this table current when a crate is added, renamed or removed.
   `base_font()` set at the window root; never draw emoji as images or pick
   font weights to dodge monochrome glyphs. Rebuild the font with
   `scripts/build-emoji-font.py` (needs fontTools) to update it.
+- `natizap-ui` is the component library: one module per component under
+  `components/` (button, badge, tooltip, …). Features build with these
+  instead of styling their own buttons, badges or menus.
+- The components window (`Gallery`, Ctrl+Alt+G) renders every component in
+  every state. It is where the look is reviewed, and it is the one exception
+  to "no dead code": a component may exist before a feature uses it as long
+  as the gallery shows it.
 - The app draws its own title bar and window frame (`window_frame`), since
   GNOME on Wayland leaves decorations to the client.
 
