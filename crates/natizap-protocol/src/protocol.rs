@@ -159,6 +159,42 @@ impl Protocol {
         })
     }
 
+    /// Deletes this account's own message in `chat` for everyone.
+    pub fn delete_for_everyone(
+        &self,
+        chat: &ChatId,
+        message_id: String,
+        cx: &App,
+    ) -> Task<Result<(), ActionError>> {
+        let chat = match actions::jid(chat) {
+            Ok(chat) => chat,
+            Err(error) => return Task::ready(Err(error)),
+        };
+        self.connection.run(cx, move |client| {
+            actions::delete_for_everyone(client, chat, message_id)
+        })
+    }
+
+    /// Deletes a message in `chat` from this account's devices only, as the
+    /// phone's "delete for me". `from_me` says this account wrote it;
+    /// `sender` wrote it otherwise, in groups (`None` in one-to-one chats).
+    pub fn delete_for_me(
+        &self,
+        chat: &ChatId,
+        message_id: String,
+        from_me: bool,
+        sender: Option<&ChatId>,
+        cx: &App,
+    ) -> Task<Result<(), ActionError>> {
+        let (chat, sender) = match (actions::jid(chat), sender.map(actions::jid).transpose()) {
+            (Ok(chat), Ok(sender)) => (chat, sender),
+            (Err(error), _) | (_, Err(error)) => return Task::ready(Err(error)),
+        };
+        self.connection.run(cx, move |client| {
+            actions::delete_for_me(client, chat, message_id, sender, from_me)
+        })
+    }
+
     /// Reacts to a message in `chat` with `emoji`, or removes this account's
     /// reaction when `emoji` is `None`. `sender` is who wrote the message;
     /// `None` for this account's own.

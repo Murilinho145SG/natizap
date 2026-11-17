@@ -3,8 +3,8 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use gpui::{App, AppContext as _, Task};
 use gpui_tokio::Tokio;
-use whatsapp_rust::Jid;
 use whatsapp_rust::prelude::{Client, MessageBuilderExt as _, MessageExt as _, MessageField, wa};
+use whatsapp_rust::{Jid, RevokeType};
 
 use crate::ChatId;
 
@@ -117,6 +117,35 @@ pub(crate) async fn send_text(
     Ok(Sent {
         id: sent.message_id,
     })
+}
+
+/// Deletes this account's own message for everyone in the chat.
+pub(crate) async fn delete_for_everyone(
+    client: Arc<Client>,
+    chat: Jid,
+    message_id: String,
+) -> Result<(), ActionError> {
+    client
+        .revoke_message(chat, message_id, RevokeType::Sender)
+        .await
+        .map_err(|error| ActionError::Rejected(error.to_string()))
+}
+
+/// Deletes a message from this account's devices only. `sender` wrote it,
+/// in groups; `None` for this account's own and in one-to-one chats.
+/// `from_me` says this account wrote it.
+pub(crate) async fn delete_for_me(
+    client: Arc<Client>,
+    chat: Jid,
+    message_id: String,
+    sender: Option<Jid>,
+    from_me: bool,
+) -> Result<(), ActionError> {
+    client
+        .chat_actions()
+        .delete_message_for_me(&chat, sender.as_ref(), &message_id, from_me, true, None)
+        .await
+        .map_err(|error| ActionError::Rejected(error.to_string()))
 }
 
 /// What makes a message a reply to `reply`.
