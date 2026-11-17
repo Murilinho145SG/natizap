@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -99,6 +100,10 @@ enum Input {
 #[derive(Debug)]
 pub struct ChatList {
     protocol: Entity<Protocol>,
+    /// Chats already asked whether they are businesses.
+    asked: HashSet<ChatId>,
+    /// Whether a question is in flight.
+    asking: bool,
     snapshot: Snapshot,
     inputs: async_channel::Sender<Input>,
     _tasks: [Task<()>; 3],
@@ -127,6 +132,7 @@ impl ChatList {
                 }
                 let applied = this.update(cx, |list, cx| {
                     list.snapshot = snapshot;
+                    list.name_businesses(cx);
                     cx.notify();
                 });
                 if applied.is_err() {
@@ -136,6 +142,8 @@ impl ChatList {
         });
         Self {
             protocol: protocol.clone(),
+            asked: HashSet::new(),
+            asking: false,
             snapshot: Snapshot::default(),
             inputs: inputs_tx,
             _tasks: [forward, sync, apply],
@@ -202,6 +210,49 @@ impl ChatList {
             if let Err(error) = setting.await {
                 tracing::warn!(%error, "disappearing messages not changed");
             }
+        })
+        .detach();
+    }
+
+    /// Asks, one at a time, whether chats known only by their number are
+    /// businesses, to show their verified name: chats from before natizap
+    /// read business names from messages have none. Each chat is asked
+    /// once per launch.
+    fn name_businesses(&mut self, cx: &mut Context<Self>) {
+        if self.asking {
+            return;
+        }
+        let unnamed = self.snapshot.rows.iter().find(|row| {
+            !row.id.is_group()
+                && !self.asked.contains(&row.id)
+                && row
+                    .addresses
+                    .iter()
+                    .any(|address| address.phone_number().as_deref() == Some(&*row.title))
+        });
+        let Some(row) = unnamed else {
+            return;
+        };
+        self.asked.insert(row.id.clone());
+        let (id, phone) = (
+            row.id.clone(),
+            row.addresses
+                .iter()
+                .find(|address| address.phone_number().is_some())
+                .cloned()
+                .unwrap_or_else(|| row.id.clone()),
+        );
+        let asking = self.protocol.read(cx).profile(&phone, cx);
+        self.asking = true;
+        cx.spawn(async move |this, cx| {
+            let name = asking.await.ok().and_then(|profile| profile.business?.name);
+            let _ = this.update(cx, |list, cx| {
+                if let Some(name) = name {
+                    list.send(Input::Change(ChatChange::BusinessName(id, name, false)));
+                }
+                list.asking = false;
+                list.name_businesses(cx);
+            });
         })
         .detach();
     }

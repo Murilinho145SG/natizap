@@ -180,6 +180,16 @@ fn history_changes(history: &LazyHistorySync) -> Vec<ChatChange> {
         {
             changes.push(ChatChange::SameChat(id.clone(), ChatId::new(other)));
         }
+        // A business's messages carry the name WhatsApp verified for it.
+        let business = conversation
+            .messages
+            .iter()
+            .filter_map(|entry| entry.message.as_option())
+            .find_map(|info| info.verified_biz_name.clone())
+            .filter(|_| !id.is_group());
+        if let Some(name) = business {
+            changes.push(ChatChange::BusinessName(id.clone(), name, false));
+        }
         changes.push(ChatChange::History(
             id.clone(),
             history_chat(conversation, id.is_group()),
