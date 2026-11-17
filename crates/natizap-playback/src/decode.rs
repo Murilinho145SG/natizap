@@ -13,9 +13,9 @@ use ffmpeg::util::frame;
 use ffmpeg::{ChannelLayout, Rational, codec};
 use ffmpeg_next as ffmpeg;
 
-use crate::PlayerError;
 use crate::audio::AudioOutput;
 use crate::clock::Clock;
+use crate::{Picture as Image, PlaybackError, Status};
 
 /// Widest picture worth decoding to; larger videos are scaled down while
 /// decoding, since the player never shows them bigger than the window.
@@ -34,12 +34,10 @@ pub(crate) enum Command {
     Seek(Duration),
 }
 
-/// A decoded picture, in BGRA, to show at `at`.
+/// A decoded picture to show at `at`.
 pub(crate) struct Picture {
     pub(crate) at: Duration,
-    pub(crate) width: u32,
-    pub(crate) height: u32,
-    pub(crate) bgra: Vec<u8>,
+    pub(crate) image: Image,
 }
 
 /// What the decoder shares with the UI.
@@ -48,15 +46,6 @@ pub(crate) struct Shared {
     pub(crate) clock: Arc<Clock>,
     pub(crate) pictures: Mutex<VecDeque<Picture>>,
     pub(crate) status: Mutex<Status>,
-}
-
-/// What the UI shows about the file.
-#[derive(Debug, Clone, Default, PartialEq)]
-pub(crate) struct Status {
-    pub(crate) duration: Option<Duration>,
-    pub(crate) has_video: bool,
-    pub(crate) ended: bool,
-    pub(crate) error: Option<String>,
 }
 
 impl Shared {
@@ -78,7 +67,7 @@ pub(crate) fn run(path: &Path, shared: &Shared, commands: &Receiver<Command>) {
     }
 }
 
-fn play(path: &Path, shared: &Shared, commands: &Receiver<Command>) -> Result<(), PlayerError> {
+fn play(path: &Path, shared: &Shared, commands: &Receiver<Command>) -> Result<(), PlaybackError> {
     ffmpeg::init()?;
     let mut input = ffmpeg::format::input(path)?;
     let mut video = input
@@ -186,7 +175,7 @@ struct VideoTrack {
 }
 
 impl VideoTrack {
-    fn open(stream: &ffmpeg::format::stream::Stream<'_>) -> Result<Self, PlayerError> {
+    fn open(stream: &ffmpeg::format::stream::Stream<'_>) -> Result<Self, PlaybackError> {
         let mut context = codec::context::Context::from_parameters(stream.parameters())?;
         // Count 0 lets FFmpeg pick one thread per core.
         context.set_threading(codec::threading::Config {
@@ -214,7 +203,7 @@ impl VideoTrack {
         })
     }
 
-    fn drain(&mut self, shared: &Shared, skip_before: Duration) -> Result<(), PlayerError> {
+    fn drain(&mut self, shared: &Shared, skip_before: Duration) -> Result<(), PlaybackError> {
         let mut decoded = frame::Video::empty();
         while self.decoder.receive_frame(&mut decoded).is_ok() {
             let at = seconds(decoded.timestamp(), self.time_base);
@@ -225,9 +214,11 @@ impl VideoTrack {
             self.scaler.run(&decoded, &mut bgra)?;
             shared.pictures().push_back(Picture {
                 at,
-                width: self.width,
-                height: self.height,
-                bgra: packed_rows(&bgra, self.width as usize * 4, self.height as usize),
+                image: Image {
+                    width: self.width,
+                    height: self.height,
+                    bgra: packed_rows(&bgra, self.width as usize * 4, self.height as usize),
+                },
             });
         }
         Ok(())
@@ -246,7 +237,7 @@ impl AudioTrack {
     fn open(
         stream: &ffmpeg::format::stream::Stream<'_>,
         clock: Arc<Clock>,
-    ) -> Result<Self, PlayerError> {
+    ) -> Result<Self, PlaybackError> {
         let decoder = codec::context::Context::from_parameters(stream.parameters())?
             .decoder()
             .audio()?;
@@ -273,7 +264,7 @@ impl AudioTrack {
         })
     }
 
-    fn drain(&mut self, skip_before: Duration) -> Result<(), PlayerError> {
+    fn drain(&mut self, skip_before: Duration) -> Result<(), PlaybackError> {
         let mut decoded = frame::Audio::empty();
         while self.decoder.receive_frame(&mut decoded).is_ok() {
             if seconds(decoded.timestamp(), self.time_base) < skip_before {

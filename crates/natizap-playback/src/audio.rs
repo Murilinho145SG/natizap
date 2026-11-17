@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use cpal::traits::{DeviceTrait as _, HostTrait as _, StreamTrait as _};
 use cpal::{SampleFormat, Stream, StreamConfig};
 
-use crate::PlayerError;
+use crate::PlaybackError;
 use crate::clock::Clock;
 
 /// The sound card output: decoded samples queue here and the card's callback
@@ -18,10 +18,10 @@ pub(crate) struct AudioOutput {
 
 impl AudioOutput {
     /// Opens the default output device for interleaved `f32` samples.
-    pub(crate) fn open(clock: Arc<Clock>) -> Result<Self, PlayerError> {
+    pub(crate) fn open(clock: Arc<Clock>) -> Result<Self, PlaybackError> {
         let device = cpal::default_host()
             .default_output_device()
-            .ok_or(PlayerError::NoAudioDevice)?;
+            .ok_or(PlaybackError::NoAudioDevice)?;
         let config = f32_config(&device)?;
         let channels = usize::from(config.channels);
         clock.drive_with_audio(config.sample_rate);
@@ -45,10 +45,10 @@ impl AudioOutput {
                 |error| tracing::warn!(%error, "audio output failed"),
                 None,
             )
-            .map_err(|error| PlayerError::Audio(error.to_string()))?;
+            .map_err(|error| PlaybackError::Audio(error.to_string()))?;
         stream
             .play()
-            .map_err(|error| PlayerError::Audio(error.to_string()))?;
+            .map_err(|error| PlaybackError::Audio(error.to_string()))?;
         Ok(Self {
             stream,
             queue,
@@ -94,16 +94,16 @@ impl AudioOutput {
 }
 
 /// The device's preferred configuration, in `f32` samples.
-fn f32_config(device: &cpal::Device) -> Result<StreamConfig, PlayerError> {
+fn f32_config(device: &cpal::Device) -> Result<StreamConfig, PlaybackError> {
     let preferred = device
         .default_output_config()
-        .map_err(|error| PlayerError::Audio(error.to_string()))?;
+        .map_err(|error| PlaybackError::Audio(error.to_string()))?;
     if preferred.sample_format() == SampleFormat::F32 {
         return Ok(preferred.config());
     }
     device
         .supported_output_configs()
-        .map_err(|error| PlayerError::Audio(error.to_string()))?
+        .map_err(|error| PlaybackError::Audio(error.to_string()))?
         .find(|range| range.sample_format() == SampleFormat::F32)
         .map(|range| {
             let rate = preferred
@@ -111,5 +111,5 @@ fn f32_config(device: &cpal::Device) -> Result<StreamConfig, PlayerError> {
                 .clamp(range.min_sample_rate(), range.max_sample_rate());
             range.with_sample_rate(rate).config()
         })
-        .ok_or_else(|| PlayerError::Audio("the sound card does not take f32 samples".into()))
+        .ok_or_else(|| PlaybackError::Audio("the sound card does not take f32 samples".into()))
 }

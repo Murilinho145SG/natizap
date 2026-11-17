@@ -2,7 +2,6 @@ use std::cell::Cell;
 use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::sync::mpsc;
 use std::time::Duration;
 
 use gpui::prelude::*;
@@ -12,10 +11,9 @@ use gpui::{
     relative, rgb, svg,
 };
 use image::{Frame, RgbaImage};
+use natizap_playback::Playback;
 use natizap_ui::Icon;
 use natizap_ui::theme::{DEEP, HONEY, HONEY_INK, LINE, MUTED, TEXT};
-
-use crate::decode::{self, Command, Picture, Shared};
 
 /// How far the arrow keys jump.
 const ARROW_SEEK: Duration = Duration::from_secs(5);
@@ -28,8 +26,7 @@ pub struct PlayerClosed;
 /// sound output: nothing outside natizap is opened.
 pub struct PlayerView {
     title: SharedString,
-    shared: Arc<Shared>,
-    commands: mpsc::Sender<Command>,
+    playback: Playback,
     picture: Option<Arc<RenderImage>>,
     /// Pictures replaced since the last frame, to free from the GPU atlas.
     retired: Vec<Arc<RenderImage>>,
@@ -63,23 +60,11 @@ impl PlayerView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let shared = Arc::new(Shared::default());
-        let (commands, received) = mpsc::channel();
-        let (decoding, path) = (Arc::clone(&shared), path.to_owned());
-        // A plain thread: decoding blocks on FFmpeg and must never share a
-        // pool with UI or protocol work. Dropping `commands` ends it.
-        if let Err(error) = std::thread::Builder::new()
-            .name("natizap-player".into())
-            .spawn(move || decode::run(&path, &decoding, &received))
-        {
-            shared.status().error = Some(error.to_string());
-        }
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
         Self {
             title,
-            shared,
-            commands,
+            playback: Playback::start(path),
             picture: None,
             retired: Vec::new(),
             paused: false,
@@ -88,34 +73,24 @@ impl PlayerView {
         }
     }
 
-    fn send(&self, command: Command) {
-        // Only fails once the decoder stopped, when there is nothing to steer.
-        let _ = self.commands.send(command);
-    }
-
     fn toggle_pause(&mut self, cx: &mut Context<Self>) {
-        if self.shared.status().ended {
+        if self.playback.status().ended {
             self.seek(Duration::ZERO, cx);
             self.paused = false;
         } else {
             self.paused = !self.paused;
         }
-        self.send(Command::Pause(self.paused));
+        self.playback.set_paused(self.paused);
         cx.notify();
     }
 
     fn seek(&mut self, to: Duration, cx: &mut Context<Self>) {
-        let to = self
-            .shared
-            .status()
-            .duration
-            .map_or(to, |duration| to.min(duration));
-        self.send(Command::Seek(to));
+        self.playback.seek(to);
         cx.notify();
     }
 
     fn seek_by(&mut self, delta: Duration, forward: bool, cx: &mut Context<Self>) {
-        let now = self.shared.clock.position();
+        let now = self.playback.position();
         let to = if forward {
             now + delta
         } else {
@@ -130,15 +105,9 @@ impl PlayerView {
 
     /// Takes the newest picture whose time has come.
     fn advance(&mut self) {
-        let now = self.shared.clock.position();
-        let mut due: Option<Picture> = None;
-        {
-            let mut pictures = self.shared.pictures();
-            while pictures.front().is_some_and(|picture| picture.at <= now) {
-                due = pictures.pop_front();
-            }
-        }
-        let Some(picture) = due else { return };
+        let Some(picture) = self.playback.due_picture() else {
+            return;
+        };
         let Some(buffer) = RgbaImage::from_raw(picture.width, picture.height, picture.bgra) else {
             return;
         };
@@ -168,8 +137,8 @@ impl Render for PlayerView {
                 tracing::debug!(%error, "could not free a video frame");
             }
         }
-        let status = self.shared.status().clone();
-        let position = self.shared.clock.position();
+        let status = self.playback.status();
+        let position = self.playback.position();
         if !self.paused && !status.ended && status.error.is_none() {
             window.request_animation_frame();
         }

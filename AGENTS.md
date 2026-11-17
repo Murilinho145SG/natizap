@@ -114,7 +114,8 @@ organizing rule of the codebase.
 | `natizap-protocol` | shared  | Owns the WhatsApp client; fans its events out to features. |
 | `natizap-chats`    | feature | Chat list synced from WhatsApp, cached in SQLite, and its view. |
 | `natizap-messages` | feature | Message store, the open conversation and sending.         |
-| `natizap-player`   | feature | In-app video and audio playback (static FFmpeg + cpal).   |
+| `natizap-playback` | shared | Media engine: static FFmpeg decoding, cpal sound, clock. |
+| `natizap-player`   | feature | The full-window video player.                            |
 | `natizap-ui`       | shared  | Theme tokens, fonts, icons, window frame, text input.     |
 
 Keep this table current when a crate is added, renamed or removed.

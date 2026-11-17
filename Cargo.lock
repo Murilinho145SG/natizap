@@ -3633,15 +3633,23 @@ dependencies = [
 ]
 
 [[package]]
-name = "natizap-player"
+name = "natizap-playback"
 version = "0.1.0"
 dependencies = [
  "cpal",
  "ffmpeg-next",
+ "thiserror 2.0.21",
+ "tracing",
+]
+
+[[package]]
+name = "natizap-player"
+version = "0.1.0"
+dependencies = [
  "gpui",
  "image",
+ "natizap-playback",
  "natizap-ui",
- "thiserror 2.0.21",
  "tracing",
 ]
 
