@@ -9,16 +9,50 @@ when a rule changes.
 English only, everywhere: code identifiers, comments, doc comments,
 documentation, commit messages, branch names, log and error messages.
 
-## Workspace layout
+## Project overview
+
+<!-- TODO: describe what natizap is, who it is for and its main features. -->
+
+## Architecture: one crate per feature
+
+The project is **modular**: every feature is its own crate. This is the main
+organizing rule of the codebase.
+
+- **Feature crates** (`crates/natizap-<feature>`) own everything about one
+  feature: its types, logic, errors, persistence and tests. A change to a
+  feature should land in its crate and nowhere else.
+- **The binary crate** (`crates/natizap`) only wires feature crates together:
+  configuration, startup, and connecting features to each other. It holds no
+  feature logic.
+- **Shared crates** hold only what several features genuinely need (for
+  example `natizap-core` for common domain types, or a crate for a shared
+  infrastructure concern). Create one only when a second feature needs the same
+  thing; never move code there "just in case". A shared crate must be more
+  stable than the crates that use it.
+- **Dependency direction:** `natizap` → feature crates → shared crates. A
+  feature crate must not depend on another feature crate. If two features need
+  to talk, define the contract (a trait or plain types) in a shared crate and
+  let the binary connect them.
+- **Public surface:** each crate exposes a small, documented API from its
+  `lib.rs`; everything else is `pub(crate)` or private. Other crates never
+  reach into a crate's internals.
+- **Adding a feature** means adding a crate: `cargo new --lib
+  crates/natizap-<feature>`, inherit workspace metadata and lints, register
+  any dependency in the root `[workspace.dependencies]`, and add a row to the
+  table below.
+
+### Crates
+
+| Crate     | Kind   | Role                                              |
+| --------- | ------ | ------------------------------------------------- |
+| `natizap` | binary | Entry point; wires the feature crates together.   |
+
+Keep this table current when a crate is added, renamed or removed.
+
+## Workspace conventions
 
 Cargo workspace (resolver 3, edition 2024). Every crate lives in `crates/` and
 is picked up automatically by `members = ["crates/*"]`.
-
-| Crate     | Role                       |
-| --------- | -------------------------- |
-| `natizap` | The binary (entry point).  |
-
-Keep this table current when a crate is added, renamed or removed.
 
 - Shared metadata (`version`, `edition`, `rust-version`, `publish`) is
   inherited with `x.workspace = true`.
@@ -28,8 +62,7 @@ Keep this table current when a crate is added, renamed or removed.
 - Every crate has `[lints] workspace = true`. Do not weaken lints per crate; if
   an exception is truly needed, use a narrow `#[expect(lint, reason = "...")]`
   at the item, never `#[allow]` at the crate root.
-- Split a new crate out only when it has its own reason to change and a stable
-  interface. Do not create crates, modules or traits "for later".
+- Do not create crates, modules or traits for features that do not exist yet.
 
 ## Design rules (untangle principles)
 
