@@ -451,6 +451,7 @@ fn outgoing_message(chat: &ChatId, local_id: &str, sent_at: i64, reply: Option<&
         media_poster: None,
         starred: false,
         sender_phone: None,
+        extra: None,
         quote: reply.map(|reply| Quote {
             id: reply.id.clone(),
             sender: reply.sender.clone(),

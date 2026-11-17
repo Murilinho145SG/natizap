@@ -10,6 +10,7 @@ use natizap_ui::theme::{ALERT, LINE, MINT, MUTED, OUTGOING, PANEL, RAISED, SCRIM
 use natizap_ui::{Button, ButtonSize, ButtonVariant, Icon, avatar};
 use std::path::PathBuf;
 
+use crate::extra_view::render_extra;
 use crate::items::{Body, Bubble, Item, MediaView};
 use crate::media_view::render_media;
 use crate::message::Delivery;
@@ -181,10 +182,17 @@ fn shape(bubble: &Bubble, view: &WeakEntity<ConversationView>, voice: &VoiceUi) 
             .italic()
             .text_color(rgb(MUTED))
             .child("This message was deleted"),
-        Body::Content { media, text, .. } => div()
+        Body::Content {
+            media, text, extra, ..
+        } => div()
             .flex()
             .flex_col()
             .gap_0p5()
+            .children(
+                extra
+                    .as_ref()
+                    .map(|extra| render_extra(&bubble.id, extra, view)),
+            )
             .children(media.map(|media| {
                 div()
                     .text_size(px(12.5))

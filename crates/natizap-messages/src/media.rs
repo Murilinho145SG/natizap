@@ -171,6 +171,7 @@ mod tests {
             media_poster: poster,
             starred: false,
             sender_phone: None,
+            extra: None,
         }
     }
 

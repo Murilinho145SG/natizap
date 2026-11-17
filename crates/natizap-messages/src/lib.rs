@@ -7,6 +7,7 @@
 
 mod bubble;
 mod emoji;
+mod extra_view;
 mod items;
 mod log;
 mod media;

@@ -135,21 +135,23 @@ fn thread(store: &MessageStore, chat: &OpenChat, members: &Members) -> (Output, 
 }
 
 /// Asks for the messages from the oldest to the newest of `messages`
-/// (oldest first) that should carry media but were filed without it,
+/// (oldest first) that should carry media, contacts or a poll but were
+/// filed without them,
 /// counting back from the message after them.
 fn resend(messages: &[Message]) -> Option<Output> {
     let lacking = |message: &Message| {
-        message.media.is_none()
-            && !message.deleted
-            && matches!(
-                message.kind,
-                ContentKind::Photo
-                    | ContentKind::Video
-                    | ContentKind::Sticker
-                    | ContentKind::Audio
-                    | ContentKind::VoiceMessage
-                    | ContentKind::Document
-            )
+        let media = matches!(
+            message.kind,
+            ContentKind::Photo
+                | ContentKind::Video
+                | ContentKind::Sticker
+                | ContentKind::Audio
+                | ContentKind::VoiceMessage
+                | ContentKind::Document
+        );
+        let extra = matches!(message.kind, ContentKind::Contact | ContentKind::Poll);
+        !message.deleted
+            && ((media && message.media.is_none()) || (extra && message.extra.is_none()))
     };
     let oldest = messages.iter().position(lacking)?;
     let newest = messages.iter().rposition(lacking)?;

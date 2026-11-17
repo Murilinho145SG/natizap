@@ -5,7 +5,7 @@ use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use natizap_protocol::{ChatId, ContentKind, Mark, Marked, Reply};
+use natizap_protocol::{ChatId, ContentKind, Extra, Mark, Marked, Reply};
 use natizap_ui::name_color;
 use natizap_ui::theme::{ACCENT, MUTED};
 
@@ -70,6 +70,8 @@ pub(crate) enum Body {
         media: Option<&'static str>,
         /// Text or caption, with its markup applied.
         text: Option<Text>,
+        /// Shared contacts or a poll.
+        extra: Option<Extra>,
         /// Changed after sending.
         edited: bool,
     },
@@ -329,9 +331,12 @@ fn bubble(
             Body::Content {
                 // Downloadable attachments render themselves; the rest
                 // (locations, contacts, polls) are named.
-                media: (message.kind != ContentKind::Text && message.media.is_none())
-                    .then(|| message.kind.label()),
+                media: (message.kind != ContentKind::Text
+                    && message.media.is_none()
+                    && message.extra.is_none())
+                .then(|| message.kind.label()),
                 text: message.text.as_deref().map(Text::parse),
+                extra: message.extra.clone(),
                 edited: message.edited,
             }
         },
@@ -522,6 +527,7 @@ mod tests {
             media_poster: None,
             starred: false,
             sender_phone: None,
+            extra: None,
         }
     }
 
