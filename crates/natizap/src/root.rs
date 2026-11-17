@@ -1,7 +1,8 @@
 use gpui::prelude::*;
 use gpui::{AnyElement, Context, Div, Entity, FontWeight, Window, div, px, rgb};
 use natizap_chats::{ChatList, ChatListView, ChatSelected};
-use natizap_messages::{ConversationView, MessageLog, MessageSent, OpenChat};
+use natizap_messages::{ConversationView, MessageLog, MessageSent, OpenChat, PlayRequested};
+use natizap_player::{PlayerClosed, PlayerView};
 use natizap_session::{PairingView, Session, SessionState};
 use natizap_ui::theme::{ALERT, DISPLAY_FONT, HONEY, LINE, MINT, MUTED, TEXT, base_font};
 use natizap_ui::window_frame;
@@ -14,6 +15,8 @@ pub(crate) struct Root {
     pairing: Entity<PairingView>,
     chat_list: Entity<ChatListView>,
     conversation: Entity<ConversationView>,
+    /// The video or audio playing over the chats, if any.
+    player: Option<Entity<PlayerView>>,
 }
 
 impl Root {
@@ -49,6 +52,22 @@ impl Root {
                 .record_sent(sent.chat.clone(), sent.text.clone(), sent.sent_at);
         })
         .detach();
+        cx.subscribe_in(
+            messages,
+            window,
+            |root, _, play: &PlayRequested, window, cx| {
+                let player =
+                    cx.new(|cx| PlayerView::new(&play.file, play.title.clone(), window, cx));
+                cx.subscribe(&player, |root, _, _: &PlayerClosed, cx| {
+                    root.player = None;
+                    cx.notify();
+                })
+                .detach();
+                root.player = Some(player);
+                cx.notify();
+            },
+        )
+        .detach();
 
         Self {
             session,
@@ -56,6 +75,7 @@ impl Root {
             pairing,
             chat_list,
             conversation,
+            player: None,
         }
     }
 
@@ -72,6 +92,9 @@ impl Root {
     fn content(&self, cx: &Context<Self>) -> AnyElement {
         if !self.shows_chats(cx) {
             return self.pairing.clone().into_any_element();
+        }
+        if let Some(player) = &self.player {
+            return player.clone().into_any_element();
         }
         div()
             .size_full()
