@@ -3437,6 +3437,7 @@ dependencies = [
  "gpui",
  "gpui_tokio",
  "thiserror 2.0.21",
+ "tokio",
  "tracing",
  "whatsapp-rust",
 ]

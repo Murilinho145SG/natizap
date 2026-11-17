@@ -38,6 +38,9 @@ pub struct Protocol {
     store_path: PathBuf,
     fanout: Fanout,
     client: Task<()>,
+    /// The phone unlinked this device, so the stored keys are dead.
+    unlinked: bool,
+    _unlinks: Task<()>,
 }
 
 impl EventEmitter<Arc<StartError>> for Protocol {}
@@ -59,11 +62,24 @@ impl Protocol {
     /// Requires `gpui_tokio::init` to have been called.
     pub fn new(store_path: PathBuf, cx: &mut Context<Self>) -> Self {
         let fanout = Fanout::default();
-        let client = start(store_path.clone(), fanout.clone(), cx);
+        let client = start(store_path.clone(), fanout.clone(), Keys::Keep, cx);
+        let unlinks = fanout.subscribe(EventInterest::of(&[EventKind::LoggedOut]));
+        let unlinks = cx.spawn(async move |this, cx| {
+            while unlinks.recv().await.is_ok() {
+                if this
+                    .update(cx, |protocol, _| protocol.unlinked = true)
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        });
         Self {
             store_path,
             fanout,
             client,
+            unlinked: false,
+            _unlinks: unlinks,
         }
     }
 
@@ -75,19 +91,33 @@ impl Protocol {
     }
 
     /// Stops the client and connects again from scratch, e.g. to get fresh
-    /// pairing QR codes after the previous ones expired.
+    /// pairing QR codes after the previous ones expired. After the phone
+    /// unlinked this device, the old keys are discarded so a new link starts.
     pub fn restart(&mut self, cx: &mut Context<Self>) {
+        let keys = if std::mem::take(&mut self.unlinked) {
+            Keys::Discard
+        } else {
+            Keys::Keep
+        };
         // Replacing the task drops, and so stops, the running client.
-        self.client = start(self.store_path.clone(), self.fanout.clone(), cx);
+        self.client = start(self.store_path.clone(), self.fanout.clone(), keys, cx);
     }
+}
+
+/// What to do with the stored keys when starting a client.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Keys {
+    Keep,
+    /// WhatsApp revoked them; reusing them would fail every connection.
+    Discard,
 }
 
 /// Runs the client on Tokio, starting on the next app tick; start failures
 /// are emitted on the entity.
-fn start(store_path: PathBuf, fanout: Fanout, cx: &mut Context<Protocol>) -> Task<()> {
+fn start(store_path: PathBuf, fanout: Fanout, keys: Keys, cx: &mut Context<Protocol>) -> Task<()> {
     cx.spawn(async move |this, cx| {
         let client: Task<Result<Result<(), StartError>, JoinError>> =
-            Tokio::spawn(cx, run(store_path, fanout));
+            Tokio::spawn(cx, run(store_path, fanout, keys));
         let error = match client.await {
             Ok(Ok(())) => return,
             Ok(Err(error)) => error,
@@ -103,7 +133,10 @@ fn start(store_path: PathBuf, fanout: Fanout, cx: &mut Context<Protocol>) -> Tas
     })
 }
 
-async fn run(store_path: PathBuf, fanout: Fanout) -> Result<(), StartError> {
+async fn run(store_path: PathBuf, fanout: Fanout, keys: Keys) -> Result<(), StartError> {
+    if keys == Keys::Discard {
+        discard_store(&store_path).await;
+    }
     let store = SqliteStore::new(&store_path.to_string_lossy())
         .await
         .map_err(|source| StartError::Store {
@@ -121,4 +154,19 @@ async fn run(store_path: PathBuf, fanout: Fanout) -> Result<(), StartError> {
 
     bot.run().await;
     Ok(())
+}
+
+/// Deletes the SQLite store and its write-ahead log.
+async fn discard_store(path: &std::path::Path) {
+    for suffix in ["", "-wal", "-shm"] {
+        let mut file = path.as_os_str().to_owned();
+        file.push(suffix);
+        match tokio::fs::remove_file(&file).await {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                tracing::error!(%error, file = %file.display(), "could not delete old keys");
+            }
+        }
+    }
 }

@@ -11,6 +11,7 @@ futures.workspace = true
 gpui.workspace = true
 gpui_tokio.workspace = true
 thiserror.workspace = true
+tokio.workspace = true
 tracing.workspace = true
 whatsapp-rust.workspace = true
 
