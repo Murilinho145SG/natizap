@@ -7,13 +7,13 @@ use std::time::Duration;
 use gpui::prelude::*;
 use gpui::{
     Bounds, Context, Div, EventEmitter, FocusHandle, Focusable, FontWeight, KeyDownEvent,
-    MouseButton, ObjectFit, Pixels, RenderImage, SharedString, Window, canvas, div, img, px,
-    relative, rgb, svg,
+    MouseButton, ObjectFit, Pixels, RenderImage, SharedString, Window, canvas, div, img, px, rgb,
+    svg,
 };
 use image::{Frame, RgbaImage};
 use natizap_playback::Playback;
-use natizap_ui::Icon;
-use natizap_ui::theme::{ACCENT, ACCENT_INK, DEEP, LINE, MUTED, TEXT};
+use natizap_ui::theme::{DEEP, LINE, MUTED, TEXT};
+use natizap_ui::{Button, ButtonSize, ButtonVariant, Icon, progress};
 
 /// How far the arrow keys jump.
 const ARROW_SEEK: Duration = Duration::from_secs(5);
@@ -196,22 +196,12 @@ impl PlayerView {
                     .child(self.title.clone()),
             )
             .child(
-                div()
-                    .id("close-player")
-                    .size(px(32.0))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .rounded_full()
-                    .cursor_pointer()
-                    .hover(|style| style.bg(rgb(LINE)))
-                    .on_click(cx.listener(|_, _, _, cx| Self::close(cx)))
-                    .child(
-                        svg()
-                            .path(Icon::Close.path())
-                            .size(px(18.0))
-                            .text_color(rgb(MUTED)),
-                    ),
+                Button::new("close-player")
+                    .icon(Icon::Close)
+                    .variant(ButtonVariant::Ghost)
+                    .round()
+                    .tooltip("Close (Esc)")
+                    .on_click(cx.listener(|_, _, _, cx| Self::close(cx))),
             )
     }
 
@@ -238,19 +228,16 @@ impl PlayerView {
             .px_6()
             .py_4()
             .child(
-                div()
-                    .id("play-pause")
-                    .size(px(44.0))
-                    .flex_none()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .rounded_full()
-                    .bg(rgb(ACCENT))
-                    .cursor_pointer()
-                    .hover(|style| style.opacity(0.9))
-                    .on_click(cx.listener(|this, _, _, cx| this.toggle_pause(cx)))
-                    .child(if playing { pause_glyph() } else { play_glyph() }),
+                Button::new("play-pause")
+                    .icon(if playing { Icon::Pause } else { Icon::Play })
+                    .size(ButtonSize::Large)
+                    .round()
+                    .tooltip(if playing {
+                        "Pause (Space)"
+                    } else {
+                        "Play (Space)"
+                    })
+                    .on_click(cx.listener(|this, _, _, cx| this.toggle_pause(cx))),
             )
             .child(
                 div()
@@ -277,27 +264,14 @@ impl PlayerView {
                         }),
                     )
                     .child(
-                        div()
-                            .relative()
-                            .w_full()
-                            .h(px(4.0))
-                            .rounded_full()
-                            .bg(rgb(LINE))
-                            .child(
-                                canvas(
-                                    move |bounds, _, _| track.set(Some(bounds)),
-                                    |_, (), _, _| {},
-                                )
-                                .absolute()
-                                .size_full(),
+                        progress(fraction).relative().child(
+                            canvas(
+                                move |bounds, _, _| track.set(Some(bounds)),
+                                |_, (), _, _| {},
                             )
-                            .child(
-                                div()
-                                    .h_full()
-                                    .w(relative(fraction))
-                                    .rounded_full()
-                                    .bg(rgb(ACCENT)),
-                            ),
+                            .absolute()
+                            .size_full(),
+                        ),
                     ),
             )
             .child(
@@ -317,25 +291,6 @@ fn notice(message: String) -> Div {
         .justify_center()
         .text_color(rgb(MUTED))
         .child(message)
-}
-
-fn play_glyph() -> Div {
-    // Nudged right: a triangle's visual center sits left of its box's.
-    div().pl(px(2.0)).child(
-        svg()
-            .path(Icon::Play.path())
-            .size(px(20.0))
-            .text_color(rgb(ACCENT_INK)),
-    )
-}
-
-fn pause_glyph() -> Div {
-    div().child(
-        svg()
-            .path(Icon::Pause.path())
-            .size(px(20.0))
-            .text_color(rgb(ACCENT_INK)),
-    )
 }
 
 fn clock_label(time: Duration) -> String {
