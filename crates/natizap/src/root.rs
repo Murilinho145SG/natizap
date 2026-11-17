@@ -5,7 +5,7 @@ use natizap_messages::{ConversationView, MessageLog, MessageSent, OpenChat, Play
 use natizap_player::{PlayerClosed, PlayerView};
 use natizap_session::{PairingView, Session, SessionState};
 use natizap_ui::theme::{ACCENT, ALERT, DISPLAY_FONT, LINE, MINT, MUTED, TEXT, base_font};
-use natizap_ui::window_frame;
+use natizap_ui::{Alert, AlertTone, window_frame};
 
 /// The main window's content: the pairing screen until this device is linked,
 /// then the chat list beside the conversation pane.
@@ -27,10 +27,17 @@ impl Root {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        cx.observe(&session, |_, _, cx| cx.notify()).detach();
         cx.observe(&chats, |_, _, cx| cx.notify()).detach();
         let pairing = cx.new(|cx| PairingView::new(session.clone(), cx));
         let chat_list = cx.new(|cx| ChatListView::new(chats.clone(), cx));
+        let syncing_list = chat_list.clone();
+        cx.observe(&session, move |_, session, cx| {
+            // Right after linking the list fills from the first sync.
+            let syncing = matches!(session.read(cx).state(), SessionState::Paired);
+            syncing_list.update(cx, |list, cx| list.set_syncing(syncing, cx));
+            cx.notify();
+        })
+        .detach();
         let conversation = cx.new(|cx| ConversationView::new(messages.clone(), window, cx));
 
         let (open_messages, open_chats) = (messages.clone(), chats.clone());
@@ -96,8 +103,10 @@ impl Root {
         if let Some(player) = &self.player {
             return player.clone().into_any_element();
         }
+        let reconnecting = matches!(self.session.read(cx).state(), SessionState::Reconnecting);
         div()
             .size_full()
+            .relative()
             .flex()
             .child(
                 div()
@@ -109,6 +118,23 @@ impl Root {
                     .child(self.chat_list.clone()),
             )
             .child(div().flex_1().h_full().child(self.conversation.clone()))
+            // Chats stay readable offline, so the news floats over them
+            // instead of replacing them.
+            .when(reconnecting, |content| {
+                content.child(
+                    div()
+                        .absolute()
+                        .top_3()
+                        .left_0()
+                        .right_0()
+                        .flex()
+                        .justify_center()
+                        .child(
+                            Alert::new(AlertTone::Warning, "Reconnecting…")
+                                .description("The connection dropped. natizap keeps trying."),
+                        ),
+                )
+            })
             .into_any_element()
     }
 }

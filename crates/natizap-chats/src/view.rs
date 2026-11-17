@@ -4,8 +4,8 @@ use gpui::{
     Context, Div, Entity, EventEmitter, FontWeight, Stateful, Window, div, px, relative, rgb, svg,
     uniform_list,
 };
-use natizap_ui::theme::{ACCENT, ACCENT_INK, DISPLAY_FONT, LINE, MUTED, PANEL, RAISED, TEXT};
-use natizap_ui::{Icon, avatar};
+use natizap_ui::theme::{ACCENT, DISPLAY_FONT, LINE, MUTED, PANEL, RAISED, TEXT};
+use natizap_ui::{BadgeTone, Icon, avatar, badge, count_label, separator, skeleton};
 
 use natizap_protocol::ChatId;
 
@@ -19,6 +19,7 @@ const AVATAR_SIZE: f32 = 44.0;
 pub struct ChatListView {
     list: Entity<ChatList>,
     selected: Option<ChatId>,
+    syncing: bool,
 }
 
 /// The user picked a chat in the list.
@@ -34,6 +35,16 @@ impl ChatListView {
         Self {
             list,
             selected: None,
+            syncing: false,
+        }
+    }
+
+    /// Whether the first sync after linking is still under way: an empty
+    /// list then shows placeholders rather than "no chats".
+    pub fn set_syncing(&mut self, syncing: bool, cx: &mut Context<Self>) {
+        if self.syncing != syncing {
+            self.syncing = syncing;
+            cx.notify();
         }
     }
 
@@ -50,7 +61,9 @@ impl Render for ChatListView {
         let count = list.rows().len();
         let archived = list.archived_count();
 
-        let body = if count == 0 {
+        let body = if count == 0 && self.syncing {
+            placeholder_rows().into_any_element()
+        } else if count == 0 {
             empty_state().into_any_element()
         } else {
             uniform_list(
@@ -96,9 +109,49 @@ impl Render for ChatListView {
                     .font_weight(FontWeight::BOLD)
                     .child("Chats"),
             )
-            .when(archived > 0, |panel| panel.child(archive_row(archived)))
+            .when(archived > 0, |panel| {
+                panel
+                    .child(archive_row(archived))
+                    .child(div().mx_5().my_1().child(separator()))
+            })
             .child(body)
     }
+}
+
+/// Chat-shaped placeholders while the first sync fills the list.
+fn placeholder_rows() -> Div {
+    div()
+        .flex_1()
+        .flex()
+        .flex_col()
+        .px_2()
+        .children((0..7_usize).map(|index| {
+            div()
+                .h(px(ROW_HEIGHT))
+                .px_3()
+                .flex()
+                .items_center()
+                .gap_3()
+                .child(skeleton(
+                    ("chat-avatar", index),
+                    div().size(px(AVATAR_SIZE)).flex_none().rounded_full(),
+                ))
+                .child(
+                    div()
+                        .flex_1()
+                        .flex()
+                        .flex_col()
+                        .gap_2()
+                        .child(skeleton(
+                            ("chat-title", index),
+                            div().w(relative(0.45)).h(px(12.0)).rounded_md(),
+                        ))
+                        .child(skeleton(
+                            ("chat-preview", index),
+                            div().w(relative(0.8)).h(px(10.0)).rounded_md(),
+                        )),
+                )
+        }))
 }
 
 fn empty_state() -> Div {
@@ -162,28 +215,18 @@ fn chat_row(row: &ChatRow, now: DateTime<Local>) -> Stateful<Div> {
 
     let badge = has_unread.then(|| {
         let label = if row.unread > 0 {
-            row.unread.to_string()
+            count_label(row.unread)
         } else {
             String::new()
         };
-        let (background, ink) = if row.muted {
-            (LINE, MUTED)
-        } else {
-            (ACCENT, ACCENT_INK)
-        };
-        div()
-            .min_w(px(20.0))
-            .h(px(20.0))
-            .px(px(6.0))
-            .flex()
-            .items_center()
-            .justify_center()
-            .rounded_full()
-            .bg(rgb(background))
-            .text_color(rgb(ink))
-            .text_size(px(11.5))
-            .font_weight(FontWeight::BOLD)
-            .child(label)
+        badge(
+            label,
+            if row.muted {
+                BadgeTone::Muted
+            } else {
+                BadgeTone::Accent
+            },
+        )
     });
 
     div()
