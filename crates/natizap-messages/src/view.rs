@@ -3,7 +3,8 @@ use std::time::Duration;
 
 use gpui::{
     Context, Div, Entity, FocusHandle, Focusable as _, FontWeight, KeyDownEvent, ListAlignment,
-    ListState, MouseButton, SharedString, Window, div, list, px, rgb, svg,
+    ListState, MouseButton, Pixels, Point, SharedString, Window, anchored, deferred, div, list, px,
+    rgb, svg,
 };
 use natizap_playback::Speed;
 use natizap_profiles::ProfilePictures;
@@ -45,6 +46,9 @@ pub struct ConversationView {
     ticking: bool,
     /// A message's right-click menu or delete question, when open.
     message_popup: Option<MessagePopup>,
+    /// The message being reacted to from the full picker, and where.
+    reaction_picker: Option<(SharedString, Point<Pixels>)>,
+    reaction_emojis: Entity<EmojiPicker>,
 }
 
 /// The message the next one will reply to, as the composer shows it.
@@ -66,6 +70,17 @@ impl ConversationView {
         cx.observe(&pictures, |_, _, cx| cx.notify()).detach();
         let composer = cx.new(|cx| TextInput::new("Message", cx));
         let emoji_picker = cx.new(|_| EmojiPicker::new());
+        let reaction_emojis = cx.new(|_| EmojiPicker::new());
+        cx.subscribe(&reaction_emojis, |this, _, EmojiPicked(emoji), cx| {
+            let Some((id, _)) = this.reaction_picker.take() else {
+                return;
+            };
+            if let Some(bubble) = this.bubble(&id, cx) {
+                this.react(&bubble, emoji, cx);
+            }
+            cx.notify();
+        })
+        .detach();
         cx.subscribe_in(
             &emoji_picker,
             window,
@@ -104,6 +119,8 @@ impl ConversationView {
             voices: Voices::default(),
             ticking: false,
             message_popup: None,
+            reaction_picker: None,
+            reaction_emojis,
         }
     }
 
@@ -212,11 +229,45 @@ impl ConversationView {
     /// Closes the quick reactions, the emoji picker and the speed menu.
     pub(crate) fn close_popups(&mut self, cx: &mut Context<Self>) {
         let menu_was_open = self.voices.close_speed_menu();
-        if self.reacting.is_some() || self.picking_emoji || menu_was_open {
+        let picker_was_open = self.reaction_picker.take().is_some();
+        if self.reacting.is_some() || self.picking_emoji || menu_was_open || picker_was_open {
             self.reacting = None;
             self.picking_emoji = false;
             cx.notify();
         }
+    }
+
+    /// Opens the full emoji picker at `position` to react to message `id`.
+    pub(crate) fn open_reaction_picker(
+        &mut self,
+        id: SharedString,
+        position: Point<Pixels>,
+        cx: &mut Context<Self>,
+    ) {
+        self.close_popups(cx);
+        self.reaction_picker = Some((id, position));
+        cx.notify();
+    }
+
+    fn reaction_picker(&self, cx: &mut Context<Self>) -> Option<impl IntoElement> {
+        let (_, position) = self.reaction_picker.as_ref()?;
+        let view = cx.weak_entity();
+        Some(
+            deferred(
+                anchored()
+                    .position(*position)
+                    .snap_to_window_with_margin(px(8.0))
+                    .child(
+                        div()
+                            .occlude()
+                            .on_mouse_down_out(move |_, _, cx| {
+                                let _ = view.update(cx, ConversationView::close_popups);
+                            })
+                            .child(self.reaction_emojis.clone()),
+                    ),
+            )
+            .with_priority(1),
+        )
     }
 
     /// Escape backs out of whatever is open, innermost first: popups, then
@@ -226,7 +277,7 @@ impl ConversationView {
             self.close_message_popup(cx);
         } else if self.voices.close_speed_menu() {
             cx.notify();
-        } else if self.reacting.is_some() || self.picking_emoji {
+        } else if self.reacting.is_some() || self.picking_emoji || self.reaction_picker.is_some() {
             self.close_popups(cx);
         } else if self.replying.take().is_some() {
             cx.notify();
@@ -353,6 +404,7 @@ impl Render for ConversationView {
             )
             .child(self.composer(cx))
             .children(self.message_popup(cx))
+            .children(self.reaction_picker(cx))
             .into_any_element()
     }
 }

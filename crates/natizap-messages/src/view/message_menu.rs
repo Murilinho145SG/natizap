@@ -29,7 +29,7 @@ impl ConversationView {
         cx.notify();
     }
 
-    fn bubble(&self, id: &SharedString, cx: &Context<Self>) -> Option<Bubble> {
+    pub(super) fn bubble(&self, id: &SharedString, cx: &Context<Self>) -> Option<Bubble> {
         self.log
             .read(cx)
             .items()

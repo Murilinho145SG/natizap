@@ -337,6 +337,24 @@ fn quick_reactions(bubble: &Bubble, view: &WeakEntity<ConversationView>) -> Stat
                 .text_size(px(20.0))
                 .child(emoji)
         }))
+        // Any other emoji, from the full picker, as on the phone.
+        .child(
+            Button::new("more-reactions")
+                .icon(Icon::Plus)
+                .variant(ButtonVariant::Ghost)
+                .size(ButtonSize::Small)
+                .round()
+                .tooltip("More reactions")
+                .on_click({
+                    let (view, id) = (view.clone(), bubble.id.clone());
+                    move |event, _, cx| {
+                        let position = event.position();
+                        let _ = view.update(cx, |view, cx| {
+                            view.open_reaction_picker(id.clone(), position, cx);
+                        });
+                    }
+                }),
+        )
 }
 
 fn reaction_chips(bubble: &Bubble) -> Div {
