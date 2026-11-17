@@ -6,11 +6,13 @@
 //! [`bind_text_input_keys`] at startup.
 
 mod assets;
+mod avatar;
 mod frame;
 mod input;
 mod input_element;
 pub mod theme;
 
 pub use assets::{Assets, Icon, load_fonts};
+pub use avatar::{avatar, name_color};
 pub use frame::window_frame;
 pub use input::{Submitted, TextInput, bind_text_input_keys};

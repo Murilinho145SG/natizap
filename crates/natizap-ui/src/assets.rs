@@ -59,6 +59,8 @@ icons! {
     Pin => "pin.svg",
     /// Restore a maximized window.
     Restore => "restore.svg",
+    /// Send a message.
+    Send => "send.svg",
 }
 
 /// Serves the bundled icons; register with `Application::with_assets`.

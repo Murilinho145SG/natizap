@@ -1,14 +1,10 @@
-use std::hash::{DefaultHasher, Hash as _, Hasher as _};
-
 use chrono::{DateTime, Datelike as _, Local, TimeZone as _};
 use gpui::prelude::*;
 use gpui::{
     Context, Div, Entity, FontWeight, Stateful, Window, div, px, relative, rgb, svg, uniform_list,
 };
-use natizap_ui::Icon;
-use natizap_ui::theme::{
-    AVATAR_TINTS, DISPLAY_FONT, HONEY, HONEY_INK, LINE, MUTED, PANEL, RAISED, TEXT,
-};
+use natizap_ui::theme::{DISPLAY_FONT, HONEY, HONEY_INK, LINE, MUTED, PANEL, RAISED, TEXT};
+use natizap_ui::{Icon, avatar};
 
 use crate::list::{ChatList, ChatRow};
 
@@ -172,7 +168,7 @@ fn chat_row(row: &ChatRow, now: DateTime<Local>) -> Stateful<Div> {
         .rounded_xl()
         .cursor_pointer()
         .hover(|style| style.bg(rgb(RAISED)))
-        .child(avatar(row))
+        .child(avatar(row.id.as_str(), &row.title, px(AVATAR_SIZE)))
         .child(
             div()
                 .flex_1()
@@ -237,30 +233,6 @@ fn status_icon(icon: Icon) -> impl IntoElement {
         .size(px(15.0))
         .flex_none()
         .text_color(rgb(MUTED))
-}
-
-fn avatar(row: &ChatRow) -> Div {
-    let mut hasher = DefaultHasher::new();
-    row.id.hash(&mut hasher);
-    let tint = AVATAR_TINTS
-        [usize::try_from(hasher.finish() % AVATAR_TINTS.len() as u64).unwrap_or_default()];
-    let initial = row
-        .title
-        .chars()
-        .find(|c| c.is_alphanumeric())
-        .map_or_default(|c| c.to_uppercase().collect::<String>());
-    div()
-        .size(px(AVATAR_SIZE))
-        .flex_none()
-        .flex()
-        .items_center()
-        .justify_center()
-        .rounded_full()
-        .bg(rgb(tint))
-        .font_family(DISPLAY_FONT)
-        .text_size(px(18.0))
-        .font_weight(FontWeight::SEMIBOLD)
-        .child(initial)
 }
 
 /// When a message was sent, as the chat list shows it: the time today,
