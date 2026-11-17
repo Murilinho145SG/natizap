@@ -11,7 +11,52 @@ documentation, commit messages, branch names, log and error messages.
 
 ## Project overview
 
-<!-- TODO: describe what natizap is, who it is for and its main features. -->
+natizap is a native desktop WhatsApp client written in Rust with
+[GPUI](https://gpui.rs/), the GPU-accelerated UI framework behind Zed.
+
+**Why it exists:** WhatsApp Web and the official Windows client are slow,
+memory-hungry and unreliable; only the mobile apps are good. natizap aims to
+give the desktop the same quality: instant startup, smooth scrolling through
+long chats, low memory use, and an interface that never makes the user wait.
+
+**How it works:** natizap pairs with the user's phone as a linked device
+(QR code or pairing code), exactly like WhatsApp Web, and speaks the
+WhatsApp multi-device protocol directly. Messages stay end-to-end encrypted;
+keys and history are stored locally on the user's machine.
+
+**Product principles** (use them to settle design decisions):
+
+- **Performance is the feature.** Never block the UI thread; protocol, crypto,
+  storage and media work run in the background. Large chat lists and message
+  histories must render lazily and stay smooth.
+- **Behave like the mobile app.** When in doubt, match how WhatsApp mobile
+  behaves, not WhatsApp Web.
+- **Local first.** What has been synced is readable offline and opens
+  instantly from local storage.
+
+**Caveat:** this is an unofficial client using a reverse-engineered protocol.
+WhatsApp may change the protocol or restrict accounts that use unofficial
+clients. Keep protocol code isolated so protocol changes land in one crate.
+
+### Planned feature crates
+
+Crates are created when their feature is implemented, not before. The
+expected split, for orientation:
+
+| Crate                      | Feature                                                    |
+| -------------------------- | ---------------------------------------------------------- |
+| `natizap-session`          | Protocol connection, device pairing (QR/code), reconnects. |
+| `natizap-store`            | Local persistence of keys, chats and message history.      |
+| `natizap-chats`            | Chat list: ordering, unread counts, pin, archive, mute.    |
+| `natizap-messages`         | Conversation view: send, receive, reply, react, edit.      |
+| `natizap-media`            | Images, video, audio, voice notes, documents.              |
+| `natizap-contacts`         | Contacts, profiles, presence.                              |
+| `natizap-groups`           | Group metadata and administration.                         |
+| `natizap-notifications`    | Native desktop notifications.                              |
+| `natizap-ui`               | Shared GPUI theme and reusable components.                 |
+
+Each feature crate owns its GPUI views together with its logic (colocation);
+`natizap-ui` holds only components that several features share.
 
 ## Architecture: one crate per feature
 
