@@ -1,6 +1,7 @@
 //! Who wrote each group message: their name, number, color and role.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use gpui::SharedString;
 use natizap_protocol::ChatId;
@@ -23,6 +24,15 @@ pub(crate) struct Author {
     pub(crate) role: Option<SharedString>,
 }
 
+/// What someone is called, as the account knows them.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct KnownName {
+    /// Saved in the phone's address book: shown as is.
+    pub saved: Option<String>,
+    /// Chosen by the person: shown after a `~`.
+    pub chosen: Option<String>,
+}
+
 /// What the group says about its members, beyond each message.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct Members {
@@ -30,6 +40,9 @@ pub(crate) struct Members {
     pub(crate) community_admins: Vec<ChatId>,
     /// Each member's phone-number address by their other address.
     pub(crate) phones: HashMap<ChatId, ChatId>,
+    /// What people are called, by address, for messages that came without
+    /// a name and for names saved in the address book.
+    pub(crate) names: Arc<HashMap<ChatId, KnownName>>,
 }
 
 /// Everything known about who wrote the messages laid out together.
@@ -59,13 +72,23 @@ impl Author {
             .or_else(|| senders.members.phones.get(sender))
             .unwrap_or(sender);
         let phone = phone_address.phone_number();
+        let known = senders
+            .members
+            .names
+            .get(sender)
+            .or_else(|| senders.members.names.get(phone_address));
+        // As on the phone: the address book's name, else the one the
+        // person chose, marked with `~` and shown with their number.
+        let saved = known.and_then(|known| known.saved.as_deref());
         let chosen = message
             .author
             .as_deref()
-            .or_else(|| senders.names.get(sender).copied());
-        let (name, phone) = match chosen {
-            Some(chosen) => (format!("~ {chosen}"), phone),
-            None => (phone.unwrap_or_else(|| sender.as_str().to_owned()), None),
+            .or_else(|| senders.names.get(sender).copied())
+            .or_else(|| known.and_then(|known| known.chosen.as_deref()));
+        let (name, phone) = match (saved, chosen) {
+            (Some(saved), _) => (saved.to_owned(), None),
+            (None, Some(chosen)) => (format!("~ {chosen}"), phone),
+            (None, None) => (phone.unwrap_or_else(|| sender.as_str().to_owned()), None),
         };
         Self {
             id: sender.clone(),

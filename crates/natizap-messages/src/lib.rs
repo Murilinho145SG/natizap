@@ -26,6 +26,7 @@ mod view;
 mod voice;
 mod voice_view;
 
+pub use authors::KnownName;
 pub use log::{ForwardRequested, MessageLog, MessageSent, OpenChat, PlayRequested};
 pub use overview::{ChatOverview, MediaTile, TileImage};
 pub use view::{ChatRequested, ContactsRequested, ConversationView, ProfileRequested};

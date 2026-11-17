@@ -3,6 +3,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use chrono::Local;
 use natizap_protocol::whatsapp_rust::prelude::Event;
@@ -27,6 +28,7 @@ pub(super) async fn sync(
     };
     let mut open: Option<OpenChat> = None;
     let mut members = Members::default();
+    let mut names = Arc::default();
     // Chats whose missing media was asked for, once per launch.
     let mut asked: HashSet<ChatId> = HashSet::new();
 
@@ -39,14 +41,25 @@ pub(super) async fn sync(
             match input {
                 Input::Open(chat) => {
                     open = Some(chat);
-                    members = Members::default();
+                    members = Members {
+                        names: Arc::clone(&names),
+                        ..Members::default()
+                    };
                     opened = true;
                 }
                 Input::Members(chat, known) => {
                     if open.as_ref().is_some_and(|open| open.id == chat) {
-                        members = known;
+                        members = Members {
+                            names: Arc::clone(&names),
+                            ..known
+                        };
                         refresh = true;
                     }
+                }
+                Input::Names(known) => {
+                    names = known;
+                    members.names = Arc::clone(&names);
+                    refresh = true;
                 }
                 Input::Event(event) if matches!(*event, Event::LoggedOut(_)) => {
                     // Whoever links next may be a different account.

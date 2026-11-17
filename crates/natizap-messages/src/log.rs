@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -11,6 +11,7 @@ use natizap_protocol::{
     Sent, Unread,
 };
 
+use crate::authors::KnownName;
 use crate::items::{Item, Members, summary};
 use crate::media::{Fetch, PosterJob};
 use crate::message::{Delivery, Message, MessageChange};
@@ -59,6 +60,8 @@ enum Input {
     Apply(Box<MessageChange>),
     /// What the open group says about its members.
     Members(ChatId, Members),
+    /// What people are called.
+    Names(Arc<HashMap<ChatId, KnownName>>),
 }
 
 impl From<MessageChange> for Input {
@@ -253,6 +256,7 @@ impl MessageLog {
                                 Vec::new()
                             },
                             phones: group.phones.iter().cloned().collect(),
+                            ..Members::default()
                         };
                         log.send_input(Input::Members(chat, members));
                         log.group = Some(group);
@@ -406,6 +410,13 @@ impl MessageLog {
             })
             .detach();
         }
+    }
+
+    /// Names people by `names`, by address, where their messages do not:
+    /// the address book's names, and those people chose that older
+    /// messages lack.
+    pub fn set_names(&self, names: Arc<HashMap<ChatId, KnownName>>) {
+        self.send_input(Input::Names(names));
     }
 
     fn send_input(&self, input: Input) {

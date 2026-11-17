@@ -428,6 +428,7 @@ fn day_label(day: NaiveDate, now: DateTime<Local>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::authors::KnownName;
 
     fn at(day: u32, hour: u32, minute: u32) -> i64 {
         Local
@@ -478,6 +479,49 @@ mod tests {
     }
 
     #[test]
+    fn names_a_member_as_the_address_book_or_they_did() {
+        let mut saved = message(1_000, false, Some("309@lid"));
+        saved.author = Some("brunao".into());
+        let mut chosen = message(9_000, false, Some("410@lid"));
+        chosen.author = None;
+        let phone = ChatId::new("5511912345678@s.whatsapp.net");
+        let members = Members {
+            phones: HashMap::from([(ChatId::new("410@lid"), phone.clone())]),
+            names: Arc::new(HashMap::from([
+                (
+                    ChatId::new("309@lid"),
+                    KnownName {
+                        saved: Some("Bruno Lima".into()),
+                        chosen: None,
+                    },
+                ),
+                (
+                    phone,
+                    KnownName {
+                        saved: None,
+                        chosen: Some("Carla".into()),
+                    },
+                ),
+            ])),
+            ..Members::default()
+        };
+        let names: Vec<String> = items(
+            &[saved, chosen],
+            &HashMap::new(),
+            "",
+            &members,
+            Local::now(),
+        )
+        .into_iter()
+        .filter_map(|item| match item {
+            Item::Bubble(bubble) => bubble.sender.map(|sender| sender.name.to_string()),
+            Item::Day(_) => None,
+        })
+        .collect();
+        assert_eq!(names, ["Bruno Lima", "~ Carla"]);
+    }
+
+    #[test]
     fn names_a_member_from_their_other_messages_and_the_groups_numbers() {
         let lid = ChatId::new("208@lid");
         let mut named = message(1_000, false, Some("208@lid"));
@@ -487,6 +531,7 @@ mod tests {
         let members = Members {
             community_admins: vec![ChatId::new("5511976543210@s.whatsapp.net")],
             phones: HashMap::from([(lid, ChatId::new("5511976543210@s.whatsapp.net"))]),
+            ..Members::default()
         };
         let now = Local::now();
         let authors: Vec<(String, Option<String>, Option<String>)> =
