@@ -8,6 +8,7 @@ use natizap_ui::theme::{HONEY, HONEY_INK, LINE, MUTED, PANE, PANEL, RAISED, TEXT
 use natizap_ui::{Icon, Submitted, TextInput, avatar, name_color};
 
 use crate::bubble::{quote_block, render_item};
+use crate::emoji::picker;
 use crate::items::Bubble;
 use crate::log::MessageLog;
 
@@ -20,6 +21,9 @@ pub struct ConversationView {
     messages: ListState,
     shown_chat: Option<SharedString>,
     replying: Option<Replying>,
+    /// The bubble whose quick reactions are open.
+    reacting: Option<SharedString>,
+    picking_emoji: bool,
 }
 
 /// The message the next one will reply to, as the composer shows it.
@@ -48,6 +52,8 @@ impl ConversationView {
             messages: ListState::new(0, ListAlignment::Bottom, px(600.0)),
             shown_chat: None,
             replying: None,
+            reacting: None,
+            picking_emoji: false,
         }
     }
 
@@ -74,6 +80,8 @@ impl ConversationView {
         if open != self.shown_chat {
             self.shown_chat = open;
             self.replying = None;
+            self.reacting = None;
+            self.picking_emoji = false;
             // A newly opened chat is where the user is about to type.
             let focus: FocusHandle = self.composer.focus_handle(cx);
             window.focus(&focus, cx);
@@ -103,6 +111,68 @@ impl ConversationView {
         cx.notify();
     }
 
+    /// Opens or closes the quick reactions of the bubble `id`.
+    pub(crate) fn toggle_reactions(&mut self, id: &SharedString, cx: &mut Context<Self>) {
+        self.reacting = if self.reacting.as_ref() == Some(id) {
+            None
+        } else {
+            Some(id.clone())
+        };
+        cx.notify();
+    }
+
+    /// Reacts to `bubble` with `emoji`; reacting again with the same emoji
+    /// takes the reaction back.
+    pub(crate) fn react(&mut self, bubble: &Bubble, emoji: &str, cx: &mut Context<Self>) {
+        let emoji = (bubble.my_reaction.as_deref() != Some(emoji)).then(|| emoji.to_owned());
+        let (id, sender) = (bubble.reply.id.clone(), bubble.reply.sender.clone());
+        self.log
+            .update(cx, |log, cx| log.react(id, sender, emoji, cx));
+        self.reacting = None;
+        cx.notify();
+    }
+
+    fn reply_bar(&self, cx: &mut Context<Self>) -> Option<Div> {
+        let replying = self.replying.as_ref()?;
+        Some(
+            div()
+                .flex()
+                .items_center()
+                .gap_2()
+                .child(
+                    quote_block(
+                        replying.author.clone(),
+                        replying.color,
+                        replying.reply.text.clone().into(),
+                    )
+                    .flex_1()
+                    .min_w_0(),
+                )
+                .child(
+                    div()
+                        .id("cancel-reply")
+                        .size(px(28.0))
+                        .flex_none()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .rounded_full()
+                        .cursor_pointer()
+                        .hover(|style| style.bg(rgb(RAISED)))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.replying = None;
+                            cx.notify();
+                        }))
+                        .child(
+                            svg()
+                                .path(Icon::Close.path())
+                                .size(px(16.0))
+                                .text_color(rgb(MUTED)),
+                        ),
+                ),
+        )
+    }
+
     fn composer(&self, cx: &mut Context<Self>) -> Div {
         div()
             .flex_none()
@@ -114,48 +184,41 @@ impl ConversationView {
             .bg(rgb(PANEL))
             .border_t_1()
             .border_color(rgb(LINE))
-            .children(self.replying.as_ref().map(|replying| {
+            .when(self.picking_emoji, |composer| {
+                let input = self.composer.downgrade();
+                composer.child(picker(move |emoji, window, cx| {
+                    let _ = input.update(cx, |input, cx| input.insert(emoji, window, cx));
+                }))
+            })
+            .children(self.reply_bar(cx))
+            .child(
                 div()
                     .flex()
                     .items_center()
-                    .gap_2()
-                    .child(
-                        quote_block(
-                            replying.author.clone(),
-                            replying.color,
-                            replying.reply.text.clone().into(),
-                        )
-                        .flex_1()
-                        .min_w_0(),
-                    )
+                    .gap_3()
                     .child(
                         div()
-                            .id("cancel-reply")
-                            .size(px(28.0))
+                            .id("emoji")
+                            .size(px(40.0))
                             .flex_none()
                             .flex()
                             .items_center()
                             .justify_center()
                             .rounded_full()
                             .cursor_pointer()
+                            .when(self.picking_emoji, |button| button.bg(rgb(RAISED)))
                             .hover(|style| style.bg(rgb(RAISED)))
                             .on_click(cx.listener(|this, _, _, cx| {
-                                this.replying = None;
+                                this.picking_emoji = !this.picking_emoji;
                                 cx.notify();
                             }))
                             .child(
                                 svg()
-                                    .path(Icon::Close.path())
-                                    .size(px(16.0))
+                                    .path(Icon::Emoji.path())
+                                    .size(px(20.0))
                                     .text_color(rgb(MUTED)),
                             ),
                     )
-            }))
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_3()
                     .child(
                         div()
                             .flex_1()
@@ -200,6 +263,7 @@ impl Render for ConversationView {
         };
         let items = log.items().clone();
         let view = cx.weak_entity();
+        let reacting = self.reacting.clone();
         let subtitle = if chat.id.is_group() {
             Some("Group".to_owned())
         } else {
@@ -252,9 +316,10 @@ impl Render for ConversationView {
             )
             .child(
                 list(self.messages.clone(), move |index, _, _| {
-                    items
-                        .get(index)
-                        .map_or_else(|| div().into_any_element(), |item| render_item(item, &view))
+                    items.get(index).map_or_else(
+                        || div().into_any_element(),
+                        |item| render_item(item, &view, reacting.as_ref()),
+                    )
                 })
                 .flex_1()
                 .px(px(56.0))

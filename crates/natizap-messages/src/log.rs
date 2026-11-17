@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -176,6 +177,36 @@ impl MessageLog {
         .detach();
     }
 
+    /// Reacts to a message in the open chat with `emoji`, or takes this
+    /// account's reaction back when `emoji` is `None`.
+    pub(crate) fn react(
+        &mut self,
+        message_id: String,
+        sender: Option<ChatId>,
+        emoji: Option<String>,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(chat) = self.open.as_ref().map(|open| open.id.clone()) else {
+            return;
+        };
+        self.send_input(Input::Apply(MessageChange::Reacted {
+            chat: chat.clone(),
+            message_id: message_id.clone(),
+            reactor: None,
+            emoji: emoji.clone(),
+        }));
+        let reacting = self
+            .protocol
+            .read(cx)
+            .react(&chat, message_id, sender, emoji, cx);
+        cx.background_spawn(async move {
+            if let Err(error) = reacting.await {
+                tracing::warn!(%error, "reaction not sent");
+            }
+        })
+        .detach();
+    }
+
     fn send_input(&self, input: Input) {
         // The channel is unbounded and the worker lives as long as `self`.
         if self.inputs.try_send(input).is_err() {
@@ -269,7 +300,11 @@ async fn sync(
                     tracing::error!(%error, "could not read messages");
                     Vec::new()
                 });
-            let rows = items(&messages, Local::now()).into();
+            let reactions = store.reactions(&messages).unwrap_or_else(|error| {
+                tracing::error!(%error, "could not read reactions");
+                HashMap::new()
+            });
+            let rows = items(&messages, &reactions, Local::now()).into();
             if outputs
                 .send(Output::Thread {
                     chat: chat.id.clone(),

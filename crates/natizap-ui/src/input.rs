@@ -125,6 +125,11 @@ impl TextInput {
         &self.content
     }
 
+    /// Types `text` at the cursor, replacing any selection.
+    pub fn insert(&mut self, text: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.replace_text_in_range(None, text, window, cx);
+    }
+
     /// Empties the field.
     pub fn clear(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.content = SharedString::default();

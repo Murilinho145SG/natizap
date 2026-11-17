@@ -104,6 +104,22 @@ pub(crate) enum MessageChange {
         ids: Vec<String>,
         delivery: Delivery,
     },
+    /// Someone reacted to a message, or took their reaction back (`None`).
+    /// `reactor` is `None` for this account. Matched by message id alone.
+    Reacted {
+        chat: ChatId,
+        message_id: String,
+        reactor: Option<ChatId>,
+        emoji: Option<String>,
+    },
+}
+
+/// One reaction on a message.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Reaction {
+    pub(crate) emoji: String,
+    /// Whether this account reacted.
+    pub(crate) mine: bool,
 }
 
 impl MessageChange {
@@ -114,7 +130,8 @@ impl MessageChange {
             Self::Edited { chat, .. }
             | Self::Deleted { chat, .. }
             | Self::Accepted { chat, .. }
-            | Self::Rejected { chat, .. } => Some(chat),
+            | Self::Rejected { chat, .. }
+            | Self::Reacted { chat, .. } => Some(chat),
             Self::Progressed { .. } => None,
         }
     }

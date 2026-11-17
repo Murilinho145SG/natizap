@@ -5,6 +5,7 @@
 //! current; [`ConversationView`] renders it with a composer.
 
 mod bubble;
+mod emoji;
 mod items;
 mod log;
 mod message;

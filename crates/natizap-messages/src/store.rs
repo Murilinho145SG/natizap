@@ -1,9 +1,10 @@
+use std::collections::HashMap;
 use std::path::Path;
 
 use natizap_protocol::{ChatId, ContentKind, Quote, Unread};
 use rusqlite::{Connection, Row, params, params_from_iter};
 
-use crate::message::{Delivery, Message, MessageChange};
+use crate::message::{Delivery, Message, MessageChange, Reaction};
 
 /// Schema history: `MIGRATIONS[n]` upgrades a store from version `n` to
 /// `n + 1`. Stores are migrated, never rebuilt: WhatsApp sends the history
@@ -27,6 +28,13 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE messages ADD COLUMN quoted_id TEXT;
     ALTER TABLE messages ADD COLUMN quoted_sender TEXT;
     ALTER TABLE messages ADD COLUMN quoted_summary TEXT;",
+    // `reactor` is empty for this account's own reaction.
+    "CREATE TABLE reactions (
+        message_id TEXT NOT NULL,
+        reactor TEXT NOT NULL,
+        emoji TEXT NOT NULL,
+        PRIMARY KEY (message_id, reactor)
+    );",
 ];
 
 /// Every message natizap has seen, on disk.
@@ -127,6 +135,24 @@ impl MessageStore {
                         progress.execute(params![delivery.name(), id])?;
                     }
                 }
+                MessageChange::Reacted {
+                    message_id,
+                    reactor,
+                    emoji,
+                    ..
+                } => {
+                    let reactor = reactor.as_ref().map_or("", ChatId::as_str);
+                    match emoji.as_deref().filter(|emoji| !emoji.is_empty()) {
+                        Some(emoji) => tx
+                            .prepare_cached("INSERT OR REPLACE INTO reactions VALUES (?1, ?2, ?3)")?
+                            .execute(params![message_id, reactor, emoji])?,
+                        None => tx
+                            .prepare_cached(
+                                "DELETE FROM reactions WHERE message_id = ?1 AND reactor = ?2",
+                            )?
+                            .execute(params![message_id, reactor])?,
+                    };
+                }
                 MessageChange::Rejected { chat, local_id } => {
                     tx.prepare_cached(
                         "UPDATE messages SET delivery = 'failed' WHERE chat = ?1 AND id = ?2",
@@ -153,6 +179,36 @@ impl MessageStore {
             .collect::<rusqlite::Result<Vec<_>>>()?;
         messages.reverse();
         Ok(messages)
+    }
+
+    /// The reactions on each of `messages`, by message id.
+    pub(crate) fn reactions(
+        &self,
+        messages: &[Message],
+    ) -> rusqlite::Result<HashMap<String, Vec<Reaction>>> {
+        let placeholders = vec!["?"; messages.len()].join(", ");
+        let mut statement = self.connection.prepare(&format!(
+            "SELECT message_id, reactor, emoji FROM reactions WHERE message_id IN ({placeholders})"
+        ))?;
+        let rows = statement.query_map(
+            params_from_iter(messages.iter().map(|message| message.id.as_str())),
+            |row| {
+                let reactor: String = row.get(1)?;
+                Ok((
+                    row.get::<_, String>(0)?,
+                    Reaction {
+                        emoji: row.get(2)?,
+                        mine: reactor.is_empty(),
+                    },
+                ))
+            },
+        )?;
+        let mut reactions: HashMap<String, Vec<Reaction>> = HashMap::new();
+        for row in rows {
+            let (id, reaction) = row?;
+            reactions.entry(id).or_default().push(reaction);
+        }
+        Ok(reactions)
     }
 
     /// The newest `count` messages others sent in `chats`, to acknowledge as
@@ -302,6 +358,36 @@ mod tests {
 
         let delivery = store.latest(std::slice::from_ref(&chat), 1)?[0].delivery;
         assert_eq!(delivery, Delivery::Read);
+        Ok(())
+    }
+
+    #[test]
+    fn keeps_one_reaction_per_person_and_drops_retracted_ones() -> rusqlite::Result<()> {
+        let mut store = MessageStore::in_memory()?;
+        let chat = ChatId::new("1@g.us");
+        let react = |reactor: Option<&str>, emoji: Option<&str>| MessageChange::Reacted {
+            chat: chat.clone(),
+            message_id: "a".into(),
+            reactor: reactor.map(ChatId::new),
+            emoji: emoji.map(str::to_owned),
+        };
+        store.apply(&[
+            MessageChange::Received(message("1@g.us", "a", 10, "hi")),
+            react(Some("2@lid"), Some("👍")),
+            react(Some("2@lid"), Some("❤️")),
+            react(None, Some("😂")),
+            react(Some("3@lid"), Some("😮")),
+            react(Some("3@lid"), None),
+        ])?;
+
+        let messages = store.latest(std::slice::from_ref(&chat), 10)?;
+        let mut reactions = store.reactions(&messages)?.remove("a").unwrap_or_default();
+        reactions.sort_by(|a, b| a.emoji.cmp(&b.emoji));
+        let summary: Vec<(&str, bool)> = reactions
+            .iter()
+            .map(|r| (r.emoji.as_str(), r.mine))
+            .collect();
+        assert_eq!(summary, [("❤️", false), ("😂", true)]);
         Ok(())
     }
 

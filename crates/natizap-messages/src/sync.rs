@@ -43,6 +43,15 @@ fn live_change(inbound: &InboundMessage) -> Option<MessageChange> {
     let chat = ChatId::new(&source.chat.to_string());
     let base = inbound.message.get_base_message();
 
+    if let Some(reaction) = base.reaction_message.as_option() {
+        return Some(MessageChange::Reacted {
+            chat,
+            message_id: reaction.key.as_option()?.id.clone()?,
+            reactor: (!source.is_from_me).then(|| ChatId::new(&source.sender.to_string())),
+            emoji: reaction.text.clone(),
+        });
+    }
+
     if let Some(protocol) = base.protocol_message.as_option() {
         use wa::message::protocol_message::Type;
         let id = protocol.key.as_option()?.id.clone()?;
@@ -103,12 +112,40 @@ fn history_changes(history: &LazyHistorySync) -> Vec<MessageChange> {
                 .messages
                 .iter()
                 .filter_map(|entry| entry.message.as_option())
-                .filter_map(move |info| history_message(&chat, info))
+                .flat_map(move |info| history_message(&chat, info))
         })
         .collect()
 }
 
-fn history_message(chat: &ChatId, info: &wa::WebMessageInfo) -> Option<MessageChange> {
+fn history_message(chat: &ChatId, info: &wa::WebMessageInfo) -> Vec<MessageChange> {
+    let Some(id) = info.key.as_option().and_then(|key| key.id.clone()) else {
+        return Vec::new();
+    };
+    let reactions = info.reactions.iter().filter_map(|reaction| {
+        let key = reaction.key.as_option()?;
+        let reactor = if key.from_me.unwrap_or(false) {
+            None
+        } else {
+            Some(
+                key.participant
+                    .as_deref()
+                    .map_or_else(|| chat.clone(), ChatId::new),
+            )
+        };
+        Some(MessageChange::Reacted {
+            chat: chat.clone(),
+            message_id: id.clone(),
+            reactor,
+            emoji: reaction.text.clone(),
+        })
+    });
+    history_content(chat, info)
+        .into_iter()
+        .chain(reactions)
+        .collect()
+}
+
+fn history_content(chat: &ChatId, info: &wa::WebMessageInfo) -> Option<MessageChange> {
     let key = info.key.as_option()?;
     let content = Content::of(info.message.as_option()?)?;
     let from_me = key.from_me.unwrap_or(false);

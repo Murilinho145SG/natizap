@@ -3,17 +3,24 @@
 use gpui::prelude::*;
 use gpui::{
     AnyElement, App, Div, FontStyle, FontWeight, HighlightStyle, MouseButton, SharedString,
-    StrikethroughStyle, StyledText, WeakEntity, div, px, relative, rgb, svg,
+    Stateful, StrikethroughStyle, StyledText, WeakEntity, div, px, relative, rgb, svg,
 };
 use natizap_protocol::Mark;
 use natizap_ui::Icon;
-use natizap_ui::theme::{ALERT, DEEP, MINT, MUTED, OUTGOING, PANEL, RAISED};
+use natizap_ui::theme::{ALERT, DEEP, LINE, MINT, MUTED, OUTGOING, PANEL, RAISED};
 
 use crate::items::{Body, Bubble, Item, Text};
 use crate::message::Delivery;
 use crate::view::ConversationView;
 
-pub(crate) fn render_item(item: &Item, view: &WeakEntity<ConversationView>) -> AnyElement {
+/// Quick reactions offered on every bubble, as in WhatsApp.
+pub(crate) const QUICK_REACTIONS: [&str; 6] = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
+
+pub(crate) fn render_item(
+    item: &Item,
+    view: &WeakEntity<ConversationView>,
+    reacting: Option<&SharedString>,
+) -> AnyElement {
     match item {
         Item::Day(label) => div()
             .w_full()
@@ -32,13 +39,33 @@ pub(crate) fn render_item(item: &Item, view: &WeakEntity<ConversationView>) -> A
                     .child(label.clone()),
             )
             .into_any_element(),
-        Item::Bubble(bubble) => render_bubble(bubble, view),
+        Item::Bubble(bubble) => {
+            render_bubble(bubble, view, reacting.is_some_and(|id| *id == bubble.id))
+        }
     }
 }
 
-fn render_bubble(bubble: &Bubble, view: &WeakEntity<ConversationView>) -> AnyElement {
-    let shape = shape(bubble);
-    let reply_button = reply_button(bubble, view);
+fn render_bubble(
+    bubble: &Bubble,
+    view: &WeakEntity<ConversationView>,
+    reacting: bool,
+) -> AnyElement {
+    let message = div()
+        .max_w(relative(0.72))
+        .flex()
+        .flex_col()
+        .gap_0p5()
+        .when(bubble.from_me, Styled::items_end)
+        .when(!bubble.from_me, Styled::items_start)
+        .child(shape(bubble).max_w_full())
+        .when(!bubble.reactions.is_empty(), |message| {
+            message.child(reaction_chips(bubble))
+        });
+    let actions = if reacting {
+        quick_reactions(bubble, view).into_any_element()
+    } else {
+        hover_actions(bubble, view).into_any_element()
+    };
     div()
         .id(bubble.id.clone())
         .group("bubble")
@@ -53,11 +80,11 @@ fn render_bubble(bubble: &Bubble, view: &WeakEntity<ConversationView>) -> AnyEle
             move |_, _, cx| reply_to(&view, &bubble, cx)
         })
         .map(|row| {
-            // The reply button sits on the open side of the bubble.
+            // Actions sit on the open side of the bubble.
             if bubble.from_me {
-                row.child(reply_button).child(shape)
+                row.child(actions).child(message)
             } else {
-                row.child(shape).child(reply_button)
+                row.child(message).child(actions)
             }
         })
         .into_any_element()
@@ -101,7 +128,6 @@ fn shape(bubble: &Bubble) -> Div {
     };
 
     div()
-        .max_w(relative(0.72))
         .flex()
         .flex_col()
         .gap_1()
@@ -146,9 +172,27 @@ fn shape(bubble: &Bubble) -> Div {
         )
 }
 
-fn reply_button(bubble: &Bubble, view: &WeakEntity<ConversationView>) -> impl IntoElement {
+/// Reply and react buttons, shown while the pointer is over the bubble.
+fn hover_actions(bubble: &Bubble, view: &WeakEntity<ConversationView>) -> Div {
     div()
-        .id("reply")
+        .flex()
+        .invisible()
+        .group_hover("bubble", Styled::visible)
+        .child(round_button("react", Icon::Emoji).on_click({
+            let (view, id) = (view.clone(), bubble.id.clone());
+            move |_, _, cx| {
+                let _ = view.update(cx, |view, cx| view.toggle_reactions(&id, cx));
+            }
+        }))
+        .child(round_button("reply", Icon::Reply).on_click({
+            let (view, bubble) = (view.clone(), bubble.clone());
+            move |_, _, cx| reply_to(&view, &bubble, cx)
+        }))
+}
+
+fn round_button(id: &'static str, icon: Icon) -> Stateful<Div> {
+    div()
+        .id(id)
         .size(px(28.0))
         .flex_none()
         .flex()
@@ -156,19 +200,69 @@ fn reply_button(bubble: &Bubble, view: &WeakEntity<ConversationView>) -> impl In
         .justify_center()
         .rounded_full()
         .cursor_pointer()
-        .invisible()
-        .group_hover("bubble", Styled::visible)
         .hover(|style| style.bg(rgb(RAISED)))
-        .on_click({
-            let (view, bubble) = (view.clone(), bubble.clone());
-            move |_, _, cx| reply_to(&view, &bubble, cx)
-        })
         .child(
             svg()
-                .path(Icon::Reply.path())
+                .path(icon.path())
                 .size(px(16.0))
                 .text_color(rgb(MUTED)),
         )
+}
+
+/// The quick reaction strip; this account's current reaction is
+/// highlighted and picking it again takes it back.
+fn quick_reactions(bubble: &Bubble, view: &WeakEntity<ConversationView>) -> Div {
+    div()
+        .flex()
+        .gap_0p5()
+        .p_0p5()
+        .rounded_full()
+        .bg(rgb(PANEL))
+        .border_1()
+        .border_color(rgb(LINE))
+        .children(QUICK_REACTIONS.iter().map(|&emoji| {
+            let mine = bubble.my_reaction.as_deref() == Some(emoji);
+            div()
+                .id(emoji)
+                .size(px(32.0))
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded_full()
+                .text_size(px(19.0))
+                .cursor_pointer()
+                .when(mine, |button| button.bg(rgb(RAISED)))
+                .hover(|style| style.bg(rgb(RAISED)))
+                .on_click({
+                    let (view, bubble) = (view.clone(), bubble.clone());
+                    move |_, _, cx| {
+                        let _ = view.update(cx, |view, cx| view.react(&bubble, emoji, cx));
+                    }
+                })
+                .child(emoji)
+        }))
+}
+
+fn reaction_chips(bubble: &Bubble) -> Div {
+    div()
+        .flex()
+        .gap_1()
+        .children(bubble.reactions.iter().map(|chip| {
+            div()
+                .flex()
+                .items_center()
+                .gap_1()
+                .px_1p5()
+                .rounded_full()
+                .bg(rgb(PANEL))
+                .border_1()
+                .border_color(rgb(LINE))
+                .text_size(px(13.0))
+                .child(chip.emoji.clone())
+                .when(chip.count > 1, |chip_view| {
+                    chip_view.child(div().text_color(rgb(MUTED)).child(chip.count.to_string()))
+                })
+        }))
 }
 
 fn reply_to(view: &WeakEntity<ConversationView>, bubble: &Bubble, cx: &mut App) {

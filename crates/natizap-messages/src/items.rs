@@ -8,7 +8,7 @@ use natizap_protocol::{ChatId, ContentKind, Mark, Marked, Reply};
 use natizap_ui::name_color;
 use natizap_ui::theme::{HONEY, MUTED};
 
-use crate::message::{Delivery, Message};
+use crate::message::{Delivery, Message, Reaction};
 
 /// Messages from the same side closer than this read as one burst.
 const BURST_GAP_SECONDS: i64 = 5 * 60;
@@ -35,6 +35,10 @@ pub(crate) struct Bubble {
     pub(crate) quote: Option<QuotePreview>,
     /// What to quote when replying to it.
     pub(crate) reply: Reply,
+    /// Reactions, most common first.
+    pub(crate) reactions: Vec<ReactionChip>,
+    /// The emoji this account reacted with, if any.
+    pub(crate) my_reaction: Option<String>,
     /// Who wrote it and their color, in groups; shown when replying.
     pub(crate) sender: Option<(SharedString, u32)>,
     pub(crate) time: SharedString,
@@ -57,6 +61,13 @@ pub(crate) enum Body {
         /// Changed after sending.
         edited: bool,
     },
+}
+
+/// One emoji under a bubble and how many people reacted with it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ReactionChip {
+    pub(crate) emoji: SharedString,
+    pub(crate) count: usize,
 }
 
 /// The quoted message shown at the top of a reply.
@@ -85,7 +96,11 @@ impl Text {
 }
 
 /// Lays out `messages` (oldest first) as rows, with day separators.
-pub(crate) fn items(messages: &[Message], now: DateTime<Local>) -> Vec<Item> {
+pub(crate) fn items(
+    messages: &[Message],
+    reactions: &HashMap<String, Vec<Reaction>>,
+    now: DateTime<Local>,
+) -> Vec<Item> {
     let by_id: HashMap<&str, &Message> = messages
         .iter()
         .map(|message| (message.id.as_str(), message))
@@ -107,12 +122,15 @@ pub(crate) fn items(messages: &[Message], now: DateTime<Local>) -> Vec<Item> {
                     || previous.sender != message.sender
                     || message.sent_at - previous.sent_at > BURST_GAP_SECONDS
             });
-        items.push(Item::Bubble(Box::new(bubble(
-            message,
-            sent,
-            starts_burst,
-            &by_id,
-        ))));
+        let mut bubble = bubble(message, sent, starts_burst, &by_id);
+        if let Some(reactions) = reactions.get(&message.id) {
+            bubble.my_reaction = reactions
+                .iter()
+                .find(|reaction| reaction.mine)
+                .map(|r| r.emoji.clone());
+            bubble.reactions = chips(reactions);
+        }
+        items.push(Item::Bubble(Box::new(bubble)));
         previous = Some((message, day));
     }
     items
@@ -179,6 +197,8 @@ fn bubble(
             }
         },
         quote,
+        reactions: Vec::new(),
+        my_reaction: None,
         sender,
         reply: Reply {
             id: message.id.clone(),
@@ -195,6 +215,27 @@ fn bubble(
         delivery: message.delivery,
         starts_burst,
     }
+}
+
+fn chips(reactions: &[Reaction]) -> Vec<ReactionChip> {
+    let mut counts: Vec<(&str, usize)> = Vec::new();
+    for reaction in reactions {
+        match counts
+            .iter_mut()
+            .find(|(emoji, _)| *emoji == reaction.emoji)
+        {
+            Some((_, count)) => *count += 1,
+            None => counts.push((&reaction.emoji, 1)),
+        }
+    }
+    counts.sort_by_key(|&(_, count)| std::cmp::Reverse(count));
+    counts
+        .into_iter()
+        .map(|(emoji, count)| ReactionChip {
+            emoji: emoji.to_owned().into(),
+            count,
+        })
+        .collect()
 }
 
 fn sender_name(message: &Message, sender: &ChatId) -> String {
@@ -283,7 +324,7 @@ mod tests {
         ];
 
         assert_eq!(
-            layout(&items(&messages, now)),
+            layout(&items(&messages, &HashMap::new(), now)),
             [
                 "[Yesterday]",
                 "+themAna",

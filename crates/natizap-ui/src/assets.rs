@@ -55,6 +55,8 @@ icons! {
     Chats => "chats.svg",
     /// Close the window.
     Close => "close.svg",
+    /// Pick an emoji or react.
+    Emoji => "emoji.svg",
     /// End-to-end encryption.
     Lock => "lock.svg",
     /// Maximize the window.
