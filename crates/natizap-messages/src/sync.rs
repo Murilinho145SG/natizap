@@ -13,6 +13,7 @@ pub(crate) const MESSAGE_EVENTS: &[EventKind] = &[
     EventKind::Messages,
     EventKind::Receipt,
     EventKind::LoggedOut,
+    EventKind::StarUpdate,
 ];
 
 /// Everything `event` says about messages.
@@ -36,6 +37,10 @@ pub(crate) fn changes(event: &Event) -> Vec<MessageChange> {
             tracing::debug!(?ids, ?delivery, "receipt");
             vec![MessageChange::Progressed { ids, delivery }]
         }
+        Event::StarUpdate(update) => vec![MessageChange::Starred {
+            message_id: update.message_id.clone(),
+            starred: update.action.starred.unwrap_or(false),
+        }],
         _ => Vec::new(),
     }
 }
@@ -88,6 +93,7 @@ fn live_change(inbound: &InboundMessage) -> Option<MessageChange> {
         media: content.media,
         media_file: None,
         media_poster: None,
+        starred: false,
         edited: false,
         deleted: false,
         delivery: Delivery::Sent,
@@ -172,6 +178,7 @@ fn history_content(chat: &ChatId, info: &wa::WebMessageInfo) -> Option<MessageCh
         media: content.media,
         media_file: None,
         media_poster: None,
+        starred: false,
         edited: false,
         deleted: false,
         delivery: if from_me {

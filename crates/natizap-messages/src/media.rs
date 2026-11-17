@@ -169,6 +169,7 @@ mod tests {
             media: Some(Media::default()),
             media_file: file,
             media_poster: poster,
+            starred: false,
         }
     }
 

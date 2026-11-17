@@ -48,6 +48,8 @@ pub(crate) struct Bubble {
     pub(crate) sender: Option<(SharedString, u32)>,
     pub(crate) time: SharedString,
     pub(crate) delivery: Delivery,
+    /// Starred by this account.
+    pub(crate) starred: bool,
     /// Starts a new burst, so it gets more space above it.
     pub(crate) starts_burst: bool,
 }
@@ -262,6 +264,7 @@ fn bubble(
         },
         time: sent.format("%H:%M").to_string().into(),
         delivery: message.delivery,
+        starred: message.starred,
         starts_burst,
     }
 }
@@ -434,6 +437,7 @@ mod tests {
             media: None,
             media_file: None,
             media_poster: None,
+            starred: false,
         }
     }
 

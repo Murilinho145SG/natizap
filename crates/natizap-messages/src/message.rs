@@ -49,6 +49,11 @@ impl Delivery {
 
 /// One message in a chat.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "sent from here, edited, deleted and starred are independent facts \
+              WhatsApp keeps per message"
+)]
 pub(crate) struct Message {
     /// The chat address it was filed under.
     pub(crate) chat: ChatId,
@@ -80,6 +85,8 @@ pub(crate) struct Message {
     pub(crate) media_file: Option<PathBuf>,
     /// A still taken from a downloaded video, shown until it plays.
     pub(crate) media_poster: Option<PathBuf>,
+    /// Starred by this account.
+    pub(crate) starred: bool,
 }
 
 /// One fact learned about the messages.
@@ -120,6 +127,9 @@ pub(crate) enum MessageChange {
     MediaSaved { message_id: String, file: PathBuf },
     /// A still of a message's video was saved to `file`. Matched by id.
     PosterSaved { message_id: String, file: PathBuf },
+    /// This account starred or unstarred a message, here or on another
+    /// device. Matched by id.
+    Starred { message_id: String, starred: bool },
     /// Someone reacted to a message, or took their reaction back (`None`).
     /// `reactor` is `None` for this account. Matched by message id alone.
     Reacted {
@@ -149,7 +159,10 @@ impl MessageChange {
             | Self::Accepted { chat, .. }
             | Self::Rejected { chat, .. }
             | Self::Reacted { chat, .. } => Some(chat),
-            Self::Progressed { .. } | Self::MediaSaved { .. } | Self::PosterSaved { .. } => None,
+            Self::Progressed { .. }
+            | Self::MediaSaved { .. }
+            | Self::PosterSaved { .. }
+            | Self::Starred { .. } => None,
         }
     }
 }

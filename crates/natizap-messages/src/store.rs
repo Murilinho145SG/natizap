@@ -52,6 +52,7 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE messages ADD COLUMN media_hd_thumbnail_path TEXT;
     ALTER TABLE messages ADD COLUMN media_hd_thumbnail_sha256 BLOB;
     ALTER TABLE messages ADD COLUMN media_hd_thumbnail_enc_sha256 BLOB;",
+    "ALTER TABLE messages ADD COLUMN starred INTEGER NOT NULL DEFAULT 0;",
 ];
 
 /// Every message natizap has seen, on disk.
@@ -147,6 +148,13 @@ impl MessageStore {
                 MessageChange::MediaSaved { message_id, file } => {
                     tx.prepare_cached("UPDATE messages SET media_file = ?2 WHERE id = ?1")?
                         .execute(params![message_id, file.to_string_lossy()])?;
+                }
+                MessageChange::Starred {
+                    message_id,
+                    starred,
+                } => {
+                    tx.prepare_cached("UPDATE messages SET starred = ?2 WHERE id = ?1")?
+                        .execute(params![message_id, starred])?;
                 }
                 MessageChange::PosterSaved { message_id, file } => {
                     tx.prepare_cached("UPDATE messages SET media_poster = ?2 WHERE id = ?1")?
@@ -424,6 +432,7 @@ fn message_from_row(row: &Row<'_>) -> rusqlite::Result<Message> {
         media_poster: row
             .get::<_, Option<String>>("media_poster")?
             .map(PathBuf::from),
+        starred: row.get("starred")?,
     })
 }
 

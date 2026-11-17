@@ -17,6 +17,7 @@ fn message(chat: &str, id: &str, sent_at: i64, text: &str) -> Message {
         media: None,
         media_file: None,
         media_poster: None,
+        starred: false,
     }
 }
 
@@ -220,5 +221,23 @@ fn a_sent_file_records_where_it_was_uploaded() -> rusqlite::Result<()> {
         ),
         ("/v/up", vec![9], Some(1234), Some(400))
     );
+    Ok(())
+}
+
+#[test]
+fn keeps_which_messages_are_starred() -> rusqlite::Result<()> {
+    let mut store = MessageStore::in_memory()?;
+    let chat = ChatId::new("1@lid");
+    store.apply(&[MessageChange::Received(message("1@lid", "a", 10, "keep"))])?;
+    store.apply(&[MessageChange::Starred {
+        message_id: "a".into(),
+        starred: true,
+    }])?;
+    assert!(store.latest(std::slice::from_ref(&chat), 1)?[0].starred);
+    store.apply(&[MessageChange::Starred {
+        message_id: "a".into(),
+        starred: false,
+    }])?;
+    assert!(!store.latest(std::slice::from_ref(&chat), 1)?[0].starred);
     Ok(())
 }

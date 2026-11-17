@@ -94,6 +94,25 @@ impl ConversationView {
                     view.toggle_reactions(&id, cx);
                 });
             });
+            let starring = view.clone();
+            let (id, from_me, sender, starred) = (
+                bubble.id.to_string(),
+                bubble.from_me,
+                bubble.reply.sender.clone(),
+                bubble.starred,
+            );
+            menu = menu.action(
+                Icon::Star,
+                if starred { "Unstar" } else { "Star" },
+                move |_, cx| {
+                    let _ = starring.update(cx, |view, cx| {
+                        view.close_message_popup(cx);
+                        view.log.update(cx, |log, cx| {
+                            log.set_starred(id.clone(), from_me, sender.as_ref(), !starred, cx);
+                        });
+                    });
+                },
+            );
             menu = menu.separator();
         }
         let id = bubble.id.clone();

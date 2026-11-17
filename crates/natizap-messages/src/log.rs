@@ -268,6 +268,35 @@ impl MessageLog {
         .detach();
     }
 
+    /// Stars or unstars a message in the open chat on all of this account's
+    /// devices. `sender` wrote it, in groups, unless `from_me`.
+    pub(crate) fn set_starred(
+        &mut self,
+        message_id: String,
+        from_me: bool,
+        sender: Option<&ChatId>,
+        starred: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(chat) = self.open.as_ref().map(|open| open.id.clone()) else {
+            return;
+        };
+        let starring =
+            self.protocol
+                .read(cx)
+                .star(&chat, message_id.clone(), from_me, sender, starred, cx);
+        self.send_input(Input::from(MessageChange::Starred {
+            message_id,
+            starred,
+        }));
+        cx.background_spawn(async move {
+            if let Err(error) = starring.await {
+                tracing::warn!(%error, "star not synced to the other devices");
+            }
+        })
+        .detach();
+    }
+
     /// Reacts to a message in the open chat with `emoji`, or takes this
     /// account's reaction back when `emoji` is `None`.
     pub(crate) fn react(
@@ -488,6 +517,7 @@ fn outgoing_message(chat: &ChatId, local_id: &str, sent_at: i64, reply: Option<&
         media: None,
         media_file: None,
         media_poster: None,
+        starred: false,
         quote: reply.map(|reply| Quote {
             id: reply.id.clone(),
             sender: reply.sender.clone(),

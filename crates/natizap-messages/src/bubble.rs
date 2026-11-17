@@ -120,6 +120,14 @@ fn shape(bubble: &Bubble, view: &WeakEntity<ConversationView>, voice: &VoiceUi) 
             matches!(bubble.body, Body::Content { edited: true, .. }),
             |meta| meta.child("edited"),
         )
+        .when(bubble.starred, |meta| {
+            meta.child(
+                svg()
+                    .path(Icon::Star.path())
+                    .size(px(12.0))
+                    .text_color(rgb(MUTED)),
+            )
+        })
         .child(bubble.time.clone())
         .when(bubble.from_me, |meta| {
             meta.child(delivery_mark(bubble.delivery))
