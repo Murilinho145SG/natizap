@@ -4,11 +4,13 @@
 //! sound goes to the sound card through `cpal`, and the sound card's progress
 //! is the clock video pictures follow. Callers only see [`Playback`]: they
 //! steer it and read where it is, and draw it however their feature needs.
-//! [`save_poster`] and [`still_jpeg`] take a still from a video, and
-//! [`probe`] reads how long a file plays and how big its pictures are, and
-//! [`Recorder`] records voice notes.
+//! [`save_poster`] and [`still_jpeg`] take a still from a video,
+//! [`probe`] reads how long a file plays and how big its pictures are,
+//! [`Recorder`] records voice notes and [`Clip`] plays short sounds held in
+//! memory.
 
 mod audio;
+mod clip;
 mod clock;
 mod decode;
 mod poster;
@@ -20,6 +22,7 @@ use std::path::Path;
 use std::sync::{Arc, mpsc};
 use std::time::Duration;
 
+pub use clip::{Clip, ClipError};
 pub use poster::{MediaFileError, save_poster, still_jpeg};
 pub use probe::{Probe, probe};
 pub use record::{Heard, RecordError, Recorder, Recording, save as save_recording};
