@@ -7,6 +7,8 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.100"
 publish = false
+license = "AGPL-3.0-or-later"
+repository = "https://github.com/Murilinho145SG/natizap"
 
 [workspace.dependencies]
 # GPUI is not released on a stable cadence; pin Zed to a known-good commit.
