@@ -1,7 +1,8 @@
 use gpui::prelude::*;
 use gpui::{
     Context, Div, Entity, FocusHandle, Focusable as _, FontWeight, KeyDownEvent, ListAlignment,
-    ListState, MouseButton, SharedString, Stateful, Window, div, list, px, rgb, svg,
+    ListState, MouseButton, SharedString, Stateful, Window, deferred, div, list, px, relative, rgb,
+    svg,
 };
 use natizap_protocol::Reply;
 use natizap_ui::theme::{HONEY, HONEY_INK, LINE, MUTED, PANE, PANEL, RAISED, TEXT};
@@ -208,14 +209,7 @@ impl ConversationView {
     fn composer(&self, cx: &mut Context<Self>) -> Stateful<Div> {
         div()
             .id("composer")
-            // The picker's toggle lives inside the composer, so only clicks
-            // elsewhere close it.
-            .on_mouse_down_out(cx.listener(|this, _, _, cx| {
-                if this.picking_emoji {
-                    this.picking_emoji = false;
-                    cx.notify();
-                }
-            }))
+            .relative()
             .flex_none()
             .flex()
             .flex_col()
@@ -227,13 +221,24 @@ impl ConversationView {
             .border_color(rgb(LINE))
             .when(self.picking_emoji, |composer| {
                 let input = self.composer.downgrade();
-                composer.child(picker(move |emoji, window, cx| {
-                    // Keep typing where the emoji went.
-                    let _ = input.update(cx, |input, cx| {
-                        input.insert(emoji, window, cx);
-                        window.focus(&input.focus_handle(cx), cx);
-                    });
-                }))
+                // Floats above the messages instead of growing the composer,
+                // which pushed the composer out of a tall message list.
+                composer.child(deferred(
+                    div()
+                        .absolute()
+                        .bottom(relative(1.0))
+                        .left_4()
+                        .mb_2()
+                        .w(px(388.0))
+                        .occlude()
+                        .child(picker(move |emoji, window, cx| {
+                            // Keep typing where the emoji went.
+                            let _ = input.update(cx, |input, cx| {
+                                input.insert(emoji, window, cx);
+                                window.focus(&input.focus_handle(cx), cx);
+                            });
+                        })),
+                ))
             })
             .children(self.reply_bar(cx))
             .child(
@@ -362,15 +367,33 @@ impl Render for ConversationView {
                     ),
             )
             .child(
-                list(self.messages.clone(), move |index, _, _| {
-                    items.get(index).map_or_else(
-                        || div().into_any_element(),
-                        |item| render_item(item, &view, reacting.as_ref()),
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .flex()
+                    .flex_col()
+                    // Clicking the conversation closes the emoji picker; the
+                    // quick reactions close themselves.
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|this, _, _, cx| {
+                            if this.picking_emoji {
+                                this.picking_emoji = false;
+                                cx.notify();
+                            }
+                        }),
                     )
-                })
-                .flex_1()
-                .px(px(56.0))
-                .py_3(),
+                    .child(
+                        list(self.messages.clone(), move |index, _, _| {
+                            items.get(index).map_or_else(
+                                || div().into_any_element(),
+                                |item| render_item(item, &view, reacting.as_ref()),
+                            )
+                        })
+                        .flex_1()
+                        .px(px(56.0))
+                        .py_3(),
+                    ),
             )
             .child(self.composer(cx))
             .into_any_element()

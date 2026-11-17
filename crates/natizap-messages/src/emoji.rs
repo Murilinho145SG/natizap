@@ -29,8 +29,7 @@ pub(crate) fn picker(
         .content_start()
         .gap_0p5()
         .p_2()
-        // A fixed height: a scroll container sized only by a maximum can
-        // collapse to nothing, which hid the picker in maximized windows.
+        // A fixed size keeps the floating panel steady while it scrolls.
         .h(px(220.0))
         .flex_none()
         .rounded_xl()
