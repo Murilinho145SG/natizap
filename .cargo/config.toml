@@ -1,0 +1,7 @@
+[env]
+# ffmpeg-sys-next builds FFmpeg with `-march=native -mtune=native` unless
+# told otherwise: a release built that way crashes on any CPU older than the
+# build machine's, and MSVC rejects the flags outright. Empty omits them, so
+# FFmpeg targets the baseline and picks faster code paths at run time.
+FFMPEG_MARCH = ""
+FFMPEG_MTUNE = ""
