@@ -1,4 +1,5 @@
 # Builds the .deb, .rpm and Arch packages from a release build:
+#   echo deb > target/install-kind
 #   NATIZAP_VERSION=0.1.0 nfpm package -f packaging/linux/nfpm.yaml -p deb
 # Paths are relative to the repository root, where nfpm runs.
 name: natizap
@@ -28,9 +29,13 @@ contents:
     dst: /usr/share/icons/hicolor/512x512/apps/natizap.png
   - src: LICENSE
     dst: /usr/share/licenses/natizap/LICENSE
+  # Tells the in-app updater (natizap-update) which package manager installs
+  # the next version. The release workflow writes the package's kind here
+  # before building each one: contents set under `overrides` would replace
+  # this whole list, not add to it.
+  - src: target/install-kind
+    dst: /usr/lib/natizap/install-kind
 
-# Each package tells the in-app updater which package manager installs the
-# next version (natizap-update reads it).
 overrides:
   deb:
     depends:
@@ -40,9 +45,6 @@ overrides:
       - libxcb1
       - libvulkan1
       - libwayland-client0
-    contents:
-      - src: packaging/linux/install-kind/deb
-        dst: /usr/lib/natizap/install-kind
   rpm:
     depends:
       - alsa-lib
@@ -51,9 +53,6 @@ overrides:
       - libxcb
       - vulkan-loader
       - libwayland-client
-    contents:
-      - src: packaging/linux/install-kind/rpm
-        dst: /usr/lib/natizap/install-kind
   archlinux:
     depends:
       - alsa-lib
@@ -61,9 +60,6 @@ overrides:
       - libxcb
       - vulkan-icd-loader
       - wayland
-    contents:
-      - src: packaging/linux/install-kind/pacman
-        dst: /usr/lib/natizap/install-kind
 
 rpm:
   group: Applications/Internet

@@ -64,8 +64,16 @@ jobs:
         run: |
           version="$NATIZAP_VERSION"
           mkdir -p dist
-          for packager in deb rpm archlinux; do
-            nfpm package -f packaging/linux/nfpm.yaml -p "$packager" -t dist/
+          for packager in deb:deb rpm:rpm archlinux:pacman; do
+            echo "${packager#*:}" > target/install-kind
+            nfpm package -f packaging/linux/nfpm.yaml -p "${packager%%:*}" -t dist/
+          done
+          # A package that lost the binary is a few kilobytes.
+          for package in dist/*.deb dist/*.rpm dist/*.pkg.tar.zst; do
+            if [ "$(stat -c %s "$package")" -lt 1000000 ]; then
+              echo "$package is too small to hold natizap" >&2
+              exit 1
+            fi
           done
 
           # AppImage: the binary, its desktop entry and icon.
