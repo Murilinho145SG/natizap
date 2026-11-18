@@ -5,8 +5,8 @@ use std::sync::Arc;
 use gpui::prelude::*;
 use gpui::{Context, Entity, SharedString};
 use natizap_contacts::{
-    ChatSettings, ChatSummary, ChatWanted, DisappearingChosen, MuteToggled, PersonOpened,
-    ProfileClosed, ProfilePanel, Tile,
+    ChatSettings, ChatSummary, ChatWanted, DisappearingChosen, MediaRequested, MuteToggled,
+    PersonOpened, ProfileClosed, ProfilePanel, Tile, TileOpened,
 };
 use natizap_messages::{ConversationView, OpenChat, ProfileRequested};
 use natizap_protocol::ChatId;
@@ -33,8 +33,16 @@ impl Root {
         cx: &mut Context<Self>,
     ) {
         let (protocol, pictures) = (self.protocol.clone(), self.pictures.clone());
-        let panel =
-            cx.new(|cx| ProfilePanel::new(&protocol, &pictures, chat.clone(), title, verified, cx));
+        let panel = cx.new(|cx| {
+            ProfilePanel::new(
+                &protocol,
+                &pictures,
+                chat.clone(),
+                title.clone(),
+                verified,
+                cx,
+            )
+        });
         cx.subscribe(&panel, |root, _, _: &ProfileClosed, cx| {
             root.profile = None;
             cx.notify();
@@ -50,7 +58,7 @@ impl Root {
         .detach();
         let names = Arc::clone(self.chats.read(cx).names());
         panel.update(cx, |panel, cx| panel.set_names(names, cx));
-        self.fill_profile(&panel, chat, cx);
+        self.fill_profile(&panel, chat, title, cx);
         self.profile = Some(panel);
         cx.notify();
     }
@@ -92,9 +100,15 @@ impl Root {
     }
 
     /// Gives the profile of `chat` what the other features know of it: its
-    /// media and starred messages, and its notifications and disappearing
-    /// messages, which it can change.
-    fn fill_profile(&self, panel: &Entity<ProfilePanel>, chat: &ChatId, cx: &mut Context<Self>) {
+    /// media and starred messages, which open in the conversation, and its
+    /// notifications and disappearing messages, which it can change.
+    fn fill_profile(
+        &self,
+        panel: &Entity<ProfilePanel>,
+        chat: &ChatId,
+        title: SharedString,
+        cx: &mut Context<Self>,
+    ) {
         let Some(row) = self
             .chats
             .read(cx)
@@ -111,23 +125,42 @@ impl Root {
         };
         panel.update(cx, |panel, cx| panel.set_settings(settings, cx));
 
+        let addresses = row.addresses.to_vec();
+        cx.subscribe(panel, move |root, _, _: &MediaRequested, cx| {
+            let (addresses, title) = (addresses.clone(), title.clone());
+            root.conversation.update(cx, |conversation, cx| {
+                conversation.browse_media(addresses, title, cx);
+            });
+        })
+        .detach();
+
         let reading = self.messages.read(cx).overview(row.addresses.to_vec(), cx);
-        let summarized = panel.downgrade();
-        cx.spawn(async move |_, cx| {
+        let summarized = panel.clone();
+        cx.spawn(async move |this, cx| {
             let overview = reading.await;
             let summary = ChatSummary {
                 media: overview.media,
                 tiles: overview
                     .recent
-                    .into_iter()
+                    .iter()
                     .map(|tile| Tile {
-                        image: tile.image.map(Into::into),
-                        length: tile.length,
+                        image: tile.image.clone().map(Into::into),
+                        length: tile.length.clone(),
                     })
                     .collect(),
                 starred: overview.starred,
             };
-            let _ = summarized.update(cx, |panel, cx| panel.set_summary(summary, cx));
+            summarized.update(cx, |panel, cx| panel.set_summary(summary, cx));
+            let tiles = overview.recent;
+            let _ = this.update(cx, |_, cx| {
+                cx.subscribe(&summarized, move |root, _, TileOpened(index), cx| {
+                    if let Some(tile) = tiles.get(*index) {
+                        root.conversation
+                            .update(cx, |conversation, cx| conversation.show_tile(tile, cx));
+                    }
+                })
+                .detach();
+            });
         })
         .detach();
 

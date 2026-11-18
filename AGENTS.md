@@ -66,7 +66,8 @@ Each feature crate owns its GPUI views, logic and local cache together
 share. Local data lives in the platform's per-user data directory, one
 file per owner (`session.db` for protocol keys, `chats.db` for the chat
 list, `messages.db` for messages, `notifications.conf` for notification
-settings, `media/` for downloaded attachments).
+settings, `media/` for downloaded attachments and `media/thumbs/` for the
+small copies media grids draw).
 
 Local stores are migrated, never dropped and rebuilt: WhatsApp sends the
 history only once, right after linking, so lost data cannot be synced
@@ -81,7 +82,9 @@ files play inside their bubble; both players share `natizap-playback`. `MessageL
 also emits `ForwardRequested`, which the binary answers with the chats'
 `ChatPicker`, handing the chosen chats back to `MessageLog::forward`. The
 conversation emits `ProfileRequested` from its header, which the binary
-answers by showing the contacts' `ProfilePanel` beside it. `Notifier` hears
+answers by showing the contacts' `ProfilePanel` beside it. The panel emits
+`TileOpened` and `MediaRequested`, which the binary answers with
+`ConversationView::show_tile` and `ConversationView::browse_media`. `Notifier` hears
 new messages itself; the binary tells it whether the window is focused,
 which chat `MessageLog` has open and which chats `ChatList` has muted, and
 it chimes for messages anywhere else. While the window is in the

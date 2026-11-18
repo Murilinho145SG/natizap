@@ -46,7 +46,9 @@ end-to-end encrypted; keys and history live only on your machine.
   photos and documents dropped, pasted or picked, previewed first with a
   caption for each, up to 30 at once.
 - **Profiles** of people, businesses (seal, hours, banner, links) and groups
-  (members and admins), with presence: online, last seen and typing.
+  (members and admins), with presence: online, last seen and typing, and
+  every photo, video, document and link a chat shared, by month and
+  searchable.
 - **Notifications**: system notifications while natizap is in the
   background, opening the chat when clicked, and a chime for new messages
   outside the chat on screen, with a choice of tones for chats and groups;
