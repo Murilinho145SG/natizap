@@ -124,8 +124,17 @@ jobs:
       - name: Build
         shell: pwsh
         run: |
-          $env:PATH = "$env:PATH;C:\msys64\usr\bin"
+          # MSYS2's sh first: Git for Windows' own sh is on PATH too, and its
+          # tools shadow MSVC's linker the same way.
+          $env:PATH = "C:\msys64\usr\bin;$env:PATH"
           cargo build --release --locked -p natizap
+
+      - name: Show why FFmpeg's configure failed
+        if: failure()
+        shell: bash
+        run: |
+          find target -path '*ffbuild/config.log' -exec tail -n 60 {} \;
+          where link || true
 
       - name: Package
         shell: pwsh
