@@ -3,9 +3,9 @@ use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
 use gpui::{
-    ClipboardItem, Context, Div, Entity, EventEmitter, ExternalPaths, FocusHandle, Focusable as _,
-    FontWeight, KeyDownEvent, ListAlignment, ListState, Pixels, Point, SharedString, Window,
-    anchored, deferred, div, px, rgb, svg,
+    AnyView, ClipboardItem, Context, Div, Entity, EventEmitter, ExternalPaths, FocusHandle,
+    Focusable as _, FontWeight, KeyDownEvent, ListAlignment, ListState, Pixels, Point,
+    SharedString, Window, anchored, deferred, div, px, rgb, svg,
 };
 use natizap_playback::{Recorder, Speed};
 use natizap_profiles::ProfilePictures;
@@ -32,6 +32,7 @@ mod list;
 mod message_menu;
 mod recorder;
 mod stickers;
+mod tray;
 mod viewer;
 
 use arrivals::Arrivals;
@@ -42,7 +43,7 @@ use header::header;
 pub use header::{ChatClosed, MuteRequested};
 use message_menu::MessagePopup;
 pub use stickers::StickerFavoriteToggled;
-use stickers::StickerPicking;
+use tray::Tray;
 
 /// Width of the column a community's announcements read in.
 const CENTERED_WIDTH: f32 = 720.0;
@@ -66,7 +67,8 @@ pub struct ConversationView {
     replying: Option<Replying>,
     /// The bubble whose quick reactions are open.
     reacting: Option<SharedString>,
-    picking_emoji: bool,
+    /// The emoji and stickers tray, when open, and the tab it shows.
+    tray: Tray,
     emoji_picker: Entity<EmojiPicker>,
     voices: Voices,
     /// Whether a task is redrawing the playing note.
@@ -97,7 +99,7 @@ pub struct ConversationView {
     /// A voice note being recorded.
     recorder: Option<Recorder>,
     /// The favorite stickers to pick from, as the app hands them over.
-    sticker_picker: Option<StickerPicking>,
+    sticker_picker: Option<AnyView>,
     /// The hashes of the favorite stickers.
     favorite_stickers: HashSet<String>,
     /// Files about to be sent, shown in place of the messages.
@@ -212,7 +214,7 @@ impl ConversationView {
             shown_chat: None,
             replying: None,
             reacting: None,
-            picking_emoji: false,
+            tray: Tray::default(),
             emoji_picker,
             voices: Voices::default(),
             ticking: false,
@@ -259,8 +261,7 @@ impl ConversationView {
             self.shown_chat = open;
             self.replying = None;
             self.reacting = None;
-            self.picking_emoji = false;
-            self.close_stickers();
+            self.tray.close();
             // The files and the media window were for the chat left behind.
             self.sending = None;
             self.browsing = None;
@@ -358,15 +359,9 @@ impl ConversationView {
     pub(crate) fn close_popups(&mut self, cx: &mut Context<Self>) {
         let menu_was_open = self.voices.close_speed_menu();
         let picker_was_open = self.reaction_picker.take().is_some();
-        if self.reacting.is_some()
-            || self.picking_emoji
-            || self.picking_stickers()
-            || menu_was_open
-            || picker_was_open
-        {
+        if self.reacting.is_some() || self.tray.is_open() || menu_was_open || picker_was_open {
             self.reacting = None;
-            self.picking_emoji = false;
-            self.close_stickers();
+            self.tray.close();
             cx.notify();
         }
     }
@@ -397,6 +392,8 @@ impl ConversationView {
                             .on_mouse_down_out(move |_, _, cx| {
                                 let _ = view.update(cx, ConversationView::close_popups);
                             })
+                            .h(px(crate::emoji::HEIGHT))
+                            .map(tray::frame)
                             .child(self.reaction_emojis.clone()),
                     ),
             )
@@ -417,11 +414,7 @@ impl ConversationView {
             self.close_message_popup(cx);
         } else if self.voices.close_speed_menu() {
             cx.notify();
-        } else if self.reacting.is_some()
-            || self.picking_emoji
-            || self.picking_stickers()
-            || self.reaction_picker.is_some()
-        {
+        } else if self.reacting.is_some() || self.tray.is_open() || self.reaction_picker.is_some() {
             self.close_popups(cx);
         } else if self.replying.take().is_some() {
             cx.notify();

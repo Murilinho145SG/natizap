@@ -1,5 +1,5 @@
-//! The composer's emoji picker: every emoji by category, with a sidebar to
-//! jump between categories.
+//! The emoji picker: every emoji by category, with a sidebar to jump
+//! between categories. The composer's tray and the reaction popover show it.
 
 use std::ops::Range;
 use std::sync::LazyLock;
@@ -11,7 +11,7 @@ use gpui::{
     rgb, uniform_list,
 };
 use natizap_ui::Tooltip;
-use natizap_ui::theme::{MUTED, PANEL, RAISED, glass};
+use natizap_ui::theme::{MUTED, RAISED};
 
 /// The emoji people reach for most, in roughly that order: the first
 /// category, as on the phone.
@@ -27,7 +27,11 @@ const COLUMNS: u16 = 8;
 const CELL: f32 = 38.0;
 const SIDEBAR: f32 = 44.0;
 const PADDING: f32 = 8.0;
-const HEIGHT: f32 = 320.0;
+/// Width of the picker, sized from the grid so no column of empty space is
+/// left over.
+pub(crate) const WIDTH: f32 = SIDEBAR + COLUMNS as f32 * CELL + 2.0 * PADDING;
+/// Height the picker is given where it stands alone.
+pub(crate) const HEIGHT: f32 = 320.0;
 
 /// One category: its name, the emoji standing for it in the sidebar, and
 /// its emoji.
@@ -214,16 +218,11 @@ impl Render for EmojiPicker {
         .track_scroll(&self.scroll)
         .h_full()
         .w(px(f32::from(COLUMNS) * CELL));
+        // Unframed: the tray and the reaction popover each frame it.
         div()
             .id("emoji-picker")
-            // Sized from the grid, so no column of empty space is left over.
-            .w(px(SIDEBAR + f32::from(COLUMNS) * CELL + 2.0 * PADDING))
-            .h(px(HEIGHT))
+            .size_full()
             .flex()
-            .rounded_xl()
-            .overflow_hidden()
-            .bg(rgb(PANEL))
-            .map(glass)
             // Scrolling moves the current category in the sidebar.
             .on_scroll(cx.listener(|_, _, _, cx| cx.notify()))
             .child(sidebar)

@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use gpui::prelude::*;
 use gpui::{
     ClickEvent, Context, Div, Focusable as _, MouseButton, PathPromptOptions, SharedString,
-    Stateful, Window, deferred, div, px, relative, rgb, svg,
+    Stateful, Window, div, px, rgb, svg,
 };
 use natizap_protocol::ContentKind;
 use natizap_ui::motion::{fade_in, rise_in};
@@ -216,24 +216,7 @@ impl ConversationView {
             .bg(rgb(PANEL))
             .border_t_1()
             .border_color(rgb(LINE))
-            .children(self.sticker_popover())
-            .when(self.picking_emoji, |composer| {
-                // Floats above the messages instead of growing the composer,
-                // which pushed the composer out of a tall message list.
-                composer.child(deferred(
-                    div()
-                        .absolute()
-                        .bottom(relative(1.0))
-                        .left_4()
-                        .mb_2()
-                        .occlude()
-                        .child(rise_in(
-                            "emoji-picker-in",
-                            div().child(self.emoji_picker.clone()),
-                            8.0,
-                        )),
-                ))
-            })
+            .children(self.tray_popover(cx))
             .children(self.reply_bar(cx).map(|bar| {
                 let id = self
                     .replying
@@ -273,26 +256,17 @@ impl ConversationView {
                     .variant(ButtonVariant::Ghost)
                     .size(ButtonSize::Large)
                     .round()
-                    .selected(self.picking_emoji)
-                    .tooltip("Emoji")
+                    .selected(self.tray.is_open())
+                    .tooltip(if self.sticker_picker.is_some() {
+                        "Emoji and stickers"
+                    } else {
+                        "Emoji"
+                    })
                     .on_click(cx.listener(|this, _, _, cx| {
-                        this.picking_emoji = !this.picking_emoji;
-                        this.close_stickers();
+                        this.tray.toggle();
                         cx.notify();
                     })),
             )
-            .when(self.sticker_picker.is_some(), |bar| {
-                bar.child(
-                    Button::new("stickers")
-                        .icon(Icon::Sticker)
-                        .variant(ButtonVariant::Ghost)
-                        .size(ButtonSize::Large)
-                        .round()
-                        .selected(self.picking_stickers())
-                        .tooltip("Stickers")
-                        .on_click(cx.listener(|this, _, _, cx| this.toggle_sticker_picker(cx))),
-                )
-            })
             .child(
                 div()
                     .flex_1()

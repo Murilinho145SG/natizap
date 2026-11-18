@@ -1,28 +1,20 @@
-//! Stickers in the conversation: the picker the app hands it, floating over
-//! the composer, and keeping the stickers people send among favorites.
+//! Stickers in the conversation: the picker the app hands it, shown in the
+//! composer's tray, and keeping the stickers people send among favorites.
 
 use std::collections::HashSet;
 use std::path::PathBuf;
 
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, AnyView, Context, ObjectFit, SharedString, WeakEntity, Window, deferred, div, img,
-    px, relative, rgb, svg,
+    AnyElement, AnyView, Context, ObjectFit, SharedString, WeakEntity, Window, div, img, px, rgb,
+    svg,
 };
 use natizap_protocol::{ContentKind, Sticker};
-use natizap_ui::motion::rise_in;
 use natizap_ui::theme::MUTED;
 use natizap_ui::{Button, ButtonVariant, Icon, Menu, dialog};
 
 use super::ConversationView;
 use crate::items::{Bubble, MediaView};
-
-/// The sticker picker the app handed over, and whether it is open.
-#[derive(Debug)]
-pub(super) struct StickerPicking {
-    picker: AnyView,
-    open: bool,
-}
 
 /// Side of a sticker shown large.
 const LARGE: f32 = 280.0;
@@ -39,67 +31,16 @@ pub struct StickerFavoriteToggled {
 }
 
 impl ConversationView {
-    /// The favorite stickers to pick from, shown from the composer's
-    /// sticker button.
+    /// The favorite stickers to pick from, shown in the composer's tray
+    /// beside the emoji.
     pub fn set_sticker_picker(&mut self, picker: AnyView) {
-        self.sticker_picker = Some(StickerPicking {
-            picker,
-            open: false,
-        });
-    }
-
-    /// Closes the sticker picker, as after a sticker was picked.
-    pub fn close_sticker_picker(&mut self, cx: &mut Context<Self>) {
-        if self.picking_stickers() {
-            self.close_stickers();
-            cx.notify();
-        }
-    }
-
-    /// Whether the sticker picker is open.
-    pub(super) fn picking_stickers(&self) -> bool {
-        self.sticker_picker
-            .as_ref()
-            .is_some_and(|picking| picking.open)
-    }
-
-    pub(super) fn close_stickers(&mut self) {
-        if let Some(picking) = &mut self.sticker_picker {
-            picking.open = false;
-        }
+        self.sticker_picker = Some(picker);
     }
 
     /// The hashes of the favorite stickers, to offer adding or removing.
     pub fn set_favorite_stickers(&mut self, hashes: HashSet<String>, cx: &mut Context<Self>) {
         self.favorite_stickers = hashes;
         cx.notify();
-    }
-
-    pub(super) fn toggle_sticker_picker(&mut self, cx: &mut Context<Self>) {
-        if let Some(picking) = &mut self.sticker_picker {
-            picking.open = !picking.open;
-        }
-        self.picking_emoji = false;
-        cx.notify();
-    }
-
-    /// The sticker picker, floating above the composer while open.
-    pub(super) fn sticker_popover(&self) -> Option<impl IntoElement + use<>> {
-        let picker = self
-            .sticker_picker
-            .as_ref()
-            .filter(|picking| picking.open)?
-            .picker
-            .clone();
-        Some(deferred(
-            div()
-                .absolute()
-                .bottom(relative(1.0))
-                .left_4()
-                .mb_2()
-                .occlude()
-                .child(rise_in("sticker-picker-in", div().child(picker), 8.0)),
-        ))
     }
 
     /// Keeps the sticker `media` among favorites, or takes it out: shown at

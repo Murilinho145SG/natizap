@@ -70,13 +70,13 @@ impl ConversationView {
                     cx.notify();
                 }
             }))
-            // Clicking the conversation closes the emoji picker; the
-            // quick reactions close themselves.
+            // Clicking the conversation closes the emoji and stickers tray;
+            // the quick reactions close themselves.
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(|this, _, _, cx| {
-                    if this.picking_emoji {
-                        this.picking_emoji = false;
+                    if this.tray.is_open() {
+                        this.tray.close();
                         cx.notify();
                     }
                 }),

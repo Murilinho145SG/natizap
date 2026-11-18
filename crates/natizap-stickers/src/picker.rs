@@ -1,20 +1,18 @@
-//! The favorite stickers to pick one to send, in a grid that floats over
-//! the conversation from the composer.
+//! The favorite stickers to pick one to send, in a grid the conversation
+//! shows in its composer's tray, beside the emoji.
 
 use gpui::prelude::*;
 use gpui::{
     Context, Div, Entity, EventEmitter, FontWeight, ObjectFit, SharedString, Stateful, Window, div,
     img, px, rgb, svg,
 };
-use natizap_ui::theme::{DEEP, MUTED, PANEL, RAISED, TEXT, glass};
+use natizap_ui::theme::{DEEP, MUTED, RAISED, TEXT};
 use natizap_ui::{Icon, Tooltip};
 
 use crate::shelf::{Favorite, StickerShelf};
 
-/// Stickers in a row of the grid.
-const COLUMNS: usize = 5;
-/// Side of a sticker in the grid.
-const CELL: f32 = 68.0;
+/// Side of a sticker in the grid: five to a row of the tray.
+const CELL: f32 = 62.0;
 /// Space between stickers.
 const GAP: f32 = 6.0;
 
@@ -41,17 +39,13 @@ impl StickerPicker {
 impl Render for StickerPicker {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let favorites: Vec<Favorite> = self.shelf.read(cx).favorites().cloned().collect();
-        #[expect(clippy::cast_precision_loss, reason = "a handful of columns")]
-        let width = COLUMNS as f32 * CELL + (COLUMNS - 1) as f32 * GAP + 24.0;
+        // Unframed: it fills the tray it is shown in.
         div()
             .id("sticker-picker")
-            .w(px(width))
-            .max_h(px(360.0))
+            .size_full()
             .flex()
             .flex_col()
-            .rounded_xl()
-            .bg(rgb(PANEL))
-            .map(glass)
+            .overflow_y_scroll()
             .child(
                 div()
                     .px_3()
@@ -60,7 +54,7 @@ impl Render for StickerPicker {
                     .text_size(px(13.0))
                     .font_weight(FontWeight::SEMIBOLD)
                     .text_color(rgb(MUTED))
-                    .child("Favorite stickers"),
+                    .child("Favorites"),
             )
             .child(if favorites.is_empty() {
                 div()
@@ -75,13 +69,11 @@ impl Render for StickerPicker {
                     .into_any_element()
             } else {
                 div()
-                    .id("sticker-grid")
                     .px_3()
                     .pb_3()
                     .flex()
                     .flex_wrap()
                     .gap(px(GAP))
-                    .overflow_y_scroll()
                     .children(
                         favorites
                             .into_iter()

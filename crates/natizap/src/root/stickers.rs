@@ -23,7 +23,9 @@ impl Root {
             conversation.set_sticker_picker(picker.clone().into());
         });
 
-        let (sending, closing, files) = (messages.clone(), conversation.clone(), shelf.clone());
+        // The tray stays open after a sticker is sent, as on the phone, to
+        // send another.
+        let (sending, files) = (messages.clone(), shelf.clone());
         cx.subscribe(&picker, move |_, _, StickerPicked(favorite), cx| {
             let favorite = favorite.clone();
             // A sticker still downloading shows from where it will land.
@@ -33,7 +35,6 @@ impl Root {
             sending.update(cx, |log, cx| {
                 log.send_sticker(favorite.sticker, Some(file), cx);
             });
-            closing.update(cx, ConversationView::close_sticker_picker);
         })
         .detach();
 
