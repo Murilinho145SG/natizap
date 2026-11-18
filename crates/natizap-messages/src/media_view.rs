@@ -224,23 +224,15 @@ fn pressable(media: Stateful<Div>) -> Stateful<Div> {
         .active(|media| media.opacity(0.75))
 }
 
-/// A sticker: a click offers its actions, keeping it among favorites first
-/// of all, as on the phone. One whose file is not here yet downloads
-/// instead.
+/// A sticker: a click shows it large, downloading it first if it is not
+/// here yet, as on the phone.
 fn sticker(media: &MediaView, view: &WeakEntity<ConversationView>) -> AnyElement {
     let (media, view) = (media.clone(), view.clone());
     picture(&media)
         .id("media")
-        .cursor_pointer()
-        .on_click(move |event, _, cx| {
-            let _ = view.update(cx, |view, cx| {
-                if on_disk(&media) {
-                    let id = SharedString::from(media.fetch.message_id.clone());
-                    view.open_message_menu(id, event.position(), cx);
-                } else {
-                    view.download_media(&media, cx);
-                }
-            });
+        .map(pressable)
+        .on_click(move |_, _, cx| {
+            let _ = view.update(cx, |view, cx| view.view_picture(&media, cx));
         })
         .into_any_element()
 }

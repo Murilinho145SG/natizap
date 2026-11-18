@@ -2,7 +2,7 @@
 //! media, links and docs they can be opened from.
 
 use gpui::prelude::*;
-use gpui::{Context, ImageSource, ObjectFit, SharedString, Window, img, px};
+use gpui::{AnyElement, Context, ImageSource, ObjectFit, SharedString, Window, img, px};
 use natizap_protocol::{ChatId, ContentKind};
 use natizap_ui::dialog;
 
@@ -24,13 +24,6 @@ impl ConversationView {
         }
         self.viewing = Some(media.clone());
         cx.notify();
-    }
-
-    /// Downloads `media`'s file without showing it, as a tap on a sticker
-    /// that is not here yet does.
-    pub(crate) fn download_media(&mut self, media: &MediaView, cx: &mut Context<Self>) {
-        let fetch = media.fetch.clone();
-        self.log.update(cx, |log, cx| log.download(fetch, cx));
     }
 
     /// Opens a photo or video from a chat's profile.
@@ -84,8 +77,11 @@ impl ConversationView {
         &self,
         window: &Window,
         cx: &mut Context<Self>,
-    ) -> Option<impl IntoElement> {
+    ) -> Option<AnyElement> {
         let media = self.viewing.as_ref()?;
+        if media.fetch.kind == ContentKind::Sticker {
+            return Some(self.sticker_viewer(media, window, cx));
+        }
         // A photo downloaded since it opened replaces its preview.
         let file = media
             .file
@@ -102,19 +98,22 @@ impl ConversationView {
         let scale = (f32::from(viewport.width) * COVERAGE / width)
             .min(f32::from(viewport.height) * COVERAGE / height);
         let view = cx.weak_entity();
-        Some(dialog(
-            window,
-            img(source)
-                .w(px(width * scale))
-                .h(px(height * scale))
-                .rounded(px(8.0))
-                .object_fit(ObjectFit::Contain),
-            move |_, cx| {
-                let _ = view.update(cx, |this, cx| {
-                    this.viewing = None;
-                    cx.notify();
-                });
-            },
-        ))
+        Some(
+            dialog(
+                window,
+                img(source)
+                    .w(px(width * scale))
+                    .h(px(height * scale))
+                    .rounded(px(8.0))
+                    .object_fit(ObjectFit::Contain),
+                move |_, cx| {
+                    let _ = view.update(cx, |this, cx| {
+                        this.viewing = None;
+                        cx.notify();
+                    });
+                },
+            )
+            .into_any_element(),
+        )
     }
 }
