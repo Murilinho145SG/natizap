@@ -11,4 +11,6 @@ mod sections;
 
 pub use members::PersonOpened;
 pub use panel::{ChatWanted, ProfileClosed, ProfilePanel};
-pub use sections::{ChatSettings, ChatSummary, DisappearingChosen, MuteToggled, Tile};
+pub use sections::{
+    ChatSettings, ChatSummary, DisappearingChosen, MediaRequested, MuteToggled, Tile, TileOpened,
+};

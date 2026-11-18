@@ -3,8 +3,8 @@
 
 use gpui::prelude::*;
 use gpui::{
-    Context, Div, ImageSource, MouseButton, ObjectFit, Pixels, Point, SharedString, div, img, px,
-    rgb, rgba, svg,
+    Context, Div, ImageSource, MouseButton, ObjectFit, Pixels, Point, SharedString, Transformation,
+    div, img, px, rgb, rgba, svg,
 };
 use natizap_protocol::Disappearing;
 use natizap_ui::theme::{DEEP, MUTED, RAISED, SCRIM, TEXT};
@@ -68,6 +68,15 @@ pub struct MuteToggled(pub bool);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DisappearingChosen(pub Option<Disappearing>);
 
+/// The user clicked a recent photo or video: the index of its [`Tile`] in
+/// the [`ChatSummary`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TileOpened(pub usize);
+
+/// The user asked to see all of the chat's media, links and documents.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MediaRequested;
+
 impl ProfilePanel {
     /// Media, starred messages, notifications, disappearing messages and
     /// encryption, as on the phone; empty until the app says what it knows.
@@ -75,15 +84,36 @@ impl ProfilePanel {
         let mut sections = div().w_full().flex().flex_col();
         if let Some(summary) = &self.summary {
             sections = sections
-                .child(row(Icon::Camera, "Media, links and docs").child(count(summary.media)))
+                .child(
+                    row(Icon::Camera, "Media, links and docs")
+                        .id("all-media")
+                        .cursor_pointer()
+                        .hover(|row| row.bg(rgb(RAISED)))
+                        .on_click(cx.listener(|_, _, _, cx| cx.emit(MediaRequested)))
+                        .child(count(summary.media))
+                        .child(
+                            svg()
+                                .path(Icon::ChevronDown.path())
+                                .size(px(14.0))
+                                .flex_none()
+                                .text_color(rgb(MUTED))
+                                .with_transformation(Transformation::rotate(gpui::radians(
+                                    -std::f32::consts::FRAC_PI_2,
+                                ))),
+                        ),
+                )
                 .when(!summary.tiles.is_empty(), |sections| {
-                    sections.child(
-                        div()
-                            .flex()
-                            .gap_2()
-                            .pb_3()
-                            .children(summary.tiles.iter().map(tile)),
-                    )
+                    sections.child(div().flex().gap_2().pb_3().children(
+                        summary.tiles.iter().enumerate().map(|(index, shown)| {
+                            tile(shown)
+                                .id(("media-tile", index))
+                                .cursor_pointer()
+                                .hover(|tile| tile.opacity(0.85))
+                                .on_click(cx.listener(move |_, _, _, cx| {
+                                    cx.emit(TileOpened(index));
+                                }))
+                        }),
+                    ))
                 })
                 .child(div().w_full().py_2().child(separator()))
                 .child(row(Icon::Star, "Starred messages").child(count(summary.starred)));
