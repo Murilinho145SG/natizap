@@ -9,7 +9,7 @@
 
 <p align="center">
   <a href="LICENSE"><img alt="License: AGPL-3.0-or-later" src="https://img.shields.io/badge/license-AGPL--3.0--or--later-ff7a1a"></a>
-  <img alt="Platform: Linux" src="https://img.shields.io/badge/platform-Linux-1a1d22">
+  <img alt="Platforms: Linux and Windows" src="https://img.shields.io/badge/platforms-Linux%20%7C%20Windows-1a1d22">
   <img alt="Status: early development" src="https://img.shields.io/badge/status-early%20development-1a1d22">
 </p>
 
@@ -38,12 +38,14 @@ end-to-end encrypted; keys and history live only on your machine.
 - **Conversations**: WhatsApp formatting, clickable links, email addresses,
   phone numbers and Brazilian tax IDs, code blocks with syntax colors,
   replies that jump to the quoted message, reactions, forwarding, starring,
-  pinning and deleting, text selection and copying.
+  pinning and deleting, text selection and copying, and missed calls marked
+  in their chat.
 - **Media**: photos with a full-size viewer, videos in a built-in player,
   voice notes with their waveform and playback speeds, documents with their
-  first page, stickers, shared contacts and polls.
-- **Stickers**: favorites synced with the phone, sent from a picker, and
-  any sticker in a chat added to them with a click.
+  first page, stickers, shared contacts and polls, voted on with a click and
+  tallied as votes arrive.
+- **Stickers**: favorites synced with the phone, sent from the same tray as
+  the emoji, and any sticker in a chat added to them with a click.
 - **Sending**: text, recorded voice notes, contacts and polls, and files,
   photos and documents dropped, pasted or picked, previewed first with a
   caption for each, up to 30 at once.
@@ -58,8 +60,7 @@ end-to-end encrypted; keys and history live only on your machine.
 
 ## Not yet
 
-Calls, status, channels, poll votes and search inside a chat
-are on the roadmap. natizap targets full parity with the phone apps, calls
+Calls, status, channels and search inside a chat are on the roadmap. natizap targets full parity with the phone apps, calls
 included.
 
 ## Caveat
@@ -68,6 +69,27 @@ natizap is an unofficial client built on a reverse-engineered protocol. It is
 not affiliated with WhatsApp or Meta. WhatsApp may change the protocol at any
 time or restrict accounts that use unofficial clients: use it at your own
 risk.
+
+## Installing
+
+Every [release](https://github.com/Murilinho145SG/natizap/releases) has:
+
+| System                     | File                                  |
+| -------------------------- | ------------------------------------- |
+| Debian, Ubuntu, Mint       | `natizap_<version>-1_amd64.deb`        |
+| Fedora, openSUSE, RHEL     | `natizap-<version>-1.x86_64.rpm`       |
+| Arch, Manjaro              | `natizap-<version>-1-x86_64.pkg.tar.zst` |
+| Any Linux                  | `natizap-<version>-x86_64.AppImage`    |
+| Any Linux, unpacked by hand | `natizap-<version>-x86_64-linux.tar.gz` |
+| Windows 10 and 11          | `natizap-<version>-x86_64-setup.exe`   |
+| Windows, without installing | `natizap-<version>-x86_64-windows.zip` |
+
+natizap keeps itself up to date: when a new release is out it downloads it
+in the background, checks it against the release's `SHA256SUMS`, and offers
+to restart into it from the title bar. Packages are installed through your
+package manager (it asks for your password); the AppImage and the Windows
+installer update in place. The archive and zip only tell you a release is
+out.
 
 ## Building
 
