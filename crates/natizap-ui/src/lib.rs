@@ -16,7 +16,9 @@ mod frame;
 mod gallery;
 mod input;
 mod input_element;
+mod input_handler;
 pub mod motion;
+mod text_boundary;
 pub mod theme;
 
 pub use assets::{Assets, Icon, load_fonts};
