@@ -172,22 +172,27 @@ impl MessageLog {
         let mut message = outgoing_message(&chat, &local_id, sent_at, None);
         message.kind = ContentKind::Sticker;
         message.media = Some(sticker.media.clone());
-        message.media_file = file;
+        message.media_file.clone_from(&file);
         self.send_input(Input::from(MessageChange::Sending(message)));
         cx.emit(MessageSent {
             chat: chat.clone(),
             text: ContentKind::Sticker.label().to_owned(),
             sent_at,
         });
-        let sending = self.protocol.read(cx).send_sticker(&chat, sticker, cx);
+        let sending = self
+            .protocol
+            .read(cx)
+            .send_sticker(&chat, sticker, file, cx);
         let inputs = self.inputs.clone();
         cx.background_spawn(async move {
             let change = match sending.await {
+                // Gone up again when its link had expired: it now lives
+                // somewhere else.
                 Ok(sent) => MessageChange::Accepted {
                     chat,
                     local_id,
                     id: sent.id,
-                    media: None,
+                    media: Some(sent.media),
                 },
                 Err(error) => {
                     tracing::warn!(%error, "sticker not sent");

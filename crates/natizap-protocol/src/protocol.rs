@@ -272,21 +272,21 @@ impl Protocol {
         })
     }
 
-    /// Sends `sticker` to `chat`.
+    /// Sends `sticker` to `chat`. A sticker whose link expired goes up
+    /// again from `file`, so the answer says where it now lives.
     pub fn send_sticker(
         &self,
         chat: &ChatId,
         sticker: Sticker,
+        file: Option<PathBuf>,
         cx: &App,
-    ) -> Task<Result<Sent, ActionError>> {
+    ) -> Task<Result<SentMedia, ActionError>> {
         let to = match actions::jid(chat) {
             Ok(to) => to,
             Err(error) => return Task::ready(Err(error)),
         };
-        self.connection.run(cx, move |client| async move {
-            let id = stickers::send(client, to, sticker).await?;
-            Ok(Sent { id })
-        })
+        self.connection
+            .run(cx, move |client| stickers::send(client, to, sticker, file))
     }
 
     /// Mutes `chat` until unmuted, or unmutes it, on all of this account's

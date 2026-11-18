@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use whatsapp_rust::download::DownloadParams;
 use whatsapp_rust::prelude::{Client, wa};
@@ -67,6 +68,18 @@ impl HdThumbnail {
 }
 
 impl Media {
+    /// Whether the link to the file on WhatsApp's servers has expired. The
+    /// file cannot be downloaded through it any more, and every try makes
+    /// the client ask for a new media connection, which WhatsApp
+    /// rate-limits for the whole account.
+    #[must_use]
+    pub fn link_expired(&self) -> bool {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |since| since.as_secs());
+        expires_at(&self.direct_path).is_some_and(|at| at <= now)
+    }
+
     /// The sharper preview as an attachment of its own, to hand to
     /// [`crate::Protocol::download`] with the video's kind.
     #[must_use]
@@ -163,4 +176,38 @@ pub(crate) async fn download(
         .download(&params)
         .await
         .map_err(|error| ActionError::Rejected(error.to_string()))
+}
+
+/// When the link `direct_path` stops working, in seconds since the epoch:
+/// its `oe` parameter, in hexadecimal. A link without one does not say.
+fn expires_at(direct_path: &str) -> Option<u64> {
+    let (_, query) = direct_path.split_once('?')?;
+    let hex = query.split('&').find_map(|pair| pair.strip_prefix("oe="))?;
+    u64::from_str_radix(hex, 16).ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Media, expires_at};
+
+    #[test]
+    fn reads_when_a_link_expires() {
+        assert_eq!(
+            expires_at("/v/t62.15575-24/1_2_n.enc?ccb=11-4&oh=01_Q5&oe=6A1B2C3D&_nc_sid=5e03e0"),
+            Some(0x6A1B_2C3D)
+        );
+        assert_eq!(expires_at("/v/t62.15575-24/1_2_n.enc?ccb=11-4"), None);
+        assert_eq!(expires_at("/mms/image/abc"), None);
+    }
+
+    #[test]
+    fn tells_expired_links_from_live_ones() {
+        let link = |oe: &str| Media {
+            direct_path: format!("/v/t62.15575-24/1.enc?ccb=11-4&oe={oe}"),
+            ..Media::default()
+        };
+        assert!(link("5F000000").link_expired());
+        assert!(!link("FFFFFFFF").link_expired());
+        assert!(!Media::default().link_expired());
+    }
 }

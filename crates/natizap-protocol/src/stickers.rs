@@ -8,6 +8,7 @@
 //! of the collection untouched.
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use base64::Engine as _;
@@ -27,7 +28,7 @@ use whatsapp_rust::wacore_binary::NodeContent;
 use whatsapp_rust::waproto::whatsapp as wa;
 
 use crate::actions::now_ms;
-use crate::outgoing::media_message;
+use crate::outgoing::{self, Outgoing, SentMedia, media_message};
 use crate::{ActionError, ContentKind, Media};
 
 /// The app state collection favorite stickers live in.
@@ -138,14 +139,47 @@ pub(crate) async fn send(
     client: Arc<Client>,
     to: whatsapp_rust::Jid,
     sticker: Sticker,
-) -> Result<String, ActionError> {
-    let message = media_message(ContentKind::Sticker, &sticker.media, None, None);
-    client
-        .send_message(to, message)
+    file: Option<PathBuf>,
+) -> Result<SentMedia, ActionError> {
+    if !sticker.media.link_expired() {
+        let message = media_message(ContentKind::Sticker, &sticker.media, None, None);
+        return client
+            .send_message(to, message)
+            .await
+            .map(|sent| SentMedia {
+                id: sent.message_id,
+                media: sticker.media,
+            })
+            .map_err(|error| ActionError::Rejected(error.to_string()));
+    }
+    // Favorites kept for long point at files WhatsApp's servers no longer
+    // hold: the phone shows them from its own copy, anyone else could not
+    // download them. They go up again from this computer's copy.
+    let file = file.ok_or_else(|| ActionError::Rejected(GONE.to_owned()))?;
+    let bytes = tokio::fs::read(&file)
         .await
-        .map(|sent| sent.message_id)
-        .map_err(|error| ActionError::Rejected(error.to_string()))
+        .map_err(|_| ActionError::Rejected(GONE.to_owned()))?;
+    let outgoing = Outgoing {
+        kind: ContentKind::Sticker,
+        bytes,
+        mime: sticker
+            .media
+            .mime
+            .clone()
+            .unwrap_or_else(|| "image/webp".to_owned()),
+        file_name: None,
+        caption: None,
+        thumbnail: None,
+        width: sticker.media.width,
+        height: sticker.media.height,
+        seconds: None,
+        waveform: None,
+    };
+    outgoing::send(client, to, outgoing, None).await
 }
+
+/// Why a sticker whose link expired cannot be sent without its file.
+const GONE: &str = "the sticker is no longer on WhatsApp's servers and its file is not here";
 
 /// One page of the collection: its snapshot and the patches after it on
 /// the first page, the patches after `version` on later ones.
