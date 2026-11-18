@@ -80,6 +80,8 @@ icons! {
     Link => "link.svg",
     /// End-to-end encryption.
     Lock => "lock.svg",
+    /// natizap's mark: an "n" that is also a speech bubble.
+    Logo => "logo.svg",
     /// Maximize the window.
     Maximize => "maximize.svg",
     /// A voice message.

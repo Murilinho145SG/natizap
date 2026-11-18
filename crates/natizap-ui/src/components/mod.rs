@@ -10,5 +10,6 @@ pub(crate) mod menu;
 pub(crate) mod progress;
 pub(crate) mod separator;
 pub(crate) mod skeleton;
+pub(crate) mod splash;
 pub(crate) mod switch;
 pub(crate) mod tooltip;
