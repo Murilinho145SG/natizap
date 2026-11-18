@@ -10,6 +10,7 @@ use gpui::{
 
 use crate::Icon;
 use crate::components::separator::separator;
+use crate::motion::rise_in;
 use crate::theme::{ALERT, MUTED, PANEL, RAISED, TEXT, glass};
 
 type Handler = Rc<dyn Fn(&mut Window, &mut App)>;
@@ -112,7 +113,7 @@ impl Menu {
             anchored()
                 .position(position)
                 .snap_to_window_with_margin(px(8.0))
-                .child(self),
+                .child(rise_in("menu-in", div().child(self), 6.0)),
         )
         .with_priority(1)
     }

@@ -196,6 +196,9 @@ impl RenderOnce for Button {
                 }
                 None => button.hover(|style| style.opacity(0.9)),
             })
+            // A press shows at once, so a click never seems ignored while
+            // what it started is under way.
+            .active(|style| style.opacity(0.7))
             .when_some(self.tooltip, |button, text| {
                 button.tooltip(Tooltip::text(text))
             })

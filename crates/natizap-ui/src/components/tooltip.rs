@@ -3,6 +3,7 @@
 use gpui::prelude::*;
 use gpui::{AnyView, App, Context, SharedString, Window, div, px, rgb};
 
+use crate::motion::fade_in;
 use crate::theme::{PANEL, TEXT, glass};
 
 /// The floating label itself; build one with [`Tooltip::text`].
@@ -21,14 +22,17 @@ impl Tooltip {
 
 impl Render for Tooltip {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .px_2()
-            .py_1()
-            .rounded_md()
-            .bg(rgb(PANEL))
-            .map(glass)
-            .text_size(px(12.0))
-            .text_color(rgb(TEXT))
-            .child(self.text.clone())
+        fade_in(
+            "tooltip-in",
+            div()
+                .px_2()
+                .py_1()
+                .rounded_md()
+                .bg(rgb(PANEL))
+                .map(glass)
+                .text_size(px(12.0))
+                .text_color(rgb(TEXT))
+                .child(self.text.clone()),
+        )
     }
 }
