@@ -530,7 +530,9 @@ impl Render for ConversationView {
                     .child(messages)
                     .child(self.composer(cx))
             })
-            .child(drop_zone())
+            // Only while a drag is on: the zone animates, and an animation
+            // redraws every frame.
+            .when(cx.has_active_drag(), |pane| pane.child(drop_zone()))
             .children(self.message_popup(cx))
             .children(self.reaction_picker(cx))
             .children(self.attach_menu(cx))
