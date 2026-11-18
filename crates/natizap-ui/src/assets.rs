@@ -70,6 +70,8 @@ icons! {
     Contact => "contact.svg",
     /// Copy to the clipboard.
     Copy => "copy.svg",
+    /// Download a file the server holds, e.g. an old sticker.
+    Download => "download.svg",
     /// Pick an emoji or react.
     Emoji => "emoji.svg",
     /// A document.
