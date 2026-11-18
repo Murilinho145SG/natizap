@@ -71,7 +71,7 @@ impl Release {
         })
     }
 
-    /// The file whose name ends with `suffix`, e.g. `_amd64.deb`.
+    /// The file whose name ends with `suffix`, e.g. `_arm64.deb`.
     pub(crate) fn asset(&self, suffix: &str) -> Option<&Asset> {
         self.assets
             .iter()

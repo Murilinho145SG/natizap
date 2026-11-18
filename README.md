@@ -72,17 +72,18 @@ risk.
 
 ## Installing
 
-Every [release](https://github.com/Murilinho145SG/natizap/releases) has:
+Every [release](https://github.com/Murilinho145SG/natizap/releases) has
+builds for x86-64 (Intel and AMD) and ARM64:
 
-| System                     | File                                  |
-| -------------------------- | ------------------------------------- |
-| Debian, Ubuntu, Mint       | `natizap_<version>-1_amd64.deb`        |
-| Fedora, openSUSE, RHEL     | `natizap-<version>-1.x86_64.rpm`       |
-| Arch, Manjaro              | `natizap-<version>-1-x86_64.pkg.tar.zst` |
-| Any Linux                  | `natizap-<version>-x86_64.AppImage`    |
-| Any Linux, unpacked by hand | `natizap-<version>-x86_64-linux.tar.gz` |
-| Windows 10 and 11          | `natizap-<version>-x86_64-setup.exe`   |
-| Windows, without installing | `natizap-<version>-x86_64-windows.zip` |
+| System                      | x86-64                                   | ARM64                                     |
+| --------------------------- | ---------------------------------------- | ----------------------------------------- |
+| Debian, Ubuntu, Mint        | `natizap_<version>-1_amd64.deb`          | `natizap_<version>-1_arm64.deb`           |
+| Fedora, openSUSE, RHEL      | `natizap-<version>-1.x86_64.rpm`         | `natizap-<version>-1.aarch64.rpm`         |
+| Arch, Manjaro               | `natizap-<version>-1-x86_64.pkg.tar.zst` | `natizap-<version>-1-aarch64.pkg.tar.zst` |
+| Any Linux                   | `natizap-<version>-x86_64.AppImage`      | `natizap-<version>-aarch64.AppImage`      |
+| Any Linux, unpacked by hand | `natizap-<version>-x86_64-linux.tar.gz`  | `natizap-<version>-aarch64-linux.tar.gz`  |
+| Windows 10 and 11           | `natizap-<version>-x86_64-setup.exe`     | `natizap-<version>-arm64-setup.exe`       |
+| Windows, without installing | `natizap-<version>-x86_64-windows.zip`   | `natizap-<version>-arm64-windows.zip`     |
 
 natizap keeps itself up to date: when a new release is out it downloads it
 in the background, checks it against the release's `SHA256SUMS`, and offers

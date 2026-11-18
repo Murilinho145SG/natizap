@@ -1,10 +1,18 @@
 ; The Windows installer. Built by the release workflow:
-;   iscc /DVersion=0.1.0 packaging\windows\natizap.iss
+;   iscc /DVersion=0.1.0 /DArch=x86_64 packaging\windows\natizap.iss
 ; Installs for the current user only, so natizap can update itself
 ; without asking for an administrator.
 
 #ifndef Version
   #error Pass the version: iscc /DVersion=x.y.z
+#endif
+#ifndef Arch
+  #error Pass the architecture: iscc /DArch=x86_64 or /DArch=arm64
+#endif
+#if Arch == "arm64"
+  #define Allowed "arm64"
+#else
+  #define Allowed "x64compatible"
 #endif
 
 [Setup]
@@ -19,11 +27,11 @@ DefaultDirName={localappdata}\Programs\natizap
 DefaultGroupName=natizap
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
-ArchitecturesAllowed=x64compatible
-ArchitecturesInstallIn64BitMode=x64compatible
+ArchitecturesAllowed={#Allowed}
+ArchitecturesInstallIn64BitMode={#Allowed}
 LicenseFile=..\..\LICENSE
 OutputDir=..\..\dist
-OutputBaseFilename=natizap-{#Version}-x86_64-setup
+OutputBaseFilename=natizap-{#Version}-{#Arch}-setup
 SetupIconFile=natizap.ico
 UninstallDisplayIcon={app}\natizap.ico
 Compression=lzma2

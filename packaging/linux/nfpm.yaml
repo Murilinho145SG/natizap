@@ -1,9 +1,10 @@
 # Builds the .deb, .rpm and Arch packages from a release build:
 #   echo deb > target/install-kind
-#   NATIZAP_VERSION=0.1.0 nfpm package -f packaging/linux/nfpm.yaml -p deb
+#   NATIZAP_VERSION=0.1.0 NATIZAP_ARCH=amd64 nfpm package -f packaging/linux/nfpm.yaml -p deb
 # Paths are relative to the repository root, where nfpm runs.
 name: natizap
-arch: amd64
+# Debian's name: amd64 or arm64; nfpm renames it for rpm and Arch.
+arch: ${NATIZAP_ARCH}
 platform: linux
 version: ${NATIZAP_VERSION}
 release: 1

@@ -1,4 +1,5 @@
-# Builds natizap for Linux and Windows when a version tag is pushed, and
+# Builds natizap for Linux and Windows, on x86-64 and ARM64, when a version
+# tag is pushed, and
 # publishes the packages, with their checksums, as a GitHub release. The
 # in-app updater (natizap-update) reads that release: keep the file names'
 # endings as they are.
@@ -19,8 +20,19 @@ env:
 
 jobs:
   linux:
+    strategy:
+      matrix:
+        include:
+          # `arch` is how files are named; `package` is nfpm's (and Debian's)
+          # name for it.
+          - arch: x86_64
+            package: amd64
+            runner: ubuntu-22.04
+          - arch: aarch64
+            package: arm64
+            runner: ubuntu-22.04-arm
     # The oldest supported Ubuntu, so the binary runs on older glibc too.
-    runs-on: ubuntu-22.04
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
 
@@ -45,9 +57,8 @@ jobs:
             libx11-xcb-dev libxkbcommon-x11-dev libxcb1-dev libvulkan-dev \
             libzstd-dev nfpm
 
-      # The runner's preinstalled stable can trail the one the workspace needs.
-      - name: Update Rust
-        run: rustup update stable --no-self-update
+      # The runner's preinstalled Rust can trail the one the workspace needs.
+      - uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -61,6 +72,8 @@ jobs:
       - name: Package
         env:
           NATIZAP_VERSION: ${{ steps.version.outputs.version }}
+          NATIZAP_ARCH: ${{ matrix.package }}
+          ARCH: ${{ matrix.arch }}
         run: |
           version="$NATIZAP_VERSION"
           mkdir -p dist
@@ -85,10 +98,10 @@ jobs:
           install -Dm644 brand/natizap-icon.png \
             "$appdir/usr/share/icons/hicolor/512x512/apps/natizap.png"
           curl -sSLo "$RUNNER_TEMP/appimagetool" \
-            https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+            "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-$ARCH.AppImage"
           chmod +x "$RUNNER_TEMP/appimagetool"
-          ARCH=x86_64 "$RUNNER_TEMP/appimagetool" --appimage-extract-and-run \
-            "$appdir" "dist/natizap-$version-x86_64.AppImage"
+          "$RUNNER_TEMP/appimagetool" --appimage-extract-and-run \
+            "$appdir" "dist/natizap-$version-$ARCH.AppImage"
 
           # A plain archive, for unpacking anywhere.
           archive="$RUNNER_TEMP/natizap-$version"
@@ -96,15 +109,24 @@ jobs:
           install -Dm644 packaging/linux/natizap.desktop "$archive/natizap.desktop"
           install -Dm644 brand/natizap-icon.png "$archive/natizap.png"
           install -Dm644 LICENSE "$archive/LICENSE"
-          tar -C "$RUNNER_TEMP" -czf "dist/natizap-$version-x86_64-linux.tar.gz" "natizap-$version"
+          tar -C "$RUNNER_TEMP" -czf "dist/natizap-$version-$ARCH-linux.tar.gz" "natizap-$version"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: linux
+          name: linux-${{ matrix.arch }}
           path: dist/*
 
   windows:
-    runs-on: windows-2022
+    strategy:
+      matrix:
+        include:
+          - arch: x86_64
+            msvc: x64
+            runner: windows-2022
+          - arch: arm64
+            msvc: arm64
+            runner: windows-11-arm
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
 
@@ -114,22 +136,35 @@ jobs:
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
       # FFmpeg's configure script needs a POSIX shell and make (from the
-      # runner's MSYS2), nasm, and the MSVC compiler.
+      # runner's MSYS2), the MSVC compiler, and nasm on x86-64 or
+      # gas-preprocessor (a Perl script) on ARM64 for its assembly. bindgen
+      # needs LLVM, and packaging Inno Setup.
       - name: Install build dependencies
         shell: pwsh
         run: |
-          choco install nasm -y --no-progress
-          C:\msys64\usr\bin\pacman.exe -S --noconfirm --needed make diffutils
+          if (-not (Test-Path C:\msys64)) { choco install msys2 -y --no-progress }
+          if (-not (Test-Path "C:\Program Files\LLVM")) { choco install llvm -y --no-progress }
+          if (-not (Test-Path "C:\Program Files (x86)\Inno Setup 6")) { choco install innosetup -y --no-progress }
+          if ("${{ matrix.arch }}" -eq "x86_64") {
+            choco install nasm -y --no-progress
+            "C:\Program Files\NASM" | Out-File -FilePath $env:GITHUB_PATH -Append
+          } else {
+            $tools = "$env:RUNNER_TEMP\tools"
+            New-Item -ItemType Directory -Force $tools | Out-Null
+            Invoke-WebRequest https://raw.githubusercontent.com/FFmpeg/gas-preprocessor/master/gas-preprocessor.pl -OutFile "$tools\gas-preprocessor.pl"
+            $tools | Out-File -FilePath $env:GITHUB_PATH -Append
+          }
+          C:\msys64\usr\bin\pacman.exe -S --noconfirm --needed make diffutils perl
           # MSYS2's coreutils `link` shadows MSVC's linker inside `sh`, and
           # configure then finds a compiler that cannot link anything.
           Remove-Item C:\msys64\usr\bin\link.exe
-          "C:\Program Files\NASM" | Out-File -FilePath $env:GITHUB_PATH -Append
           "LIBCLANG_PATH=C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.msvc }}
 
-      - name: Update Rust
-        run: rustup update stable --no-self-update
+      - uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -159,13 +194,13 @@ jobs:
           New-Item -ItemType Directory -Force dist | Out-Null
           python -m pip install --quiet pillow
           python -c "from PIL import Image; Image.open('brand/natizap-icon.png').save('packaging/windows/natizap.ico', sizes=[(s, s) for s in (16, 24, 32, 48, 64, 128, 256)])"
-          & "C:\Program Files (x86)\Inno Setup 6\iscc.exe" "/DVersion=$version" packaging\windows\natizap.iss
+          & "C:\Program Files (x86)\Inno Setup 6\iscc.exe" "/DVersion=$version" "/DArch=${{ matrix.arch }}" packaging\windows\natizap.iss
           Compress-Archive -Path target\release\natizap.exe, LICENSE `
-            -DestinationPath "dist\natizap-$version-x86_64-windows.zip"
+            -DestinationPath "dist\natizap-$version-${{ matrix.arch }}-windows.zip"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: windows
+          name: windows-${{ matrix.arch }}
           path: dist/*
 
   publish:

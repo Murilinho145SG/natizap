@@ -26,6 +26,24 @@ pub(crate) enum Install {
     Manual,
 }
 
+/// A processor releases are built for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Arch {
+    X86_64,
+    Aarch64,
+}
+
+impl Arch {
+    /// The one natizap runs on, if releases are built for it.
+    fn current() -> Option<Self> {
+        match std::env::consts::ARCH {
+            "x86_64" => Some(Self::X86_64),
+            "aarch64" => Some(Self::Aarch64),
+            _ => None,
+        }
+    }
+}
+
 /// A system package format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Package {
@@ -46,8 +64,8 @@ pub(crate) enum Staged {
 impl Install {
     /// How the copy running from `executable` was installed.
     pub(crate) fn detect(executable: &Path) -> Self {
-        // Releases are built for 64-bit x86 only.
-        if std::env::consts::ARCH != "x86_64" {
+        // Releases are built for these alone.
+        if Arch::current().is_none() {
             return Self::Manual;
         }
         if cfg!(windows) {
@@ -73,15 +91,24 @@ impl Install {
     }
 
     /// The end of the name of the release file this copy updates from.
-    fn suffix(&self) -> Option<&'static str> {
-        match self {
-            Self::AppImage(_) => Some("-x86_64.AppImage"),
-            Self::Package(Package::Deb, _) => Some("_amd64.deb"),
-            Self::Package(Package::Rpm, _) => Some(".x86_64.rpm"),
-            Self::Package(Package::Pacman, _) => Some("-x86_64.pkg.tar.zst"),
-            Self::Setup => Some("-x86_64-setup.exe"),
-            Self::Manual => None,
-        }
+    fn suffix(&self) -> Option<String> {
+        let arch = Arch::current()?;
+        let (x86, arm) = match self {
+            Self::AppImage(_) => ("-x86_64.AppImage", "-aarch64.AppImage"),
+            // Debian calls them amd64 and arm64.
+            Self::Package(Package::Deb, _) => ("_amd64.deb", "_arm64.deb"),
+            Self::Package(Package::Rpm, _) => (".x86_64.rpm", ".aarch64.rpm"),
+            Self::Package(Package::Pacman, _) => ("-x86_64.pkg.tar.zst", "-aarch64.pkg.tar.zst"),
+            Self::Setup => ("-x86_64-setup.exe", "-arm64-setup.exe"),
+            Self::Manual => return None,
+        };
+        Some(
+            match arch {
+                Arch::X86_64 => x86,
+                Arch::Aarch64 => arm,
+            }
+            .to_owned(),
+        )
     }
 
     /// Downloads `release` for this copy: an AppImage straight over the
@@ -96,8 +123,8 @@ impl Install {
             return Ok(None);
         };
         let asset = release
-            .asset(suffix)
-            .ok_or_else(|| UpdateError::Missing(suffix.to_owned()))?;
+            .asset(&suffix)
+            .ok_or_else(|| UpdateError::Missing(suffix.clone()))?;
         if let Self::AppImage(image) = self {
             // Beside it, so the rename over it stays on one file system.
             let part = image.with_extension("AppImage.part");
