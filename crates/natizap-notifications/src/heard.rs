@@ -92,11 +92,11 @@ impl Quiet {
         preferences.popups && !self.focused && !self.is_muted(arrival)
     }
 
-    fn is_muted(&self, arrival: &Arrival) -> bool {
+    pub(crate) fn is_muted(&self, arrival: &Arrival) -> bool {
         arrival.chat.iter().any(|id| self.muted.contains(id))
     }
 
-    fn is_open(&self, arrival: &Arrival) -> bool {
+    pub(crate) fn is_open(&self, arrival: &Arrival) -> bool {
         arrival.chat.iter().any(|id| self.open.contains(id))
     }
 }

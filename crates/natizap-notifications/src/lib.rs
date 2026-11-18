@@ -84,6 +84,10 @@ impl Notifier {
             while let Ok(event) = events.recv().await {
                 let arrivals = arrivals(&event);
                 if arrivals.is_empty() {
+                    let messages = event.messages().count();
+                    if messages > 0 {
+                        tracing::debug!(messages, "messages heard, none to notify about");
+                    }
                     continue;
                 }
                 if this
@@ -189,6 +193,20 @@ impl Notifier {
     }
 
     fn hear(&mut self, arrivals: &[Arrival], cx: &mut Context<Self>) {
+        // Why a message did or did not chime is otherwise invisible.
+        for arrival in arrivals {
+            tracing::debug!(
+                chat = ?arrival.chat,
+                group = arrival.group,
+                offline = arrival.offline,
+                focused = self.quiet.focused,
+                muted = self.quiet.is_muted(arrival),
+                open = self.quiet.is_open(arrival),
+                tone = ?self.quiet.tone_for(arrival, self.preferences),
+                popup = self.quiet.shows(arrival, self.preferences),
+                "message heard"
+            );
+        }
         self.notify(arrivals, cx);
         self.chime(arrivals);
     }
