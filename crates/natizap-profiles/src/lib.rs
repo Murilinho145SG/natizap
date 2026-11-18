@@ -92,6 +92,14 @@ impl ProfilePictures {
         }
     }
 
+    /// Fetches `chat`'s picture again, as after this account changed its
+    /// own: WhatsApp does not always tell the device that changed it.
+    pub fn refresh(&mut self, chat: &ChatId, cx: &mut Context<Self>) {
+        self.known.remove(chat);
+        self.picture(chat, cx);
+        cx.notify();
+    }
+
     /// Someone changed or removed their picture: fetch it again if it was
     /// on screen.
     fn changed(&mut self, chat: ChatId, cx: &mut Context<Self>) {

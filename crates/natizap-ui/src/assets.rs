@@ -80,6 +80,8 @@ icons! {
     Download => "download.svg",
     /// Pick an emoji or react.
     Emoji => "emoji.svg",
+    /// Change something written, e.g. your name.
+    Edit => "edit.svg",
     /// A document.
     File => "file.svg",
     /// Forward a message to another chat.

@@ -516,7 +516,7 @@ fn links(label: &'static str, links: Vec<(String, String)>) -> Div {
 }
 
 /// Decodes a picture WhatsApp sent as JPEG, PNG or WebP.
-fn image(bytes: Vec<u8>) -> Arc<Image> {
+pub(crate) fn image(bytes: Vec<u8>) -> Arc<Image> {
     let format = if bytes.starts_with(b"\x89PNG") {
         ImageFormat::Png
     } else if bytes.get(8..12) == Some(b"WEBP") {

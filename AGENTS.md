@@ -93,9 +93,11 @@ new messages itself; the binary tells it whether the window is focused,
 which chat `MessageLog` has open and which chats `ChatList` has muted, and
 it chimes for messages anywhere else. While the window is in the
 background it also posts system notifications; clicking one emits
-`NotificationOpened`, which the binary answers by opening that chat. The chat list's settings button emits
-`SettingsRequested`, which the binary answers with the notifications'
-`NotificationSettings` dialog. The binary hands the conversation the stickers'
+`NotificationOpened`, which the binary answers by opening that chat. The
+binary draws the navigation rail (`natizap-ui`'s `Rail`) itself: its
+Settings button opens the notifications' `NotificationSettings` dialog, and
+your avatar opens the contacts' `OwnProfile` in place of the chat list,
+which emits `OwnProfileClosed` to go back. The binary hands the conversation the stickers'
 `StickerPicker` to show from its composer, sends what it emits as
 `StickerPicked` through `MessageLog::send_sticker`, tells the conversation
 which stickers are favorites, and passes its `StickerFavoriteToggled` to
@@ -139,7 +141,7 @@ organizing rule of the codebase.
 | `natizap-stickers` | feature | Favorite stickers synced with the phone, and their picker. |
 | `natizap-protocol` | shared  | Owns the WhatsApp client; fans its events out to features. |
 | `natizap-chats`    | feature | Chat list synced from WhatsApp, cached in SQLite, and its view. |
-| `natizap-contacts` | feature | Profiles of people and businesses, and their panel.       |
+| `natizap-contacts` | feature | Profiles of people and businesses, and your own, editable. |
 | `natizap-messages` | feature | Message store, the open conversation and sending.         |
 | `natizap-notifications` | feature | Chimes for messages arriving outside the chat on screen. |
 | `natizap-playback` | shared | Media engine: static FFmpeg decoding, cpal sound, clock. |

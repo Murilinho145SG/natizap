@@ -9,7 +9,7 @@ use gpui::{
 use natizap_chats::{
     ChatList, ChatListView, ChatPicker, ChatRow, ChatSelected, ChatsPicked, PickerDismissed,
 };
-use natizap_contacts::ProfilePanel;
+use natizap_contacts::{OwnProfile, ProfilePanel};
 use natizap_messages::{
     ChatClosed, ChatRequested, ContactsRequested, ConversationView, ForwardRequested, MessageLog,
     MessageSent, MuteRequested, OpenChat, PlayRequested,
@@ -22,7 +22,7 @@ use natizap_session::{PairingView, Session, SessionState};
 use natizap_stickers::StickerShelf;
 use natizap_ui::motion::slide_in;
 use natizap_ui::theme::{ACCENT, ALERT, DISPLAY_FONT, LINE, MINT, MUTED, TEXT, base_font};
-use natizap_ui::{Alert, AlertTone, window_frame};
+use natizap_ui::{Alert, AlertTone, RAIL_WIDTH, window_frame};
 use natizap_update::Updater;
 
 use crate::history::History;
@@ -31,6 +31,7 @@ use opening::Opening;
 mod notify;
 mod opening;
 mod profiles;
+mod rail;
 mod stickers;
 
 /// Width of the chat list, and of a profile beside the conversation.
@@ -70,6 +71,9 @@ pub(crate) struct Root {
     pictures: Entity<ProfilePictures>,
     /// The notification settings, over the chats.
     settings: Option<Entity<NotificationSettings>>,
+    /// Your own profile, in place of the chat list.
+    own_profile: Option<Entity<OwnProfile>>,
+    notifier: Entity<Notifier>,
     /// The splash, while natizap opens.
     opening: Option<Opening>,
     /// Shown in the title bar once an update is out.
@@ -134,7 +138,6 @@ impl Root {
         Self::follow_chat_menu(&conversation, cx);
         Self::share_contacts(&conversation, messages, &chats, pictures, window, cx);
         Self::feed_notifier(&notifier, &chats, messages, window, cx);
-        Self::open_settings(&chat_list, &notifier, cx);
         Self::share_stickers(&stickers, &conversation, messages, cx);
 
         Self {
@@ -150,6 +153,8 @@ impl Root {
             protocol,
             pictures: pictures.clone(),
             settings: None,
+            own_profile: None,
+            notifier,
             opening: Some(Opening::start(cx)),
             updater,
         }
@@ -356,6 +361,7 @@ impl Root {
     fn go_back(&mut self, cx: &mut Context<Self>) {
         if self.picker.take().is_some()
             || self.settings.take().is_some()
+            || self.close_own_profile(cx)
             || self.profile.take().is_some()
         {
             cx.notify();
@@ -394,7 +400,7 @@ impl Root {
     }
 
     /// The window's content, laid out for a window `width` wide.
-    fn content(&self, width: Pixels, cx: &Context<Self>) -> AnyElement {
+    fn content(&mut self, width: Pixels, cx: &mut Context<Self>) -> AnyElement {
         if !self.shows_chats(cx) {
             return self.pairing.clone().into_any_element();
         }
@@ -403,6 +409,7 @@ impl Root {
             .size_full()
             .relative()
             .flex()
+            .child(self.rail(cx))
             .child(
                 div()
                     .w(px(SIDE_PANEL))
@@ -410,7 +417,14 @@ impl Root {
                     .flex_none()
                     .border_r_1()
                     .border_color(rgb(LINE))
-                    .child(self.chat_list.clone()),
+                    .map(|pane| match self.own_profile.clone() {
+                        Some(profile) => pane.child(slide_in(
+                            SharedString::from(format!("own-profile-{}", profile.entity_id())),
+                            div().size_full().child(profile),
+                            -24.0,
+                        )),
+                        None => pane.child(self.chat_list.clone()),
+                    }),
             )
             .child(
                 // Free to shrink below what it holds, so a long line in it
@@ -426,7 +440,7 @@ impl Root {
                 // conversation when the window has room for both, over it
                 // otherwise, so the conversation never shrinks to nothing.
                 let id = SharedString::from(format!("profile-{}", profile.entity_id()));
-                let beside = f32::from(width) - 2.0 * SIDE_PANEL >= LEAST_CONVERSATION;
+                let beside = f32::from(width) - RAIL_WIDTH - 2.0 * SIDE_PANEL >= LEAST_CONVERSATION;
                 let panel = slide_in(id, div().size_full().child(profile), 24.0);
                 if beside {
                     div().w(px(SIDE_PANEL)).h_full().flex_none().child(panel)

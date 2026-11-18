@@ -3720,6 +3720,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "gpui",
+ "image",
  "natizap-profiles",
  "natizap-protocol",
  "natizap-ui",

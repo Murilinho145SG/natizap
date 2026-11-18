@@ -1,15 +1,14 @@
 //! Tells the notifier what the user is looking at, which chats are muted
-//! and what chats and people are called, opens the chat a notification is
-//! about, and opens the notification settings.
+//! and what chats and people are called, and opens the chat a notification
+//! is about.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use gpui::prelude::*;
 use gpui::{Context, Entity, SharedString, Window};
-use natizap_chats::{ChatList, ChatListView, ChatRow, SettingsRequested};
+use natizap_chats::{ChatList, ChatRow};
 use natizap_messages::MessageLog;
-use natizap_notifications::{NotificationOpened, NotificationSettings, Notifier, SettingsClosed};
+use natizap_notifications::{NotificationOpened, Notifier};
 use natizap_protocol::ChatId;
 
 use super::Root;
@@ -78,26 +77,6 @@ impl Root {
                 }
             },
         )
-        .detach();
-    }
-
-    /// Shows the notification settings when the chat list asks for them.
-    pub(super) fn open_settings(
-        chat_list: &Entity<ChatListView>,
-        notifier: &Entity<Notifier>,
-        cx: &mut Context<Self>,
-    ) {
-        let notifier = notifier.clone();
-        cx.subscribe(chat_list, move |root, _, _: &SettingsRequested, cx| {
-            let settings = cx.new(|cx| NotificationSettings::new(notifier.clone(), cx));
-            cx.subscribe(&settings, |root, _, _: &SettingsClosed, cx| {
-                root.settings = None;
-                cx.notify();
-            })
-            .detach();
-            root.settings = Some(settings);
-            cx.notify();
-        })
         .detach();
     }
 }
