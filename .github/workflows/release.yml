@@ -154,8 +154,8 @@ jobs:
           if (-not (Test-Path "C:\Program Files\LLVM")) { choco install llvm -y --no-progress }
           if (-not (Test-Path "C:\Program Files (x86)\Inno Setup 6")) { choco install innosetup -y --no-progress }
           if ("${{ matrix.arch }}" -eq "x86_64") {
-            choco install nasm -y --no-progress
-            "C:\Program Files\NASM" | Out-File -FilePath $env:GITHUB_PATH -Append
+            # From MSYS2, which the build runs under anyway.
+            C:\msys64\usr\bin\pacman.exe -S --noconfirm --needed nasm
           } else {
             $tools = "$env:RUNNER_TEMP\tools"
             New-Item -ItemType Directory -Force $tools | Out-Null
@@ -166,6 +166,14 @@ jobs:
           # MSYS2's coreutils `link` shadows MSVC's linker inside `sh`, and
           # configure then finds a compiler that cannot link anything.
           Remove-Item C:\msys64\usr\bin\link.exe
+          # Installers can fail quietly (a package feed timing out): a missing
+          # tool fails here instead of deep inside FFmpeg's configure.
+          $needed = @("C:\msys64\usr\bin\make.exe", "C:\msys64\usr\bin\perl.exe",
+            "C:\Program Files\LLVM\bin\libclang.dll", "C:\Program Files (x86)\Inno Setup 6\iscc.exe")
+          if ("${{ matrix.arch }}" -eq "x86_64") { $needed += "C:\msys64\usr\bin\nasm.exe" }
+          foreach ($tool in $needed) {
+            if (-not (Test-Path $tool)) { throw "missing $tool" }
+          }
           "LIBCLANG_PATH=C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - uses: ilammy/msvc-dev-cmd@v1
