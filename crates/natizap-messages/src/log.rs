@@ -59,6 +59,8 @@ enum Input {
     Event(Arc<Event>),
     Open(OpenChat),
     Close,
+    /// Show the open chat back to messages sent at this Unix second.
+    Reach(i64),
     Apply(Box<MessageChange>),
     /// What the open group says about its members.
     Members(ChatId, Members),
@@ -301,6 +303,12 @@ impl MessageLog {
     pub fn overview(&self, addresses: Vec<ChatId>, cx: &App) -> Task<ChatOverview> {
         let path = self.store_path.clone();
         cx.background_spawn(async move { overview::read(&path, &addresses) })
+    }
+
+    /// Shows the open chat back to the messages sent at `sent_at`, so one
+    /// sent then can be gone to.
+    pub(crate) fn reach(&self, sent_at: i64) {
+        self.send_input(Input::Reach(sent_at));
     }
 
     /// Everything `addresses`' chat shared: media, docs and links. Read off

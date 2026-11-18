@@ -62,6 +62,8 @@ pub(crate) struct SharedLink {
     pub(crate) shown: SharedString,
     /// The message it was written in.
     pub(crate) message: SharedString,
+    /// That message's id, to go to it.
+    pub(crate) message_id: SharedString,
     /// When it was sent, in Unix seconds.
     pub(crate) sent_at: i64,
 }
@@ -116,6 +118,7 @@ impl Library {
                     target: target.into(),
                     shown: shown.into(),
                     message: text.into(),
+                    message_id: message.id.clone().into(),
                     sent_at: message.sent_at,
                 });
             }

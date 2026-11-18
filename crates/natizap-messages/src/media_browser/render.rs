@@ -18,7 +18,8 @@ use natizap_ui::theme::{
 };
 use natizap_ui::{Button, ButtonVariant, Icon, dialog};
 
-use super::{BrowserClosed, COLUMNS, Entrance, Line, MediaBrowser, MediaChosen, Tab};
+use super::menu::{RIGHT, on_right_click};
+use super::{BrowserClosed, COLUMNS, Entrance, Line, MediaBrowser, MediaChosen, Pick, Tab};
 use crate::items::MediaView;
 use crate::library::{Library, SharedLink, Shelved};
 
@@ -60,6 +61,7 @@ impl Render for MediaBrowser {
             .child(self.header(cx))
             .child(self.toolbar(cx))
             .child(self.body(cx));
+        let panel = panel.children(self.menu(cx));
         let browser = cx.weak_entity();
         dialog(window, panel, move |_, cx| {
             let _ = browser.update(cx, |_, cx| cx.emit(BrowserClosed));
@@ -254,17 +256,17 @@ fn render_line(
             .children(indices.iter().filter_map(|&index| {
                 let item = library.media.get(index)?;
                 let small = item.small.as_ref().or_else(|| made.get(&index));
-                Some(tile(item, small, browser))
+                Some(tile(item, small, browser, Pick::Media(index)))
             }))
             .into_any_element(),
-        Line::Doc(index) => library
-            .docs
-            .get(*index)
-            .map_or_else(|| div().into_any_element(), |item| doc(item, browser)),
-        Line::Link(index) => library
-            .links
-            .get(*index)
-            .map_or_else(|| div().into_any_element(), link),
+        Line::Doc(index) => library.docs.get(*index).map_or_else(
+            || div().into_any_element(),
+            |item| doc(item, browser, Pick::Doc(*index)),
+        ),
+        Line::Link(index) => library.links.get(*index).map_or_else(
+            || div().into_any_element(),
+            |shown| link(shown, browser, Pick::Link(*index)),
+        ),
     }
 }
 
@@ -283,7 +285,13 @@ fn choose(browser: &WeakEntity<MediaBrowser>, media: &MediaView, cx: &mut App) {
     let _ = browser.update(cx, |_, cx| cx.emit(MediaChosen(media)));
 }
 
-fn tile(item: &Shelved, small: Option<&PathBuf>, browser: &WeakEntity<MediaBrowser>) -> AnyElement {
+fn tile(
+    item: &Shelved,
+    small: Option<&PathBuf>,
+    browser: &WeakEntity<MediaBrowser>,
+    pick: Pick,
+) -> AnyElement {
+    let right_click = on_right_click(browser, pick);
     let media = item.media.clone();
     let browser = browser.clone();
     let video = media.fetch.kind == ContentKind::Video;
@@ -336,6 +344,7 @@ fn tile(item: &Shelved, small: Option<&PathBuf>, browser: &WeakEntity<MediaBrows
                     .children(media.detail.clone()),
             )
         })
+        .on_mouse_down(RIGHT, right_click)
         .on_click(move |_, _, cx| choose(&browser, &media, cx))
         .into_any_element()
 }
@@ -408,7 +417,8 @@ fn badge(icon: Icon, side: f32) -> AnyElement {
         .into_any_element()
 }
 
-fn doc(item: &Shelved, browser: &WeakEntity<MediaBrowser>) -> AnyElement {
+fn doc(item: &Shelved, browser: &WeakEntity<MediaBrowser>, pick: Pick) -> AnyElement {
+    let right_click = on_right_click(browser, pick);
     let media = item.media.clone();
     let browser = browser.clone();
     let audio = media.fetch.kind == ContentKind::Audio;
@@ -432,6 +442,7 @@ fn doc(item: &Shelved, browser: &WeakEntity<MediaBrowser>) -> AnyElement {
         TEXT,
         vec![below.into()],
     )
+    .on_mouse_down(RIGHT, right_click)
     .on_click(move |_, _, cx| choose(&browser, &media, cx))
     .into_any_element()
 }
@@ -442,7 +453,8 @@ const LINK_PICTURE: f32 = 56.0;
 /// A link as the phone lists it: the page's picture and title, what it
 /// says about itself, and where it leads; a link without a preview shows
 /// itself and the message it came in.
-fn link(link: &SharedLink) -> AnyElement {
+fn link(link: &SharedLink, browser: &WeakEntity<MediaBrowser>, pick: Pick) -> AnyElement {
+    let right_click = on_right_click(browser, pick);
     let target = link.target.clone();
     let preview = link.preview.as_ref();
     let leading = match preview.and_then(|preview| preview.picture.clone()) {
@@ -471,6 +483,7 @@ fn link(link: &SharedLink) -> AnyElement {
         if title.is_some() { TEXT } else { LINK },
         below,
     )
+    .on_mouse_down(RIGHT, right_click)
     .on_click(move |_, _, cx| cx.open_url(&target))
     .into_any_element()
 }

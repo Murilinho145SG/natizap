@@ -10,15 +10,17 @@ use std::time::{Duration, Instant};
 use chrono::{Local, TimeZone as _};
 use gpui::prelude::*;
 use gpui::{
-    Context, Entity, EventEmitter, Focusable as _, ListAlignment, ListState, SharedString, Task,
-    Window, px,
+    Context, Entity, EventEmitter, Focusable as _, ListAlignment, ListState, Pixels, Point,
+    SharedString, Task, Window, px,
 };
 use natizap_ui::TextInput;
 
 use crate::items::MediaView;
 use crate::library::{Library, SharedLink, Shelved};
 use crate::thumbs;
+use natizap_protocol::ChatId;
 
+mod menu;
 mod render;
 
 /// Photos and videos in a row of the grid.
@@ -29,6 +31,16 @@ const SMALL_COPY_BATCH: usize = 6;
 /// The user chose a photo, video, document or audio file to open.
 #[derive(Debug, Clone)]
 pub(crate) struct MediaChosen(pub(crate) MediaView);
+
+/// The user asked to go to the message something in the window came in.
+#[derive(Debug, Clone)]
+pub(crate) struct MessageWanted {
+    pub(crate) id: SharedString,
+    /// When it was sent, in Unix seconds.
+    pub(crate) sent_at: i64,
+    /// Every address of its chat.
+    pub(crate) chats: Vec<ChatId>,
+}
 
 /// The user closed the window.
 #[derive(Debug, Clone, Copy)]
@@ -68,6 +80,14 @@ impl Tab {
     }
 }
 
+/// Something in the window, by its shelf and index into it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Pick {
+    Media(usize),
+    Doc(usize),
+    Link(usize),
+}
+
 /// A line of the list: a month's heading, a row of the media grid, a
 /// document or a link, by index into the library's shelf.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -81,6 +101,10 @@ enum Line {
 /// The window showing a chat's media, docs and links.
 pub(crate) struct MediaBrowser {
     title: SharedString,
+    /// Every address of the chat whose things these are.
+    chats: Vec<ChatId>,
+    /// Where a right click opened a menu, and on what.
+    menu: Option<(Point<Pixels>, Pick)>,
     /// What the chat shared, once read.
     library: Option<Arc<Library>>,
     tab: Tab,
@@ -110,10 +134,16 @@ impl std::fmt::Debug for MediaBrowser {
 
 impl EventEmitter<MediaChosen> for MediaBrowser {}
 impl EventEmitter<BrowserClosed> for MediaBrowser {}
+impl EventEmitter<MessageWanted> for MediaBrowser {}
 
 impl MediaBrowser {
     /// Shows `library` once it is read, under the chat's `title`.
-    pub(crate) fn new(title: SharedString, library: Task<Library>, cx: &mut Context<Self>) -> Self {
+    pub(crate) fn new(
+        title: SharedString,
+        chats: Vec<ChatId>,
+        library: Task<Library>,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let search = cx.new(|cx| TextInput::new("Search", cx));
         cx.observe(&search, |this, _, cx| this.arrange(cx)).detach();
         let reading = cx.spawn(async move |this, cx| {
@@ -127,6 +157,8 @@ impl MediaBrowser {
         });
         Self {
             title,
+            chats,
+            menu: None,
             library: None,
             tab: Tab::Media,
             search,

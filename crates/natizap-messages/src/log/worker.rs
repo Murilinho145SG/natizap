@@ -27,6 +27,9 @@ pub(super) async fn sync(
         return;
     };
     let mut open: Option<OpenChat> = None;
+    // How far back the open chat shows, past its newest messages: to a
+    // message the user asked to go to.
+    let mut reach: Option<i64> = None;
     let mut members = Members::default();
     let mut names = Arc::default();
     // Chats whose missing media was asked for, once per launch.
@@ -39,9 +42,17 @@ pub(super) async fn sync(
         let mut next = Some(input);
         while let Some(input) = next.take() {
             match input {
-                Input::Close => open = None,
+                Input::Close => {
+                    open = None;
+                    reach = None;
+                }
+                Input::Reach(sent_at) => {
+                    reach = Some(reach.map_or(sent_at, |reach: i64| reach.min(sent_at)));
+                    refresh = true;
+                }
                 Input::Open(chat) => {
                     open = Some(chat);
+                    reach = None;
                     members = Members {
                         names: Arc::clone(&names),
                         ..Members::default()
@@ -98,7 +109,7 @@ pub(super) async fn sync(
             }
         }
         if opened || refresh {
-            let (thread, resend) = thread(&store, chat, &members);
+            let (thread, resend) = thread(&store, chat, &members, reach);
             if outputs.send(thread).await.is_err() {
                 return;
             }
@@ -111,11 +122,28 @@ pub(super) async fn sync(
     }
 }
 
+/// Messages shown before one the user went to, so it does not open at the
+/// very top of the chat.
+const REACH_CONTEXT: usize = 20;
+
 /// The open chat's rows and what they need fetched, read from `store`, and
 /// the request for media its messages were filed without.
-fn thread(store: &MessageStore, chat: &OpenChat, members: &Members) -> (Output, Option<Output>) {
+fn thread(
+    store: &MessageStore,
+    chat: &OpenChat,
+    members: &Members,
+    reach: Option<i64>,
+) -> (Output, Option<Output>) {
+    let reached = reach
+        .and_then(|sent_at| {
+            store
+                .count_since(&chat.addresses, sent_at)
+                .inspect_err(|error| tracing::error!(%error, "could not count messages"))
+                .ok()
+        })
+        .map_or(0, |count| count + REACH_CONTEXT);
     let messages = store
-        .latest(&chat.addresses, SHOWN_MESSAGES)
+        .latest(&chat.addresses, SHOWN_MESSAGES.max(reached))
         .unwrap_or_else(|error| {
             tracing::error!(%error, "could not read messages");
             Vec::new()

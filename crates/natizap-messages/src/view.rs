@@ -25,6 +25,7 @@ mod arrivals;
 mod attach;
 mod composer;
 mod drop;
+mod going;
 mod header;
 mod list;
 mod message_menu;
@@ -34,6 +35,7 @@ mod viewer;
 use arrivals::Arrivals;
 pub use attach::ContactsRequested;
 use drop::drop_zone;
+use going::GoingTo;
 use header::header;
 pub use header::{ChatClosed, MuteRequested};
 use message_menu::MessagePopup;
@@ -80,6 +82,10 @@ pub struct ConversationView {
     hovered_link: Option<HoveredLink>,
     /// Messages that just arrived, to animate in.
     arrivals: Arrivals,
+    /// A message being gone to, until it shows.
+    going_to: Option<GoingTo>,
+    /// The message just gone to, lit up for a moment, and when.
+    flash: Option<(SharedString, Instant)>,
     /// The photo shown large.
     viewing: Option<MediaView>,
     /// Where the header's menu is open.
@@ -207,6 +213,8 @@ impl ConversationView {
             selection: None,
             hovered_link: None,
             arrivals: Arrivals::default(),
+            going_to: None,
+            flash: None,
             viewing: None,
             chat_menu: None,
             recorder: None,
@@ -249,6 +257,7 @@ impl ConversationView {
             window.focus(&focus, cx);
         }
         self.messages.reset(count);
+        self.keep_going(cx);
         cx.notify();
     }
 }
@@ -425,20 +434,6 @@ impl ConversationView {
     /// The text selected in a message, if any.
     pub(crate) fn text_selection(&self) -> Option<&Selection> {
         self.selection.as_ref()
-    }
-
-    /// Scrolls to the message `id`, when it is among those loaded.
-    pub(crate) fn go_to_message(&mut self, id: &str, cx: &mut Context<Self>) {
-        let index = self
-            .log
-            .read(cx)
-            .items()
-            .iter()
-            .position(|item| matches!(item, Item::Bubble(bubble) if bubble.id.as_ref() == id));
-        if let Some(index) = index {
-            self.messages.scroll_to_reveal_item(index);
-            cx.notify();
-        }
     }
 
     /// Escape steps back out of what is open; the copy shortcut copies the

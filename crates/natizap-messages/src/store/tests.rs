@@ -345,3 +345,18 @@ fn a_resent_copy_fills_in_the_link_preview_the_first_lacked() -> rusqlite::Resul
     assert_eq!(stored[0].link, Some(preview));
     Ok(())
 }
+
+#[test]
+fn counts_how_far_back_a_message_lies() -> rusqlite::Result<()> {
+    let mut store = MessageStore::in_memory()?;
+    store.apply(&[
+        MessageChange::Received(message("1@lid", "a", 10, "old")),
+        MessageChange::Received(message("1@s.whatsapp.net", "b", 20, "middle")),
+        MessageChange::Received(message("1@lid", "c", 30, "new")),
+        MessageChange::Received(message("2@lid", "d", 40, "other chat")),
+    ])?;
+    let chats = [ChatId::new("1@lid"), ChatId::new("1@s.whatsapp.net")];
+    assert_eq!(store.count_since(&chats, 20)?, 2);
+    assert_eq!(store.count_since(&chats, 0)?, 3);
+    Ok(())
+}
