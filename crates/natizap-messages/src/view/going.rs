@@ -40,6 +40,7 @@ impl ConversationView {
     ) {
         self.browsing = None;
         self.viewing = None;
+        self.carousel = None;
         let open = self.log.read(cx).open_chat().map(|chat| chat.id.clone());
         if !open.is_some_and(|open| chats.contains(&open))
             && let Some(chat) = chats.first()

@@ -78,9 +78,11 @@ again. Each store keeps an append-only `MIGRATIONS` list.
 Features talk to each other only through the binary: the chat list emits
 `ChatSelected`, the binary opens that chat in `MessageLog` and tells
 `ChatList` it is on screen; `MessageLog` emits `MessageSent`, which the
-binary forwards to the chat list's preview, and `PlayRequested` for videos,
-which the binary answers by showing a `PlayerView`. Voice notes and audio
-files play inside their bubble; both players share `natizap-playback`. `MessageLog`
+binary forwards to the chat list's preview. Photos and videos open in the
+conversation's carousel; when it lands on a video, `ConversationView` emits
+`PlayRequested`, which the binary answers with a `PlayerView` handed back
+through `ConversationView::show_player`. Voice notes and audio files play
+inside their bubble; both players share `natizap-playback`. `MessageLog`
 also emits `ForwardRequested`, which the binary answers with the chats'
 `ChatPicker`, handing the chosen chats back to `MessageLog::forward`. The
 conversation emits `ProfileRequested` from its header, which the binary
@@ -141,7 +143,7 @@ organizing rule of the codebase.
 | `natizap-messages` | feature | Message store, the open conversation and sending.         |
 | `natizap-notifications` | feature | Chimes for messages arriving outside the chat on screen. |
 | `natizap-playback` | shared | Media engine: static FFmpeg decoding, cpal sound, clock. |
-| `natizap-player`   | feature | The full-window video player.                            |
+| `natizap-player`   | feature | The video player the media carousel plays videos on.     |
 | `natizap-profiles` | shared  | Profile pictures: fetched on sight, cached on disk.        |
 | `natizap-ui`       | shared  | Theme, fonts, icons, window frame and the component library. |
 | `natizap-update`   | feature | Finds, downloads and installs new releases from GitHub.   |

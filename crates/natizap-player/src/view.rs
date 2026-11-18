@@ -6,25 +6,18 @@ use std::time::Duration;
 
 use gpui::prelude::*;
 use gpui::{
-    Bounds, Context, Corners, Div, EventEmitter, FocusHandle, Focusable, FontWeight, KeyDownEvent,
-    MouseButton, ObjectFit, Pixels, RenderImage, SharedString, Window, canvas, div, px, rgb, svg,
+    Bounds, Context, Corners, Div, FocusHandle, Focusable, KeyDownEvent, MouseButton, ObjectFit,
+    Pixels, RenderImage, Window, canvas, div, px, rgb, svg,
 };
 use image::{Frame, RgbaImage};
 use natizap_playback::Playback;
-use natizap_ui::theme::{DEEP, LINE, MUTED, TEXT};
-use natizap_ui::{Button, ButtonSize, ButtonVariant, Icon, progress};
+use natizap_ui::theme::{LINE, MUTED, TEXT};
+use natizap_ui::{Button, ButtonSize, Icon, progress};
 
-/// How far the arrow keys jump.
-const ARROW_SEEK: Duration = Duration::from_secs(5);
-
-/// The user closed the player.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct PlayerClosed;
-
-/// Plays a video or audio file over the window, with its own decoder and
-/// sound output: nothing outside natizap is opened.
+/// Plays a video, with its own decoder and sound output: nothing outside
+/// natizap is opened. It fills the element it is placed in; whoever shows
+/// it owns closing it and moving on, so it answers only Space.
 pub struct PlayerView {
-    title: SharedString,
     playback: Playback,
     picture: Option<Arc<RenderImage>>,
     /// Pictures replaced since the last frame, to free from the GPU atlas.
@@ -36,13 +29,9 @@ pub struct PlayerView {
 
 impl std::fmt::Debug for PlayerView {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("PlayerView")
-            .field("title", &self.title)
-            .finish_non_exhaustive()
+        f.debug_struct("PlayerView").finish_non_exhaustive()
     }
 }
-
-impl EventEmitter<PlayerClosed> for PlayerView {}
 
 impl Focusable for PlayerView {
     fn focus_handle(&self, _: &gpui::App) -> FocusHandle {
@@ -51,18 +40,12 @@ impl Focusable for PlayerView {
 }
 
 impl PlayerView {
-    /// Starts playing `path`, shown under `title`. Playback stops when the
-    /// view is dropped.
-    pub fn new(
-        path: &Path,
-        title: SharedString,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Self {
+    /// Starts playing `path`, taking the keyboard so Space pauses it.
+    /// Playback stops when the view is dropped.
+    pub fn new(path: &Path, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
         Self {
-            title,
             playback: Playback::start(path),
             picture: None,
             retired: Vec::new(),
@@ -88,20 +71,6 @@ impl PlayerView {
         cx.notify();
     }
 
-    fn seek_by(&mut self, delta: Duration, forward: bool, cx: &mut Context<Self>) {
-        let now = self.playback.position();
-        let to = if forward {
-            now + delta
-        } else {
-            now.saturating_sub(delta)
-        };
-        self.seek(to, cx);
-    }
-
-    fn close(cx: &mut Context<Self>) {
-        cx.emit(PlayerClosed);
-    }
-
     /// Takes the newest picture whose time has come.
     fn advance(&mut self) {
         let Some(picture) = self.playback.due_picture() else {
@@ -117,14 +86,10 @@ impl PlayerView {
     }
 
     fn on_key(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) {
-        match event.keystroke.key.as_str() {
-            "space" => self.toggle_pause(cx),
-            "escape" => Self::close(cx),
-            "left" => self.seek_by(ARROW_SEEK, false, cx),
-            "right" => self.seek_by(ARROW_SEEK, true, cx),
-            _ => return,
+        if event.keystroke.key == "space" {
+            self.toggle_pause(cx);
+            cx.stop_propagation();
         }
-        cx.stop_propagation();
     }
 }
 
@@ -166,9 +131,7 @@ impl Render for PlayerView {
             .size_full()
             .flex()
             .flex_col()
-            .bg(rgb(DEEP))
             .text_color(rgb(TEXT))
-            .child(self.top_bar(cx))
             .child(
                 div()
                     .flex_1()
@@ -181,31 +144,6 @@ impl Render for PlayerView {
 }
 
 impl PlayerView {
-    fn top_bar(&self, cx: &mut Context<Self>) -> Div {
-        div()
-            .flex_none()
-            .flex()
-            .items_center()
-            .px_4()
-            .py_2()
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .truncate()
-                    .font_weight(FontWeight::MEDIUM)
-                    .child(self.title.clone()),
-            )
-            .child(
-                Button::new("close-player")
-                    .icon(Icon::Close)
-                    .variant(ButtonVariant::Ghost)
-                    .round()
-                    .tooltip("Close (Esc)")
-                    .on_click(cx.listener(|_, _, _, cx| Self::close(cx))),
-            )
-    }
-
     fn controls(
         &self,
         position: Duration,

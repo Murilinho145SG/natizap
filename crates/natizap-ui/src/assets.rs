@@ -58,6 +58,10 @@ icons! {
     Checks => "checks.svg",
     /// Opens a menu below it.
     ChevronDown => "chevron-down.svg",
+    /// Back to an earlier item, e.g. the previous photo.
+    ChevronLeft => "chevron-left.svg",
+    /// On to a later item, e.g. the next photo.
+    ChevronRight => "chevron-right.svg",
     /// Waiting, e.g. a message still sending.
     Clock => "clock.svg",
     /// A photo.

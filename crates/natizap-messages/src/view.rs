@@ -1,18 +1,19 @@
 use gpui::prelude::*;
 use std::collections::HashSet;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use gpui::{
     AnyView, ClipboardItem, Context, Div, Entity, EventEmitter, ExternalPaths, FocusHandle,
     Focusable as _, FontWeight, KeyDownEvent, ListAlignment, ListState, Pixels, Point,
     SharedString, Window, anchored, deferred, div, px, rgb, svg,
 };
-use natizap_playback::{Recorder, Speed};
+use natizap_playback::Recorder;
 use natizap_profiles::ProfilePictures;
-use natizap_protocol::{ChatId, Reply};
+use natizap_protocol::{ChatId, ContentKind, Reply};
 use natizap_ui::theme::{ACCENT, LINE, MUTED, PANE};
 use natizap_ui::{FilesPasted, Icon, Submitted, TextInput, name_color};
 
+use crate::carousel::Carousel;
 use crate::emoji::{EmojiPicked, EmojiPicker};
 use crate::items::{Bubble, Item, MediaView};
 use crate::log::{MessageLog, SoundReady};
@@ -25,6 +26,7 @@ use crate::voice::Voices;
 
 mod arrivals;
 mod attach;
+mod carousel;
 mod composer;
 mod drop;
 mod going;
@@ -36,9 +38,11 @@ mod saving;
 mod stickers;
 mod tray;
 mod viewer;
+mod voice_notes;
 
 use arrivals::Arrivals;
 pub use attach::ContactsRequested;
+pub use carousel::PlayRequested;
 use drop::drop_zone;
 use going::GoingTo;
 use header::header;
@@ -52,10 +56,6 @@ const CENTERED_WIDTH: f32 = 720.0;
 
 /// How far a message that just arrived rises into place, in pixels.
 const ARRIVAL_RISE: f32 = 14.0;
-
-/// How often a playing note's bubble is redrawn: often enough for the
-/// waveform and clock, far less than every frame.
-const VOICE_TICK: Duration = Duration::from_millis(50);
 
 /// The conversation pane: header, messages and composer for the open chat,
 /// or a hint to pick one.
@@ -94,8 +94,10 @@ pub struct ConversationView {
     going_to: Option<GoingTo>,
     /// The message just gone to, lit up for a moment, and when.
     flash: Option<(SharedString, Instant)>,
-    /// The photo shown large.
+    /// The sticker shown large.
     viewing: Option<MediaView>,
+    /// The photo or video open over the window, among the chat's others.
+    carousel: Option<Carousel>,
     /// Where the header's menu is open.
     chat_menu: Option<Point<Pixels>>,
     /// A voice note being recorded.
@@ -201,6 +203,7 @@ impl ConversationView {
         .detach();
         cx.observe_in(&log, window, |this, log, window, cx| {
             this.follow(&log, window, cx);
+            this.settle_carousel(cx);
         })
         .detach();
         cx.subscribe(&log, |this, _, ready: &SoundReady, cx| {
@@ -230,6 +233,7 @@ impl ConversationView {
             going_to: None,
             flash: None,
             viewing: None,
+            carousel: None,
             chat_menu: None,
             recorder: None,
             sticker_picker: None,
@@ -298,63 +302,16 @@ impl ConversationView {
         cx.notify();
     }
 
-    /// Opens an attachment, downloading it first.
+    /// Opens an attachment, downloading it first: videos in the carousel,
+    /// anything else as the system or its bubble plays it.
     pub(crate) fn open_media(&mut self, media: &MediaView, cx: &mut Context<Self>) {
+        if media.fetch.kind == ContentKind::Video {
+            self.view_media(media, cx);
+            return;
+        }
         let (fetch, file) = (media.fetch.clone(), media.file.clone());
         self.log
             .update(cx, |log, cx| log.open_media(fetch, file.as_deref(), cx));
-    }
-
-    /// Plays or pauses a voice note or audio file in its bubble.
-    pub(crate) fn toggle_voice(&mut self, media: &MediaView, cx: &mut Context<Self>) {
-        let id = SharedString::from(media.fetch.message_id.clone());
-        if self.voices.toggle(&id, media.file.as_deref()) {
-            let fetch = media.fetch.clone();
-            self.log
-                .update(cx, |log, cx| log.open_media(fetch, None, cx));
-        }
-        self.keep_ticking(cx);
-    }
-
-    /// Jumps to `fraction` of the playing note.
-    pub(crate) fn seek_voice(&mut self, message_id: &str, fraction: f32, cx: &mut Context<Self>) {
-        self.voices.seek(message_id, fraction);
-        cx.notify();
-    }
-
-    /// Plays voice notes at `speed` from now on.
-    pub(crate) fn set_voice_speed(&mut self, speed: Speed, cx: &mut Context<Self>) {
-        self.voices.set_speed(speed);
-        cx.notify();
-    }
-
-    /// Opens or closes the speed menu of `message_id`'s bubble.
-    pub(crate) fn toggle_speed_menu(&mut self, message_id: &SharedString, cx: &mut Context<Self>) {
-        self.voices.toggle_speed_menu(message_id);
-        cx.notify();
-    }
-
-    /// Redraws the playing note until it pauses, stops or ends.
-    fn keep_ticking(&mut self, cx: &mut Context<Self>) {
-        cx.notify();
-        if self.ticking || !self.voices.is_running() {
-            return;
-        }
-        self.ticking = true;
-        cx.spawn(async move |this, cx| {
-            loop {
-                cx.background_executor().timer(VOICE_TICK).await;
-                let running = this.update(cx, |view, cx| {
-                    cx.notify();
-                    view.ticking = view.voices.is_running();
-                    view.ticking
-                });
-                if !matches!(running, Ok(true)) {
-                    break;
-                }
-            }
-        })
-        .detach();
     }
 
     /// Closes the quick reactions, the emoji picker and the speed menu.
@@ -407,7 +364,9 @@ impl ConversationView {
     /// question, popups, then the reply being composed. Returns whether
     /// anything was open; escape and the back button both use it.
     pub fn step_back(&mut self, cx: &mut Context<Self>) -> bool {
-        if self.viewing.take().is_some()
+        if self.carousel.is_some() {
+            self.close_carousel(cx);
+        } else if self.viewing.take().is_some()
             || self.browsing.take().is_some()
             || self.sending.take().is_some()
         {
@@ -557,6 +516,7 @@ impl Render for ConversationView {
             .children(self.poll_dialog(window, cx))
             .children(self.browsing.clone())
             .children(self.picture_viewer(window, cx))
+            .children(self.carousel_view(window, cx))
             .children(self.chat_menu(cx))
             .into_any_element()
     }

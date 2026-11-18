@@ -7,6 +7,7 @@
 
 mod authors;
 mod bubble;
+mod carousel;
 mod emoji;
 mod extra_view;
 mod items;
@@ -33,9 +34,9 @@ mod view;
 mod voice;
 mod voice_view;
 
-pub use log::{ForwardRequested, MessageLog, MessageSent, OpenChat, PlayRequested};
+pub use log::{ForwardRequested, MessageLog, MessageSent, OpenChat};
 pub use overview::{ChatOverview, MediaTile, TileImage};
 pub use view::{
-    ChatClosed, ChatRequested, ContactsRequested, ConversationView, MuteRequested,
+    ChatClosed, ChatRequested, ContactsRequested, ConversationView, MuteRequested, PlayRequested,
     ProfileRequested, StickerFavoriteToggled,
 };

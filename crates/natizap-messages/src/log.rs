@@ -131,19 +131,8 @@ pub struct MessageLog {
 }
 
 impl EventEmitter<MessageSent> for MessageLog {}
-impl EventEmitter<PlayRequested> for MessageLog {}
 impl EventEmitter<SoundReady> for MessageLog {}
 impl EventEmitter<ForwardRequested> for MessageLog {}
-
-/// The user opened a video, now on disk, so the app can play it over the
-/// window.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PlayRequested {
-    /// The downloaded file.
-    pub file: PathBuf,
-    /// What to call it while playing.
-    pub title: SharedString,
-}
 
 /// The open chat's pinned message, as the bar over the messages shows it.
 #[derive(Debug, Clone, PartialEq, Eq)]

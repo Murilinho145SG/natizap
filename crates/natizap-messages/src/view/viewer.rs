@@ -1,23 +1,22 @@
-//! Photos shown large over the dimmed window, and the window of a chat's
+//! Opening photos, videos and stickers large, and the window of a chat's
 //! media, links and docs they can be opened from.
 
-use gpui::prelude::*;
-use gpui::{AnyElement, Context, ImageSource, ObjectFit, SharedString, Window, img, px};
+use gpui::{AnyElement, AppContext as _, Context, SharedString, Window};
 use natizap_protocol::{ChatId, ContentKind};
-use natizap_ui::dialog;
 
 use super::ConversationView;
 use crate::items::MediaView;
 use crate::media_browser::{BrowserClosed, MediaBrowser, MediaChosen, MediaUse, MessageWanted};
 use crate::overview::MediaTile;
 
-/// How much of the window a photo may take.
-const COVERAGE: f32 = 0.9;
-
 impl ConversationView {
-    /// Shows `media`'s photo large, downloading the full photo if only its
-    /// preview is here.
+    /// Shows a photo in the carousel, or a sticker large, downloading it
+    /// if only its preview is here.
     pub(crate) fn view_picture(&mut self, media: &MediaView, cx: &mut Context<Self>) {
+        if media.fetch.kind != ContentKind::Sticker {
+            self.view_media(media, cx);
+            return;
+        }
         if !media.file.as_deref().is_some_and(std::path::Path::exists) {
             let fetch = media.fetch.clone();
             self.log.update(cx, |log, cx| log.download(fetch, cx));
@@ -33,11 +32,11 @@ impl ConversationView {
         }
     }
 
-    /// Opens an attachment: photos large, anything else as its bubble
-    /// would.
+    /// Opens an attachment: photos and videos in the carousel, anything
+    /// else as its bubble would.
     fn show_media(&mut self, media: &MediaView, cx: &mut Context<Self>) {
         if media.fetch.kind == ContentKind::Photo {
-            self.view_picture(media, cx);
+            self.view_media(media, cx);
         } else {
             self.open_media(media, cx);
         }
@@ -74,48 +73,13 @@ impl ConversationView {
         cx.notify();
     }
 
-    /// The photo being viewed, fitted to the window; a click closes it.
+    /// The sticker being viewed large.
     pub(super) fn picture_viewer(
         &self,
         window: &Window,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         let media = self.viewing.as_ref()?;
-        if media.fetch.kind == ContentKind::Sticker {
-            return Some(self.sticker_viewer(media, window, cx));
-        }
-        // A photo downloaded since it opened replaces its preview.
-        let file = media
-            .file
-            .clone()
-            .filter(|file| file.exists())
-            .or_else(|| self.log.read(cx).saved_file(&media.fetch));
-        let source: ImageSource = match (file, &media.preview) {
-            (Some(file), _) => file.into(),
-            (None, Some(preview)) => preview.clone().into(),
-            (None, None) => return None,
-        };
-        let viewport = window.viewport_size();
-        let (width, height) = media.size;
-        let scale = (f32::from(viewport.width) * COVERAGE / width)
-            .min(f32::from(viewport.height) * COVERAGE / height);
-        let view = cx.weak_entity();
-        Some(
-            dialog(
-                window,
-                img(source)
-                    .w(px(width * scale))
-                    .h(px(height * scale))
-                    .rounded(px(8.0))
-                    .object_fit(ObjectFit::Contain),
-                move |_, cx| {
-                    let _ = view.update(cx, |this, cx| {
-                        this.viewing = None;
-                        cx.notify();
-                    });
-                },
-            )
-            .into_any_element(),
-        )
+        Some(self.sticker_viewer(media, window, cx))
     }
 }

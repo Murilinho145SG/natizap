@@ -1,8 +1,8 @@
-//! The full-window video player.
+//! The video player the media carousel plays videos on.
 //!
 //! Decoding and sound come from `natizap-playback`; this crate draws the
-//! pictures and the controls over the window.
+//! pictures and the controls.
 
 mod view;
 
-pub use view::{PlayerClosed, PlayerView};
+pub use view::PlayerView;

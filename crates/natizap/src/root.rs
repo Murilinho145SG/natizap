@@ -15,7 +15,7 @@ use natizap_messages::{
     MessageSent, MuteRequested, OpenChat, PlayRequested,
 };
 use natizap_notifications::{NotificationSettings, Notifier};
-use natizap_player::{PlayerClosed, PlayerView};
+use natizap_player::PlayerView;
 use natizap_profiles::ProfilePictures;
 use natizap_protocol::{Card, ChatId, Extra, PersonName, Protocol};
 use natizap_session::{PairingView, Session, SessionState};
@@ -59,8 +59,6 @@ pub(crate) struct Root {
     pairing: Entity<PairingView>,
     chat_list: Entity<ChatListView>,
     conversation: Entity<ConversationView>,
-    /// The video or audio playing over the chats, if any.
-    player: Option<Entity<PlayerView>>,
     /// Choosing chats to forward a message to.
     picker: Option<Entity<ChatPicker>>,
     /// The open chat's profile, beside the conversation.
@@ -118,18 +116,13 @@ impl Root {
         })
         .detach();
         cx.subscribe_in(
-            messages,
+            &conversation,
             window,
-            |root, _, play: &PlayRequested, window, cx| {
-                let player =
-                    cx.new(|cx| PlayerView::new(&play.file, play.title.clone(), window, cx));
-                cx.subscribe(&player, |root, _, _: &PlayerClosed, cx| {
-                    root.player = None;
-                    cx.notify();
-                })
-                .detach();
-                root.player = Some(player);
-                cx.notify();
+            |_, conversation, play: &PlayRequested, window, cx| {
+                let player = cx.new(|cx| PlayerView::new(&play.file, window, cx));
+                conversation.update(cx, |conversation, cx| {
+                    conversation.show_player(&play.message_id, player.into(), cx);
+                });
             },
         )
         .detach();
@@ -150,7 +143,6 @@ impl Root {
             pairing,
             chat_list,
             conversation,
-            player: None,
             picker: None,
             profile: None,
             messages: messages.clone(),
@@ -359,11 +351,10 @@ impl Root {
     }
 
     /// Like the phone's back button: closes what is on top first (the
-    /// player, the chat picker, a menu or the reply being composed), then
-    /// goes back to the chat before.
+    /// chat picker, the open photo or video, a menu or the reply being
+    /// composed), then goes back to the chat before.
     fn go_back(&mut self, cx: &mut Context<Self>) {
-        if self.player.take().is_some()
-            || self.picker.take().is_some()
+        if self.picker.take().is_some()
             || self.settings.take().is_some()
             || self.profile.take().is_some()
         {
@@ -406,9 +397,6 @@ impl Root {
     fn content(&self, width: Pixels, cx: &Context<Self>) -> AnyElement {
         if !self.shows_chats(cx) {
             return self.pairing.clone().into_any_element();
-        }
-        if let Some(player) = &self.player {
-            return player.clone().into_any_element();
         }
         let reconnecting = matches!(self.session.read(cx).state(), SessionState::Reconnecting);
         div()

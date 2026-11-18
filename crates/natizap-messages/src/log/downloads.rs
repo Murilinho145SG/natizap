@@ -8,7 +8,7 @@ use gpui::{AppContext as _, ClipboardItem, Context, Image, ImageFormat, Task};
 use natizap_playback::save_poster;
 use natizap_protocol::{ActionError, ContentKind};
 
-use super::{Input, MessageLog, PlayRequested, SoundReady};
+use super::{Input, MessageLog, SoundReady};
 use crate::media::{Fetch, PosterJob, PosterSource};
 use crate::message::MessageChange;
 
@@ -72,14 +72,13 @@ impl MessageLog {
             .map(Path::to_owned)
             .or_else(|| self.saved_file(&fetch));
         match on_disk {
-            Some(file) => self.finish(fetch.kind, fetch.message_id, file, then, cx),
+            Some(file) => Self::finish(fetch.kind, fetch.message_id, file, then, cx),
             None => self.fetch(fetch, then, cx),
         }
     }
 
     /// Does `then` with `file`, the attachment of message `message_id`.
     fn finish(
-        &self,
         kind: ContentKind,
         message_id: String,
         file: PathBuf,
@@ -88,7 +87,7 @@ impl MessageLog {
     ) {
         match then {
             Then::Keep => {}
-            Then::Open => self.reveal(kind, message_id, file, cx),
+            Then::Open => Self::reveal(kind, message_id, file, cx),
             Then::SaveTo(dest) => {
                 cx.background_spawn(async move {
                     if let Err(error) = std::fs::copy(&file, &dest) {
@@ -120,15 +119,10 @@ impl MessageLog {
         Some(fetch.path_in(&self.media_dir)).filter(|path| path.exists())
     }
 
-    /// Videos play over the window and sound in its bubble; other files open
-    /// in the system's app for them.
-    fn reveal(&self, kind: ContentKind, message_id: String, file: PathBuf, cx: &mut Context<Self>) {
+    /// Sound plays in its bubble; other files open in the system's app for
+    /// them. Photos and videos open in the carousel, never here.
+    fn reveal(kind: ContentKind, message_id: String, file: PathBuf, cx: &mut Context<Self>) {
         match kind {
-            ContentKind::Video => {
-                let chat = self.open.as_ref().map_or_default(|open| open.title.clone());
-                let title = format!("{} · {chat}", kind.label()).into();
-                cx.emit(PlayRequested { file, title });
-            }
             ContentKind::VoiceMessage | ContentKind::Audio => {
                 cx.emit(SoundReady { message_id, file });
             }
@@ -146,7 +140,9 @@ impl MessageLog {
             self.fetching.remove(&fetch.message_id);
         }
         if let Some(waiting) = self.fetching.get_mut(&fetch.message_id) {
-            waiting.push(then);
+            if then != Then::Keep {
+                waiting.push(then);
+            }
             return;
         }
         self.fetching.insert(fetch.message_id.clone(), vec![then]);
@@ -184,7 +180,7 @@ impl MessageLog {
                             direct_path,
                         }));
                         for then in waiting {
-                            log.finish(kind, message_id.clone(), path.clone(), then, cx);
+                            Self::finish(kind, message_id.clone(), path.clone(), then, cx);
                         }
                     }
                     // Stays in `fetching` so a failing file is not retried on
