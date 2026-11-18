@@ -33,7 +33,7 @@ pub(crate) fn render_media(media: &MediaView, view: &WeakEntity<ConversationView
                 }
             })
             .into_any_element(),
-        ContentKind::Sticker => picture(media).into_any_element(),
+        ContentKind::Sticker => sticker(media, view),
         ContentKind::Video => picture(media)
             .relative()
             .child(
@@ -216,4 +216,18 @@ fn pressable(media: Stateful<Div>) -> Stateful<Div> {
         .cursor_pointer()
         .hover(|media| media.opacity(0.88))
         .active(|media| media.opacity(0.75))
+}
+
+/// A sticker: a click offers its actions, keeping it among favorites first
+/// of all, as on the phone.
+fn sticker(media: &MediaView, view: &WeakEntity<ConversationView>) -> AnyElement {
+    let (id, view) = (media.fetch.message_id.clone(), view.clone());
+    picture(media)
+        .id("media")
+        .cursor_pointer()
+        .on_click(move |event, _, cx| {
+            let (id, at) = (SharedString::from(id.clone()), event.position());
+            let _ = view.update(cx, |view, cx| view.open_message_menu(id, at, cx));
+        })
+        .into_any_element()
 }

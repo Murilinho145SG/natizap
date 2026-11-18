@@ -6,7 +6,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use chrono::Local;
 use gpui::{App, AppContext as _, Context, Entity, Task};
-use natizap_protocol::{ActionError, ChatId, ContentKind, Extra, Forward, Quote, Reply, Sent};
+use natizap_protocol::{
+    ActionError, ChatId, ContentKind, Extra, Forward, Quote, Reply, Sent, Sticker,
+};
 
 use super::{ForwardRequested, Input, MessageLog, MessageSent};
 use crate::items::summary;
@@ -154,6 +156,48 @@ impl MessageLog {
             })
             .detach();
         }
+    }
+
+    /// Sends `sticker` to the open chat, showing it at once from `file`,
+    /// where it already is on disk.
+    pub fn send_sticker(
+        &mut self,
+        sticker: Sticker,
+        file: Option<PathBuf>,
+        cx: &mut Context<Self>,
+    ) {
+        let Some((chat, local_id, sent_at)) = self.next_outgoing() else {
+            return;
+        };
+        let mut message = outgoing_message(&chat, &local_id, sent_at, None);
+        message.kind = ContentKind::Sticker;
+        message.media = Some(sticker.media.clone());
+        message.media_file = file;
+        self.send_input(Input::from(MessageChange::Sending(message)));
+        cx.emit(MessageSent {
+            chat: chat.clone(),
+            text: ContentKind::Sticker.label().to_owned(),
+            sent_at,
+        });
+        let sending = self.protocol.read(cx).send_sticker(&chat, sticker, cx);
+        let inputs = self.inputs.clone();
+        cx.background_spawn(async move {
+            let change = match sending.await {
+                Ok(sent) => MessageChange::Accepted {
+                    chat,
+                    local_id,
+                    id: sent.id,
+                    media: None,
+                },
+                Err(error) => {
+                    tracing::warn!(%error, "sticker not sent");
+                    MessageChange::Rejected { chat, local_id }
+                }
+            };
+            // Only fails while shutting down, when nothing is left to update.
+            let _ = inputs.send(Input::from(change)).await;
+        })
+        .detach();
     }
 }
 

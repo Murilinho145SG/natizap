@@ -1,4 +1,5 @@
 use gpui::prelude::*;
+use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
 use gpui::{
@@ -30,6 +31,7 @@ mod header;
 mod list;
 mod message_menu;
 mod recorder;
+mod stickers;
 mod viewer;
 
 use arrivals::Arrivals;
@@ -39,6 +41,8 @@ use going::GoingTo;
 use header::header;
 pub use header::{ChatClosed, MuteRequested};
 use message_menu::MessagePopup;
+pub use stickers::StickerFavoriteToggled;
+use stickers::StickerPicking;
 
 /// Width of the column a community's announcements read in.
 const CENTERED_WIDTH: f32 = 720.0;
@@ -92,6 +96,10 @@ pub struct ConversationView {
     chat_menu: Option<Point<Pixels>>,
     /// A voice note being recorded.
     recorder: Option<Recorder>,
+    /// The favorite stickers to pick from, as the app hands them over.
+    sticker_picker: Option<StickerPicking>,
+    /// The hashes of the favorite stickers.
+    favorite_stickers: HashSet<String>,
     /// Files about to be sent, shown in place of the messages.
     sending: Option<Entity<SendPreview>>,
     /// The window of a chat's media, links and docs.
@@ -128,6 +136,8 @@ impl EventEmitter<ContactsRequested> for ConversationView {}
 impl EventEmitter<ChatClosed> for ConversationView {}
 
 impl EventEmitter<MuteRequested> for ConversationView {}
+
+impl EventEmitter<StickerFavoriteToggled> for ConversationView {}
 
 /// The message the next one will reply to, as the composer shows it.
 #[derive(Debug, Clone)]
@@ -218,6 +228,8 @@ impl ConversationView {
             viewing: None,
             chat_menu: None,
             recorder: None,
+            sticker_picker: None,
+            favorite_stickers: HashSet::new(),
             sending: None,
             browsing: None,
             refocus: false,
@@ -248,6 +260,7 @@ impl ConversationView {
             self.replying = None;
             self.reacting = None;
             self.picking_emoji = false;
+            self.close_stickers();
             // The files and the media window were for the chat left behind.
             self.sending = None;
             self.browsing = None;
@@ -345,9 +358,15 @@ impl ConversationView {
     pub(crate) fn close_popups(&mut self, cx: &mut Context<Self>) {
         let menu_was_open = self.voices.close_speed_menu();
         let picker_was_open = self.reaction_picker.take().is_some();
-        if self.reacting.is_some() || self.picking_emoji || menu_was_open || picker_was_open {
+        if self.reacting.is_some()
+            || self.picking_emoji
+            || self.picking_stickers()
+            || menu_was_open
+            || picker_was_open
+        {
             self.reacting = None;
             self.picking_emoji = false;
+            self.close_stickers();
             cx.notify();
         }
     }
@@ -398,7 +417,11 @@ impl ConversationView {
             self.close_message_popup(cx);
         } else if self.voices.close_speed_menu() {
             cx.notify();
-        } else if self.reacting.is_some() || self.picking_emoji || self.reaction_picker.is_some() {
+        } else if self.reacting.is_some()
+            || self.picking_emoji
+            || self.picking_stickers()
+            || self.reaction_picker.is_some()
+        {
             self.close_popups(cx);
         } else if self.replying.take().is_some() {
             cx.notify();

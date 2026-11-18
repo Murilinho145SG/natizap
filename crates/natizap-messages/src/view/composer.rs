@@ -216,6 +216,7 @@ impl ConversationView {
             .bg(rgb(PANEL))
             .border_t_1()
             .border_color(rgb(LINE))
+            .children(self.sticker_popover())
             .when(self.picking_emoji, |composer| {
                 // Floats above the messages instead of growing the composer,
                 // which pushed the composer out of a tall message list.
@@ -276,9 +277,22 @@ impl ConversationView {
                     .tooltip("Emoji")
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.picking_emoji = !this.picking_emoji;
+                        this.close_stickers();
                         cx.notify();
                     })),
             )
+            .when(self.sticker_picker.is_some(), |bar| {
+                bar.child(
+                    Button::new("stickers")
+                        .icon(Icon::Sticker)
+                        .variant(ButtonVariant::Ghost)
+                        .size(ButtonSize::Large)
+                        .round()
+                        .selected(self.picking_stickers())
+                        .tooltip("Stickers")
+                        .on_click(cx.listener(|this, _, _, cx| this.toggle_sticker_picker(cx))),
+                )
+            })
             .child(
                 div()
                     .flex_1()

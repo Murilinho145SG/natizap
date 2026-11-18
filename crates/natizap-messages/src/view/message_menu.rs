@@ -55,8 +55,10 @@ impl ConversationView {
                     .read(cx)
                     .pinned()
                     .is_some_and(|pinned| pinned.id == bubble.id);
+                // A sticker's own action comes first.
+                let start = self.with_favorite_sticker(Menu::new(), &bubble, cx);
                 Some(
-                    Self::menu(&bubble, pinned, cx)
+                    Self::menu(&bubble, pinned, start, cx)
                         .at(*position)
                         .into_any_element(),
                 )
@@ -72,9 +74,10 @@ impl ConversationView {
         }
     }
 
-    /// Reply, copy, react and delete, as on the phone. Copy only shows for
-    /// messages with text, and only delete for deleted ones.
-    fn menu(bubble: &Bubble, pinned: bool, cx: &mut Context<Self>) -> Menu {
+    /// Reply, copy, react and delete, as on the phone, after what `start`
+    /// already offers. Copy only shows for messages with text, and only
+    /// delete for deleted ones.
+    fn menu(bubble: &Bubble, pinned: bool, start: Menu, cx: &mut Context<Self>) -> Menu {
         let view = cx.weak_entity();
         let close = {
             let view = view.clone();
@@ -89,7 +92,7 @@ impl ConversationView {
             } => Some(text.text.to_string()),
             _ => None,
         };
-        let mut menu = Menu::new().on_dismiss(close);
+        let mut menu = start.on_dismiss(close);
         if !deleted {
             let (replying, replied) = (view.clone(), bubble.clone());
             menu = menu.action(Icon::Reply, "Reply", move |_, cx| {

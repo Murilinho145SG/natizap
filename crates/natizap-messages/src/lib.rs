@@ -34,5 +34,6 @@ mod voice_view;
 pub use log::{ForwardRequested, MessageLog, MessageSent, OpenChat, PlayRequested};
 pub use overview::{ChatOverview, MediaTile, TileImage};
 pub use view::{
-    ChatClosed, ChatRequested, ContactsRequested, ConversationView, MuteRequested, ProfileRequested,
+    ChatClosed, ChatRequested, ContactsRequested, ConversationView, MuteRequested,
+    ProfileRequested, StickerFavoriteToggled,
 };
