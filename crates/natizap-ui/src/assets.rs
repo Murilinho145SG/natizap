@@ -76,6 +76,8 @@ icons! {
     File => "file.svg",
     /// Forward a message to another chat.
     Forward => "forward.svg",
+    /// A web link.
+    Link => "link.svg",
     /// End-to-end encryption.
     Lock => "lock.svg",
     /// Maximize the window.
