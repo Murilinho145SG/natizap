@@ -5,7 +5,7 @@ use gpui::{
     Animation, AnimationExt as _, AnyElement, App, BoxShadow, Div, FontWeight, Hsla, MouseButton,
     SharedString, Stateful, WeakEntity, div, point, px, relative, rgb, rgba, svg,
 };
-use natizap_protocol::{ContentKind, Forwarding};
+use natizap_protocol::{ContentKind, Extra, Forwarding};
 use natizap_ui::motion::ease_out;
 use natizap_ui::theme::{
     ACCENT, ALERT, DEEP, LINE, MINT, MUTED, OUTGOING, PANEL, RAISED, SCRIM, TEXT, glass,
@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::authors::Author;
-use crate::extra_view::render_extra;
+use crate::extra_view::{render_buttons, render_extra};
 use crate::items::{Body, Bubble, Item, MediaView, QuotePreview};
 use crate::media_view::render_media;
 use crate::message::Delivery;
@@ -186,6 +186,17 @@ fn render_bubble(
 }
 
 /// The bubble itself: author, attachment, quote, content and time.
+/// A business's buttons, which go under the text and time.
+fn buttons_under(bubble: &Bubble) -> Option<Div> {
+    match &bubble.body {
+        Body::Content {
+            extra: Some(Extra::Buttons(buttons)),
+            ..
+        } => Some(render_buttons(&bubble.id, buttons)),
+        _ => None,
+    }
+}
+
 fn shape(
     bubble: &Bubble,
     view: &WeakEntity<ConversationView>,
@@ -256,7 +267,7 @@ fn shape(
             .children(
                 extra
                     .as_ref()
-                    .map(|extra| render_extra(&bubble.id, extra, bubble.poll.as_ref(), view)),
+                    .and_then(|extra| render_extra(&bubble.id, extra, bubble.poll.as_ref(), view)),
             )
             .children(media.map(|media| {
                 div()
@@ -298,6 +309,7 @@ fn shape(
                 .child(body.min_w_0().max_w_full())
                 .child(meta.ml_auto().pb(px(1.0))),
         )
+        .children(buttons_under(bubble))
 }
 
 /// A photo or video filling its bubble but for a thin rim, as on the

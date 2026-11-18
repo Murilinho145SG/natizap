@@ -3,6 +3,7 @@ use whatsapp_rust::prelude::{MessageExt as _, wa};
 use crate::LinkPreview;
 
 use crate::ChatId;
+use crate::buttons::{self, Buttons};
 use crate::media::Media;
 
 /// What a message carries, as far as the interface needs to know.
@@ -130,6 +131,8 @@ pub enum Extra {
     Cards(Vec<Card>),
     /// A poll.
     Poll(Poll),
+    /// Buttons a business put under its text.
+    Buttons(Buttons),
 }
 
 /// A shared contact.
@@ -210,6 +213,9 @@ pub struct Poll {
 
 impl Extra {
     fn of(message: &wa::Message) -> Option<Self> {
+        if let Some((_, buttons)) = buttons::of(message) {
+            return Some(Self::Buttons(buttons));
+        }
         if let Some(contact) = message.contact_message.as_option() {
             return Some(Self::Cards(vec![Card::of(contact)]));
         }
@@ -288,6 +294,7 @@ fn context_info(message: &wa::Message) -> Option<&wa::ContextInfo> {
         .into_iter()
         .flatten()
         .find_map(|info| info.as_option())
+        .or_else(|| buttons::context_info(message))
 }
 
 impl Content {
@@ -300,7 +307,9 @@ impl Content {
         let text = message
             .text_content()
             .or_else(|| message.get_caption())
-            .map(str::to_owned);
+            .map(str::to_owned)
+            .or_else(|| buttons::of(message).and_then(|(text, _)| text))
+            .or_else(|| buttons::reply_text(message));
         let kind = if message.image_message.is_set() {
             ContentKind::Photo
         } else if message.video_message.is_set() {

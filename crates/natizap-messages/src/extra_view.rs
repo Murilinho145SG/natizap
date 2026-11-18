@@ -1,24 +1,28 @@
-//! Shared contacts and polls inside a bubble.
+//! Shared contacts, polls and a business's buttons inside a bubble.
 
 use gpui::prelude::*;
-use gpui::{AnyElement, Div, ElementId, FontWeight, WeakEntity, div, px, rgb, svg};
-use natizap_protocol::{Card, ChatId, Extra, Poll};
-use natizap_ui::theme::{ACCENT, DEEP, LINE, LINK, MUTED, TEXT};
+use gpui::{
+    AnyElement, ClipboardItem, Div, ElementId, FontWeight, SharedString, WeakEntity, div, px, rgb,
+    rgba, svg,
+};
+use natizap_protocol::{ButtonAction, Buttons, Card, ChatId, Extra, Poll};
+use natizap_ui::theme::{ACCENT, DEEP, HOVER, LINE, LINK, MUTED, TEXT};
 use natizap_ui::{Icon, avatar, progress, separator};
 
 use crate::poll::PollState;
 
 use crate::view::{ChatRequested, ConversationView};
 
-/// `extra` as the phone shows it. `id` must be unique among the bubbles on
-/// screen.
+/// `extra` as the phone shows it above the text, or `None` for buttons,
+/// which go under it ([`render_buttons`]). `id` must be unique among the
+/// bubbles on screen.
 pub(crate) fn render_extra(
     id: &str,
     extra: &Extra,
     poll: Option<&PollState>,
     view: &WeakEntity<ConversationView>,
-) -> AnyElement {
-    match extra {
+) -> Option<AnyElement> {
+    Some(match extra {
         Extra::Cards(cards) => div()
             .min_w(px(240.0))
             .flex()
@@ -31,7 +35,70 @@ pub(crate) fn render_extra(
             )
             .into_any_element(),
         Extra::Poll(question) => poll_view(id, question, poll, view).into_any_element(),
-    }
+        Extra::Buttons(_) => return None,
+    })
+}
+
+/// A business's footer and buttons, under the text and time, one full
+/// row each as the phone draws them. Links, calls and codes act when
+/// clicked; replies and lists only show.
+pub(crate) fn render_buttons(id: &str, buttons: &Buttons) -> Div {
+    let footer = buttons.footer.clone().map(|footer| {
+        div()
+            .pb_1()
+            .text_size(px(12.5))
+            .text_color(rgb(MUTED))
+            .child(footer)
+    });
+    let rows = buttons.buttons.iter().enumerate().map(|(index, button)| {
+        let icon = match &button.action {
+            ButtonAction::Url(_) => Some(Icon::Link),
+            ButtonAction::Call(_) => Some(Icon::Call),
+            ButtonAction::Copy(_) => Some(Icon::Copy),
+            ButtonAction::List => Some(Icon::More),
+            ButtonAction::Reply => None,
+        };
+        let action = button.action.clone();
+        let acts = matches!(
+            action,
+            ButtonAction::Url(_) | ButtonAction::Call(_) | ButtonAction::Copy(_)
+        );
+        div()
+            .id((SharedString::from(format!("{id}-button")), index))
+            .w_full()
+            .py_2()
+            .flex()
+            .items_center()
+            .justify_center()
+            .gap_1p5()
+            .border_t_1()
+            .border_color(rgb(LINE))
+            .text_size(px(14.0))
+            .font_weight(FontWeight::MEDIUM)
+            .text_color(rgb(LINK))
+            .children(icon.map(|icon| svg().path(icon.path()).size(px(15.0)).text_color(rgb(LINK))))
+            .child(button.label.clone())
+            .when(acts, |row| {
+                row.cursor_pointer()
+                    .hover(|row| row.bg(rgba(HOVER)))
+                    .on_click(move |_, _, cx| match &action {
+                        ButtonAction::Url(url) => cx.open_url(url),
+                        ButtonAction::Call(phone) => cx.open_url(&format!("tel:{phone}")),
+                        ButtonAction::Copy(code) => {
+                            cx.write_to_clipboard(ClipboardItem::new_string(code.clone()));
+                        }
+                        ButtonAction::Reply | ButtonAction::List => {}
+                    })
+            })
+    });
+    div()
+        .w_full()
+        .min_w(px(240.0))
+        .flex()
+        .flex_col()
+        .pt_1()
+        .children(footer)
+        .children(rows)
 }
 
 /// A shared contact: its name and number, and a way to message it.

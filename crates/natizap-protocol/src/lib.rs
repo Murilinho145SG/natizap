@@ -7,6 +7,7 @@
 
 mod actions;
 mod business;
+mod buttons;
 mod calls;
 mod chat;
 mod content;
@@ -24,6 +25,7 @@ mod stickers;
 
 pub use actions::{ActionError, Anchor, Disappearing, PinFor, Reply, Sent, Unread};
 pub use business::{Business, DayHours, Hours};
+pub use buttons::{Button, ButtonAction, Buttons};
 pub use calls::{MissedCall, Ringing};
 pub use chat::{ChatId, PersonName};
 pub use content::{Card, Content, ContentKind, Extra, Forwarding, Poll, Quote};

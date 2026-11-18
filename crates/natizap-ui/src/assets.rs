@@ -66,6 +66,8 @@ icons! {
     Clock => "clock.svg",
     /// A photo.
     Camera => "camera.svg",
+    /// A phone call to make, e.g. a business's call button.
+    Call => "call.svg",
     /// A call nobody answered.
     CallMissed => "call-missed.svg",
     /// A conversation.

@@ -1,7 +1,7 @@
-//! How a message's shared contacts or poll are kept in the `extra` column:
-//! one line per entry, fields split by tabs.
+//! How a message's shared contacts, poll or buttons are kept in the
+//! `extra` column: one line per entry, fields split by tabs.
 
-use natizap_protocol::{Card, Extra, Poll};
+use natizap_protocol::{Button, ButtonAction, Buttons, Card, Extra, Poll};
 
 pub(super) fn encode(extra: &Extra) -> String {
     let clean = |field: &str| field.replace(['\t', '\n', '\r'], " ");
@@ -29,6 +29,26 @@ pub(super) fn encode(extra: &Extra) -> String {
         )
         .collect::<Vec<_>>()
         .join("\n"),
+        Extra::Buttons(buttons) => std::iter::once(format!(
+            "buttons\t{}",
+            clean(buttons.footer.as_deref().unwrap_or_default())
+        ))
+        .chain(buttons.buttons.iter().map(|button| {
+            let (kind, target) = match &button.action {
+                ButtonAction::Reply => ("reply", ""),
+                ButtonAction::Url(url) => ("url", url.as_str()),
+                ButtonAction::Call(phone) => ("call", phone.as_str()),
+                ButtonAction::Copy(code) => ("copy", code.as_str()),
+                ButtonAction::List => ("list", ""),
+            };
+            format!(
+                "button\t{kind}\t{}\t{}",
+                clean(target),
+                clean(&button.label)
+            )
+        }))
+        .collect::<Vec<_>>()
+        .join("\n"),
     }
 }
 
@@ -44,6 +64,29 @@ pub(super) fn decode(stored: &str) -> Option<Extra> {
             options: lines
                 .filter_map(|fields| match fields.as_slice() {
                     ["option", option] => Some((*option).to_owned()),
+                    _ => None,
+                })
+                .collect(),
+        })),
+        ["buttons", footer] => Some(Extra::Buttons(Buttons {
+            footer: Some((*footer).to_owned()).filter(|footer| !footer.is_empty()),
+            buttons: lines
+                .filter_map(|fields| match fields.as_slice() {
+                    ["button", kind, target, label] => {
+                        let target = (*target).to_owned();
+                        let action = match *kind {
+                            "reply" => ButtonAction::Reply,
+                            "url" => ButtonAction::Url(target),
+                            "call" => ButtonAction::Call(target),
+                            "copy" => ButtonAction::Copy(target),
+                            "list" => ButtonAction::List,
+                            _ => return None,
+                        };
+                        Some(Button {
+                            label: (*label).to_owned(),
+                            action,
+                        })
+                    }
                     _ => None,
                 })
                 .collect(),
@@ -92,5 +135,35 @@ mod tests {
             multiple: false,
         });
         assert_eq!(decode(&encode(&poll)), Some(poll));
+    }
+
+    #[test]
+    fn keeps_buttons_as_they_were() {
+        let buttons = Extra::Buttons(Buttons {
+            footer: Some("Atendimento".into()),
+            buttons: vec![
+                Button {
+                    label: "Sim".into(),
+                    action: ButtonAction::Reply,
+                },
+                Button {
+                    label: "Site".into(),
+                    action: ButtonAction::Url("https://example.com".into()),
+                },
+                Button {
+                    label: "Ligar".into(),
+                    action: ButtonAction::Call("+5511999999999".into()),
+                },
+            ],
+        });
+        assert_eq!(decode(&encode(&buttons)), Some(buttons));
+        let bare = Extra::Buttons(Buttons {
+            footer: None,
+            buttons: vec![Button {
+                label: "Opções".into(),
+                action: ButtonAction::List,
+            }],
+        });
+        assert_eq!(decode(&encode(&bare)), Some(bare));
     }
 }

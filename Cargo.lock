@@ -3798,6 +3798,7 @@ dependencies = [
  "gpui",
  "gpui_tokio",
  "phonenumber",
+ "serde_json",
  "thiserror 2.0.21",
  "tokio",
  "tracing",

@@ -43,6 +43,7 @@ impl MessageLog {
         message.kind = match extra {
             Extra::Cards(_) => ContentKind::Contact,
             Extra::Poll(_) => ContentKind::Poll,
+            Extra::Buttons(_) => ContentKind::Text,
         };
         message.extra = Some(extra.clone());
         cx.emit(MessageSent {

@@ -143,7 +143,7 @@ pub(crate) async fn send_text(
     })
 }
 
-/// Sends shared contacts or a poll to `to`.
+/// Sends shared contacts or a poll to `to`; buttons cannot be sent.
 pub(crate) async fn send_extra(
     client: Arc<Client>,
     to: Jid,
@@ -151,6 +151,13 @@ pub(crate) async fn send_extra(
 ) -> Result<Sent, ActionError> {
     let rejected = |error: &dyn std::fmt::Display| ActionError::Rejected(error.to_string());
     let message = match extra {
+        // Only WhatsApp's business platform may send these; people's
+        // clients, this one included, only receive them.
+        Extra::Buttons(_) => {
+            return Err(ActionError::Rejected(
+                "messages with buttons come only from businesses".into(),
+            ));
+        }
         Extra::Poll(poll) => {
             // How many answers one person may choose: all of them, or one.
             let selectable = if poll.multiple {
