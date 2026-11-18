@@ -60,6 +60,34 @@ impl Sticker {
             media,
         }
     }
+
+    /// The stickers the phone sent lately, as a history sync lists them
+    /// when a device is linked.
+    #[must_use]
+    pub fn recent(history: &wa::HistorySync) -> Vec<Self> {
+        history
+            .recent_stickers
+            .iter()
+            .filter_map(|recent| {
+                let file_sha256 = recent.file_sha256.clone()?;
+                Some(Self {
+                    hash: BASE64.encode(&file_sha256),
+                    lottie: recent.is_lottie == Some(true),
+                    media: Media {
+                        mime: recent.mimetype.clone(),
+                        width: recent.width,
+                        height: recent.height,
+                        size: recent.file_length,
+                        direct_path: recent.direct_path.clone()?,
+                        media_key: recent.media_key.clone()?,
+                        file_sha256,
+                        file_enc_sha256: recent.file_enc_sha256.clone()?,
+                        ..Media::default()
+                    },
+                })
+            })
+            .collect()
+    }
 }
 
 /// The account's favorite stickers, newest last, as its other devices

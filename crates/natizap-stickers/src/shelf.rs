@@ -53,6 +53,8 @@ pub struct StickerShelf {
     busy: bool,
     /// How long to rest after the next failure.
     pause: Duration,
+    /// Whether the phone sent a linking sync since the last read.
+    linked: bool,
     _tasks: [Task<()>; 3],
 }
 
@@ -93,15 +95,14 @@ impl StickerShelf {
                 }
             }
         });
-        let messages = protocol.read(cx).subscribe(&[EventKind::Messages]);
+        let events = protocol.read(cx).subscribe(&[
+            EventKind::Messages,
+            EventKind::HistorySync,
+            EventKind::OfflineSyncCompleted,
+        ]);
         let hearing = cx.spawn(async move |this, cx| {
-            while let Ok(event) = messages.recv().await {
-                let stickers = live_stickers(&event);
-                if !stickers.is_empty()
-                    && this
-                        .update(cx, |shelf, cx| shelf.adopt(stickers, cx))
-                        .is_err()
-                {
+            while let Ok(event) = events.recv().await {
+                if this.update(cx, |shelf, cx| shelf.hear(&event, cx)).is_err() {
                     break;
                 }
             }
@@ -115,6 +116,7 @@ impl StickerShelf {
             queue: VecDeque::new(),
             busy: false,
             pause: FIRST_PAUSE,
+            linked: false,
             _tasks: [loading, refreshing, hearing],
         }
     }
@@ -190,6 +192,44 @@ impl StickerShelf {
             }
         })
         .detach();
+    }
+
+    /// Takes what `event` tells of favorites: stickers in messages, the
+    /// recent stickers a newly linked device is sent, and the end of the
+    /// sync that follows linking, after which the phone may have moved
+    /// favorites to fresh links.
+    fn hear(&mut self, event: &Event, cx: &mut Context<Self>) {
+        match event {
+            Event::HistorySync(history) => {
+                self.linked = true;
+                let Some(history) = history.get() else {
+                    return;
+                };
+                let recent = Sticker::recent(history);
+                if recent.is_empty() {
+                    return;
+                }
+                let live: Vec<Sticker> = recent
+                    .into_iter()
+                    .filter(|sticker| !sticker.media.link_expired())
+                    .collect();
+                tracing::info!(
+                    count = history.recent_stickers.len(),
+                    live = live.len(),
+                    "recent stickers arrived"
+                );
+                self.adopt(live, cx);
+            }
+            Event::OfflineSyncCompleted(_) if std::mem::take(&mut self.linked) => {
+                self.refresh(cx);
+            }
+            _ => {
+                let stickers = live_stickers(event);
+                if !stickers.is_empty() {
+                    self.adopt(stickers, cx);
+                }
+            }
+        }
     }
 
     /// Takes the fresh links of `stickers`, just seen in messages, for the
