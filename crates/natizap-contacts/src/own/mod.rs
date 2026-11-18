@@ -15,7 +15,7 @@ use gpui::{
     Pixels, Point, SharedString, Window,
 };
 use natizap_profiles::ProfilePictures;
-use natizap_protocol::{ActionError, Me, Protocol};
+use natizap_protocol::{ActionError, Business, Me, Profile, Protocol};
 use natizap_ui::{Submitted, TextInput};
 
 use crate::panel::image;
@@ -23,6 +23,10 @@ use field::Field;
 
 /// Side of the picture at the top.
 const PICTURE: f32 = 176.0;
+/// Side of the picture when it overlaps a business's banner.
+const COVERED_PICTURE: f32 = 132.0;
+/// Height of a business's banner.
+const COVER: f32 = 150.0;
 
 /// The user went back from their profile to the chats.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -44,6 +48,10 @@ pub struct OwnProfile {
     about: Option<String>,
     /// Whether the about line was read yet.
     about_read: bool,
+    /// Your business's public details, when this is a business account.
+    business: Option<Business>,
+    /// Your business's banner.
+    cover: Option<Arc<Image>>,
     editing: Option<Editing>,
     /// A line being saved, shown dimmed until WhatsApp takes it.
     saving: Option<(Field, String)>,
@@ -88,6 +96,8 @@ impl OwnProfile {
             picture: None,
             about: None,
             about_read: false,
+            business: None,
+            cover: None,
             editing: None,
             saving: None,
             error: None,
@@ -98,15 +108,18 @@ impl OwnProfile {
         profile.fetch_picture(cx);
         let reading = protocol.read(cx).profile(&profile.me.phone, cx);
         cx.spawn(async move |this, cx| {
-            let about = match reading.await {
-                Ok(profile) => profile.about,
-                Err(error) => {
-                    tracing::debug!(%error, "own about line unavailable");
-                    None
-                }
-            };
+            let read = reading.await.unwrap_or_else(|error| {
+                tracing::debug!(%error, "own profile unavailable");
+                Profile::default()
+            });
             let _ = this.update(cx, |profile, cx| {
-                profile.about = about;
+                profile.about = read.about;
+                profile.cover = read
+                    .business
+                    .as_ref()
+                    .and_then(|business| business.cover.clone())
+                    .map(image);
+                profile.business = read.business;
                 profile.about_read = true;
                 cx.notify();
             });

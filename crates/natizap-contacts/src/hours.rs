@@ -1,4 +1,5 @@
-//! A business's opening hours, as its profile shows them for today.
+//! A business's opening hours, as its profile shows them: for today, or
+//! day by day.
 
 use chrono::{Datelike as _, Local, NaiveDateTime, Timelike as _};
 use natizap_protocol::{DayHours, Hours};
@@ -31,25 +32,57 @@ fn today_at(week: &[DayHours], now: NaiveDateTime) -> Option<Today> {
             hours: "Closed today".to_owned(),
         });
     };
-    Some(match day.hours {
-        Hours::AllDay => Today {
-            open: Some(true),
-            hours: "Open 24 hours".to_owned(),
-        },
-        Hours::ByAppointment => Today {
-            open: None,
-            hours: "By appointment only".to_owned(),
-        },
-        Hours::Between(opens, closes) => Today {
-            // Hours past midnight close the next day.
-            open: Some(if opens <= closes {
-                (opens..closes).contains(&minute)
-            } else {
-                minute >= opens || minute < closes
-            }),
-            hours: format!("{} – {}", clock(opens), clock(closes)),
-        },
+    let open = match day.hours {
+        Hours::AllDay => Some(true),
+        Hours::ByAppointment => None,
+        // Hours past midnight close the next day.
+        Hours::Between(opens, closes) => Some(if opens <= closes {
+            (opens..closes).contains(&minute)
+        } else {
+            minute >= opens || minute < closes
+        }),
+    };
+    Some(Today {
+        open,
+        hours: label(day.hours),
     })
+}
+
+/// The days of the week, Sunday first as the phone lists them, by their
+/// number from Monday.
+const DAYS: [(u8, &str); 7] = [
+    (6, "Sunday"),
+    (0, "Monday"),
+    (1, "Tuesday"),
+    (2, "Wednesday"),
+    (3, "Thursday"),
+    (4, "Friday"),
+    (5, "Saturday"),
+];
+
+/// Every day of `week` with its hours, Sunday first, or nothing when the
+/// business gives none.
+pub(crate) fn week(week: &[DayHours]) -> Vec<(&'static str, String)> {
+    if week.is_empty() {
+        return Vec::new();
+    }
+    DAYS.iter()
+        .map(|&(weekday, name)| {
+            let hours = week
+                .iter()
+                .find(|day| day.weekday == weekday)
+                .map_or_else(|| "Closed".to_owned(), |day| label(day.hours));
+            (name, hours)
+        })
+        .collect()
+}
+
+fn label(hours: Hours) -> String {
+    match hours {
+        Hours::AllDay => "Open 24 hours".to_owned(),
+        Hours::ByAppointment => "By appointment only".to_owned(),
+        Hours::Between(opens, closes) => format!("{} – {}", clock(opens), clock(closes)),
+    }
 }
 
 fn clock(minutes: u32) -> String {
@@ -96,5 +129,25 @@ mod tests {
             Some("Closed today".to_owned())
         );
         assert_eq!(today_at(&[], at(16, 9)), None);
+    }
+
+    #[test]
+    fn lists_the_week_sunday_first_with_closed_days() {
+        let week = [
+            DayHours {
+                weekday: 0,
+                hours: Hours::Between(8 * 60, 18 * 60),
+            },
+            DayHours {
+                weekday: 6,
+                hours: Hours::AllDay,
+            },
+        ];
+        let listed = super::week(&week);
+        assert_eq!(listed.len(), 7);
+        assert_eq!(listed[0], ("Sunday", "Open 24 hours".to_owned()));
+        assert_eq!(listed[1], ("Monday", "08:00 – 18:00".to_owned()));
+        assert_eq!(listed[2], ("Tuesday", "Closed".to_owned()));
+        assert_eq!(super::week(&[]), Vec::new());
     }
 }

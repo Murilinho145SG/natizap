@@ -10,9 +10,10 @@ use std::collections::HashMap;
 use natizap_profiles::ProfilePictures;
 use natizap_protocol::{Business, ChatId, GroupInfo, PersonName, Profile, Protocol};
 
+use crate::business_view::{business_fields, field};
 use crate::hours;
 use crate::sections::{ChatSettings, ChatSummary, DisappearingChosen, MuteToggled};
-use natizap_ui::theme::{ALERT, LINE, LINK, MINT, MUTED, PANEL, TEXT};
+use natizap_ui::theme::{ALERT, LINE, MINT, MUTED, PANEL, TEXT};
 use natizap_ui::{Button, ButtonVariant, Icon, avatar, dialog, separator, skeleton, verified_seal};
 
 /// Size of the picture at the top of the panel.
@@ -441,78 +442,14 @@ impl ProfilePanel {
                     )),
             );
         };
-        let business = profile.business.as_ref();
-        let fields = [
-            ("About", profile.about.clone()),
-            (
-                "Description",
-                business.and_then(|business| business.description.clone()),
-            ),
-            (
-                "Address",
-                business.and_then(|business| business.address.clone()),
-            ),
-        ];
-        let email = business
-            .and_then(|business| business.email.clone())
-            .map(|email| links("Email", vec![(format!("mailto:{email}"), email)]));
-        let websites = business
-            .map(|business| {
-                business
-                    .websites
-                    .iter()
-                    .map(|site| {
-                        let target = if site.contains("://") {
-                            site.clone()
-                        } else {
-                            format!("https://{site}")
-                        };
-                        (target, site.clone())
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .filter(|websites| !websites.is_empty())
-            .map(|websites| links("Website", websites));
-        let shown: Vec<Div> = fields
-            .into_iter()
-            .filter_map(|(label, value)| Some(field(label, value?)))
-            .chain(email)
-            .chain(websites)
-            .collect();
+        let about = profile.about.clone().map(|about| field("About", about));
+        let business = profile
+            .business
+            .as_ref()
+            .map_or_else(Vec::new, business_fields);
+        let shown: Vec<Div> = about.into_iter().chain(business).collect();
         (!shown.is_empty()).then(|| div().w_full().flex().flex_col().gap_4().children(shown))
     }
-}
-
-fn field(label: &'static str, value: String) -> Div {
-    labeled(label).child(div().text_size(px(14.5)).child(value))
-}
-
-fn labeled(label: &'static str) -> Div {
-    div().flex().flex_col().gap_1().child(
-        div()
-            .text_size(px(12.5))
-            .text_color(rgb(MUTED))
-            .child(label),
-    )
-}
-
-/// A field of `(target, text)` links, each opened by the system.
-fn links(label: &'static str, links: Vec<(String, String)>) -> Div {
-    labeled(label).children(
-        links
-            .into_iter()
-            .enumerate()
-            .map(|(index, (target, text))| {
-                div()
-                    .id((label, index))
-                    .text_size(px(14.5))
-                    .text_color(rgb(LINK))
-                    .cursor_pointer()
-                    .hover(Styled::underline)
-                    .on_click(move |_, _, cx| cx.open_url(&target))
-                    .child(text)
-            }),
-    )
 }
 
 /// Decodes a picture WhatsApp sent as JPEG, PNG or WebP.

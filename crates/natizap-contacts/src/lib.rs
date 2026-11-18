@@ -5,6 +5,7 @@
 //! line, and a business's public details, fetched when it opens.
 //! [`OwnProfile`] shows yours and changes your name, about and picture.
 
+mod business_view;
 mod hours;
 mod members;
 mod own;

@@ -11,7 +11,8 @@ use natizap_ui::theme::{ALERT, DISPLAY_FONT, LINE, MUTED, PANEL, SCRIM, TEXT};
 use natizap_ui::{Button, ButtonVariant, Icon, Menu, avatar, separator};
 
 use super::field::Field;
-use super::{OwnProfile, OwnProfileClosed, PICTURE};
+use super::{COVER, COVERED_PICTURE, OwnProfile, OwnProfileClosed, PICTURE};
+use crate::business_view::business_info;
 
 impl Render for OwnProfile {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -39,16 +40,50 @@ impl Render for OwnProfile {
                     .flex()
                     .flex_col()
                     .items_center()
-                    .gap_2()
-                    .px_6()
-                    .pt_8()
-                    .pb_8()
-                    .child(self.picture_view(cx))
-                    .children(picture_error)
-                    .child(div().w_full().py_4().child(separator()))
-                    .child(self.line(Field::Name, cx))
-                    .child(self.line(Field::About, cx))
-                    .child(phone_line(&self.me)),
+                    .children(self.cover.clone().map(|cover| {
+                        img(cover)
+                            .w_full()
+                            .h(px(COVER))
+                            .flex_none()
+                            .object_fit(ObjectFit::Cover)
+                    }))
+                    .child(
+                        div()
+                            .w_full()
+                            .flex()
+                            .flex_col()
+                            .items_center()
+                            .gap_2()
+                            .px_6()
+                            .pb_8()
+                            .when(self.cover.is_none(), Styled::pt_8)
+                            .child(self.picture_view(cx))
+                            .children(picture_error)
+                            .child(div().w_full().py_4().child(separator()))
+                            .child(self.line(Field::Name, cx))
+                            .child(self.line(Field::About, cx))
+                            .child(phone_line(&self.me))
+                            .children(self.business.as_ref().map(|business| {
+                                div()
+                                    .w_full()
+                                    .flex()
+                                    .flex_col()
+                                    .gap_3()
+                                    .child(div().w_full().py_4().child(separator()))
+                                    .child(
+                                        div()
+                                            .font_family(DISPLAY_FONT)
+                                            .text_size(px(16.0))
+                                            .font_weight(FontWeight::BOLD)
+                                            .child("Business info"),
+                                    )
+                                    .child(business_info(business))
+                                    .child(div().text_size(px(12.5)).text_color(rgb(MUTED)).child(
+                                        "Change these from WhatsApp Business \
+                                                 on your phone.",
+                                    ))
+                            })),
+                    ),
             )
             .children(self.picture_menu(cx))
     }
@@ -58,19 +93,28 @@ impl OwnProfile {
     /// The picture, or your initials; a click on it offers to change it.
     fn picture_view(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let initials = self.me.name.clone().unwrap_or_default();
+        let size = if self.cover.is_some() {
+            COVERED_PICTURE
+        } else {
+            PICTURE
+        };
         let picture = match &self.picture {
-            Some(picture) => div().size(px(PICTURE)).child(
+            Some(picture) => div().size(px(size)).child(
                 img(picture.clone())
                     .size_full()
                     .rounded_full()
                     .object_fit(ObjectFit::Cover),
             ),
-            None => avatar(self.me.phone.as_str(), &initials, None, px(PICTURE)),
+            None => avatar(self.me.phone.as_str(), &initials, None, px(size)),
         };
         div()
             .id("own-picture")
             .relative()
             .rounded_full()
+            // Over a banner, it overlaps its foot, ringed by the panel.
+            .when(self.cover.is_some(), |ring| {
+                ring.mt(px(-size / 2.0)).border_4().border_color(rgb(PANEL))
+            })
             .cursor_pointer()
             .group("own-picture")
             .when(self.uploading, |ring| ring.opacity(0.5))
