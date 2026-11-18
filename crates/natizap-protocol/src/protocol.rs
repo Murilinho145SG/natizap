@@ -17,7 +17,7 @@ use crate::actions::{
 use crate::content::Extra;
 use crate::fanout::Fanout;
 use crate::group::{self, GroupInfo};
-use crate::media::{self, Media};
+use crate::media::{self, Media, MediaOrigin};
 use crate::outgoing::{self, Forward, Outgoing, SentMedia};
 use crate::profile::{self, Profile};
 use crate::stickers::{self, Sticker};
@@ -474,6 +474,21 @@ impl Protocol {
                 .await
                 .map(drop)
                 .map_err(|error| ActionError::Rejected(error.to_string()))
+        })
+    }
+
+    /// Downloads `media` after its link expired, asking the phone that
+    /// sent `origin` to upload it again. Returns the file and where it now
+    /// lives on WhatsApp's servers.
+    pub fn recover(
+        &self,
+        kind: ContentKind,
+        media: Media,
+        origin: MediaOrigin,
+        cx: &App,
+    ) -> Task<Result<(Vec<u8>, Media), ActionError>> {
+        self.connection.run(cx, move |client| {
+            media::recover(client, kind, media, origin)
         })
     }
 

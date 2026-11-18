@@ -2,10 +2,13 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use whatsapp_rust::download::DownloadParams;
+use whatsapp_rust::features::{MediaRetryResult, MediaReuploadRequest};
 use whatsapp_rust::prelude::{Client, wa};
 use whatsapp_rust::wacore::download::MediaType;
+use whatsapp_rust::wacore_binary::JidExt as _;
 
-use crate::{ActionError, ContentKind};
+use crate::actions::jid;
+use crate::{ActionError, ChatId, ContentKind};
 
 /// A photo, video, voice note, audio file, document or sticker attached to a
 /// message: what it is, a preview, and what is needed to download it.
@@ -41,6 +44,20 @@ pub struct Media {
     pub file_sha256: Vec<u8>,
     /// Hash of the encrypted file.
     pub file_enc_sha256: Vec<u8>,
+}
+
+/// The message an attachment came in, as WhatsApp needs it to ask the
+/// sender's phone to upload the file again.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MediaOrigin {
+    /// The chat it was sent in.
+    pub chat: ChatId,
+    /// WhatsApp's id for the message.
+    pub message_id: String,
+    /// This account sent it.
+    pub from_me: bool,
+    /// Who sent it, in groups.
+    pub sender: Option<ChatId>,
 }
 
 /// Where a video's sharper preview lives on WhatsApp's servers. It is
@@ -176,6 +193,50 @@ pub(crate) async fn download(
         .download(&params)
         .await
         .map_err(|error| ActionError::Rejected(error.to_string()))
+}
+
+/// Downloads `media` after its link expired: the phone that sent `origin`
+/// is asked to upload the file again, as the phone app does when a tap
+/// downloads an old file. Returns the file and where it now lives.
+pub(crate) async fn recover(
+    client: Arc<Client>,
+    kind: ContentKind,
+    mut media: Media,
+    origin: MediaOrigin,
+) -> Result<(Vec<u8>, Media), ActionError> {
+    let chat = jid(&origin.chat)?;
+    // Only groups and broadcasts name who sent a message.
+    let sender = match &origin.sender {
+        Some(sender) if chat.is_group() || chat.is_broadcast_list() => Some(jid(sender)?),
+        _ => None,
+    };
+    let request = MediaReuploadRequest {
+        msg_id: &origin.message_id,
+        chat_jid: &chat,
+        media_key: &media.media_key,
+        is_from_me: origin.from_me,
+        participant: sender.as_ref(),
+    };
+    let answer = client
+        .media_reupload()
+        .request(&request)
+        .await
+        .map_err(|error| ActionError::Rejected(error.to_string()))?;
+    media.direct_path = match answer {
+        MediaRetryResult::Success { direct_path } => direct_path,
+        MediaRetryResult::NotFound => {
+            return Err(ActionError::Rejected(
+                "the phone that sent it no longer has the file".to_owned(),
+            ));
+        }
+        other => {
+            return Err(ActionError::Rejected(format!(
+                "the file could not be uploaded again: {other:?}"
+            )));
+        }
+    };
+    let bytes = download(client, kind, media.clone()).await?;
+    Ok((bytes, media))
 }
 
 /// When the link `direct_path` stops working, in seconds since the epoch:

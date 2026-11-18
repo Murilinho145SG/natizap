@@ -26,7 +26,7 @@ pub use content::{Card, Content, ContentKind, Extra, Forwarding, Poll, Quote};
 pub use group::{GroupInfo, Member, Role};
 pub use link::LinkPreview;
 pub use markup::{LinkKind, Mark, Marked};
-pub use media::{HdThumbnail, Media};
+pub use media::{HdThumbnail, Media, MediaOrigin};
 pub use outgoing::{Forward, Outgoing, SentMedia};
 pub use profile::Profile;
 pub use protocol::{Protocol, StartError};
