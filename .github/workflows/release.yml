@@ -45,6 +45,10 @@ jobs:
             libx11-xcb-dev libxkbcommon-x11-dev libxcb1-dev libvulkan-dev \
             libzstd-dev nfpm
 
+      # The runner's preinstalled stable can trail the one the workspace needs.
+      - name: Update Rust
+        run: rustup update stable --no-self-update
+
       - uses: Swatinem/rust-cache@v2
 
       - name: Build
@@ -108,6 +112,9 @@ jobs:
           "LIBCLANG_PATH=C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Update Rust
+        run: rustup update stable --no-self-update
 
       - uses: Swatinem/rust-cache@v2
 
