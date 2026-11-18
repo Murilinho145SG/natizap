@@ -108,6 +108,9 @@ jobs:
         run: |
           choco install nasm -y --no-progress
           C:\msys64\usr\bin\pacman.exe -S --noconfirm --needed make diffutils
+          # MSYS2's coreutils `link` shadows MSVC's linker inside `sh`, and
+          # configure then finds a compiler that cannot link anything.
+          Remove-Item C:\msys64\usr\bin\link.exe
           "C:\Program Files\NASM" | Out-File -FilePath $env:GITHUB_PATH -Append
           "LIBCLANG_PATH=C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_ENV -Append
 
@@ -121,7 +124,6 @@ jobs:
       - name: Build
         shell: pwsh
         run: |
-          # Appended, so MSVC's link.exe stays ahead of MSYS2's `link`.
           $env:PATH = "$env:PATH;C:\msys64\usr\bin"
           cargo build --release --locked -p natizap
 
