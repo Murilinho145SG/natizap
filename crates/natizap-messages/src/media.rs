@@ -50,20 +50,37 @@ impl Fetch {
     }
 }
 
+/// Videos this small are fetched on sight when they have no preview of
+/// their own, as the phone fetches media on Wi-Fi: a still is then taken
+/// from the video, else it would show as an empty frame.
+const SMALL_VIDEO: u64 = 16 * 1024 * 1024;
+
 /// Photos and stickers are fetched as soon as they are on screen, as the
-/// phone does; everything else waits for a click.
+/// phone does, and so are small videos that came without any preview;
+/// everything else waits for a click.
 pub(crate) fn fetch_on_sight(messages: &[Message]) -> Vec<Fetch> {
     messages
         .iter()
-        .filter(|message| matches!(message.kind, ContentKind::Photo | ContentKind::Sticker))
-        .filter(|message| {
-            message
-                .media_file
-                .as_deref()
-                .is_none_or(|file| !file.exists())
+        .filter(|message| match message.kind {
+            ContentKind::Photo | ContentKind::Sticker => true,
+            ContentKind::Video => is_small_and_unseen(message),
+            _ => false,
         })
+        .filter(|message| on_disk(message.media_file.as_deref()).is_none())
         .filter_map(Fetch::of)
         .collect()
+}
+
+/// A small video with nothing to show for it: no still taken, no preview
+/// in the message and no sharper preview to download apart.
+fn is_small_and_unseen(message: &Message) -> bool {
+    let Some(media) = &message.media else {
+        return false;
+    };
+    on_disk(message.media_poster.as_deref()).is_none()
+        && media.thumbnail.is_none()
+        && media.hd_thumbnail.is_none()
+        && media.size.is_some_and(|size| size <= SMALL_VIDEO)
 }
 
 /// A video on screen that has no still yet, and where to get one.
@@ -206,6 +223,31 @@ mod tests {
             .collect();
         assert_eq!(ids, ["needs", "stale", "sharp-preview"]);
         Ok(())
+    }
+
+    fn sized_video(id: &str, size: u64, thumbnail: bool) -> Message {
+        let mut message = video(id, None, None);
+        message.media = Some(Media {
+            size: Some(size),
+            thumbnail: thumbnail.then(|| vec![0xff, 0xd8]),
+            ..Media::default()
+        });
+        message
+    }
+
+    #[test]
+    fn fetches_small_videos_that_have_nothing_to_show() {
+        let messages = [
+            sized_video("small-bare", 3_000_000, false),
+            sized_video("small-with-preview", 3_000_000, true),
+            sized_video("large-bare", 80_000_000, false),
+            hd_video("sharp-preview"),
+        ];
+        let ids: Vec<String> = fetch_on_sight(&messages)
+            .into_iter()
+            .map(|fetch| fetch.message_id)
+            .collect();
+        assert_eq!(ids, ["small-bare"]);
     }
 
     #[test]
