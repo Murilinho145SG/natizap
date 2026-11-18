@@ -24,8 +24,10 @@ use natizap_ui::theme::{ACCENT, ALERT, DISPLAY_FONT, LINE, MINT, MUTED, TEXT, ba
 use natizap_ui::{Alert, AlertTone, window_frame};
 
 use crate::history::History;
+use opening::Opening;
 
 mod notify;
+mod opening;
 mod profiles;
 
 /// The features the main window shows, built by `main`.
@@ -59,6 +61,8 @@ pub(crate) struct Root {
     pictures: Entity<ProfilePictures>,
     /// The notification settings, over the chats.
     settings: Option<Entity<NotificationSettings>>,
+    /// The splash, while natizap opens.
+    opening: Option<Opening>,
 }
 
 impl Root {
@@ -138,6 +142,7 @@ impl Root {
             protocol,
             pictures: pictures.clone(),
             settings: None,
+            opening: Some(Opening::start(cx)),
         }
     }
 
@@ -437,7 +442,13 @@ impl Root {
 impl Render for Root {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let title = wordmark(self.session.read(cx).state());
-        let content = self.content(cx);
+        let opening = self.opening_layer(cx);
+        let content = div()
+            .size_full()
+            .relative()
+            .child(self.content(cx))
+            .children(opening)
+            .into_any_element();
         div()
             .size_full()
             .on_mouse_down(
