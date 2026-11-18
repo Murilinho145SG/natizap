@@ -57,10 +57,13 @@ const SMALL_VIDEO: u64 = 16 * 1024 * 1024;
 
 /// Photos and stickers are fetched as soon as they are on screen, as the
 /// phone does, and so are small videos that came without any preview;
-/// everything else waits for a click.
+/// everything else waits for a click. Files whose link expired are not
+/// tried: they would fail, and each failure makes the client ask WhatsApp
+/// for a new media connection, which it rate-limits for the account.
 pub(crate) fn fetch_on_sight(messages: &[Message]) -> Vec<Fetch> {
     messages
         .iter()
+        .filter(|message| !message.media.as_ref().is_some_and(Media::link_expired))
         .filter(|message| match message.kind {
             ContentKind::Photo | ContentKind::Sticker => true,
             ContentKind::Video => is_small_and_unseen(message),
@@ -111,7 +114,12 @@ pub(crate) fn posters_on_sight(messages: &[Message]) -> Vec<PosterJob> {
             let fetch = Fetch::of(message)?;
             let source = match on_disk(message.media_file.as_deref()) {
                 Some(video) => PosterSource::Video(video.to_owned()),
-                None => PosterSource::HdThumbnail(Box::new(fetch.media.hd_thumbnail_download()?)),
+                None => PosterSource::HdThumbnail(Box::new(
+                    fetch
+                        .media
+                        .hd_thumbnail_download()
+                        .filter(|preview| !preview.link_expired())?,
+                )),
             };
             Some(PosterJob { fetch, source })
         })
@@ -235,6 +243,16 @@ mod tests {
         message
     }
 
+    fn expired_photo(id: &str) -> Message {
+        let mut message = video(id, None, None);
+        message.kind = ContentKind::Photo;
+        message.media = Some(Media {
+            direct_path: "/v/t62.7118-24/1.enc?ccb=11-4&oe=5F000000".into(),
+            ..Media::default()
+        });
+        message
+    }
+
     #[test]
     fn fetches_small_videos_that_have_nothing_to_show() {
         let messages = [
@@ -242,6 +260,7 @@ mod tests {
             sized_video("small-with-preview", 3_000_000, true),
             sized_video("large-bare", 80_000_000, false),
             hd_video("sharp-preview"),
+            expired_photo("expired"),
         ];
         let ids: Vec<String> = fetch_on_sight(&messages)
             .into_iter()
