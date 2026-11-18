@@ -14,7 +14,7 @@ use gpui::{
 use natizap_protocol::ContentKind;
 use natizap_ui::motion::rise_in_after;
 use natizap_ui::theme::{
-    ACCENT, ACCENT_INK, DEEP, LINE, LINK, MUTED, PANEL, RAISED, SCRIM, TEXT, glass,
+    ACCENT, ACCENT_INK, DEEP, HOVER, LINE, LINK, MUTED, PANEL, RAISED, SCRIM, TEXT, glass,
 };
 use natizap_ui::{Button, ButtonVariant, Icon, dialog};
 
@@ -204,7 +204,7 @@ impl MediaBrowser {
             match entering {
                 Some(count) if index < ENTERING_LINES => rise_in_after(
                     SharedString::from(format!("line-{count}-{index}")),
-                    div().child(shown),
+                    div().w_full().child(shown),
                     LINE_RISE,
                     LINE_STAGGER * u32::try_from(index).unwrap_or(0),
                 )
@@ -351,6 +351,10 @@ fn entry(
 ) -> Stateful<Div> {
     div()
         .id(id)
+        // The full width: the hover fills the row, and long titles are cut
+        // at the window's edge instead of running past it.
+        .w_full()
+        .min_w_0()
         .flex()
         .items_center()
         .gap_3()
@@ -358,8 +362,8 @@ fn entry(
         .py_2()
         .rounded_lg()
         .cursor_pointer()
-        .hover(|row| row.bg(rgb(RAISED)))
-        .active(|row| row.bg(rgb(LINE)))
+        .hover(|row| row.bg(rgba(HOVER)))
+        .active(|row| row.bg(rgb(RAISED)))
         .child(leading)
         .child(
             div()

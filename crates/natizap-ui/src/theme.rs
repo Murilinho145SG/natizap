@@ -30,6 +30,9 @@ pub const OUTGOING: u32 = 0x26_1d_17;
 pub const SCRIM: u32 = 0x00_00_00_80;
 /// The light rim of glass surfaces, `0xRRGGBBAA` for `gpui::rgba`.
 pub const EDGE: u32 = 0xff_ff_ff_14;
+/// A faint light over a row under the pointer, `0xRRGGBBAA` for
+/// `gpui::rgba`: see-through, so what the row holds stays distinct.
+pub const HOVER: u32 = 0xff_ff_ff_0d;
 /// Selected text: the accent, faint, `0xRRGGBBAA` for `gpui::rgba`.
 pub const SELECTION: u32 = 0xff_7a_1a_59;
 /// Links in messages: the accent, lightened to read as text.
