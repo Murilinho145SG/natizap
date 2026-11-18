@@ -7,8 +7,8 @@ use std::time::Duration;
 
 use gpui::prelude::*;
 use gpui::{Context, Entity, Task};
-use natizap_protocol::whatsapp_rust::prelude::EventKind;
-use natizap_protocol::{ContentKind, Protocol, Sticker};
+use natizap_protocol::whatsapp_rust::prelude::{Event, EventKind};
+use natizap_protocol::{Content, ContentKind, Protocol, Sticker};
 
 use crate::store::StickerStore;
 
@@ -53,7 +53,7 @@ pub struct StickerShelf {
     busy: bool,
     /// How long to rest after the next failure.
     pause: Duration,
-    _tasks: [Task<()>; 2],
+    _tasks: [Task<()>; 3],
 }
 
 impl std::fmt::Debug for StickerShelf {
@@ -93,6 +93,19 @@ impl StickerShelf {
                 }
             }
         });
+        let messages = protocol.read(cx).subscribe(&[EventKind::Messages]);
+        let hearing = cx.spawn(async move |this, cx| {
+            while let Ok(event) = messages.recv().await {
+                let stickers = live_stickers(&event);
+                if !stickers.is_empty()
+                    && this
+                        .update(cx, |shelf, cx| shelf.adopt(stickers, cx))
+                        .is_err()
+                {
+                    break;
+                }
+            }
+        });
         Self {
             protocol: protocol.clone(),
             store_path,
@@ -102,7 +115,7 @@ impl StickerShelf {
             queue: VecDeque::new(),
             busy: false,
             pause: FIRST_PAUSE,
-            _tasks: [loading, refreshing],
+            _tasks: [loading, refreshing, hearing],
         }
     }
 
@@ -177,6 +190,28 @@ impl StickerShelf {
             }
         })
         .detach();
+    }
+
+    /// Takes the fresh links of `stickers`, just seen in messages, for the
+    /// favorites that have no file: a favorite kept for long points at a
+    /// file WhatsApp's servers dropped, and sending it again in any chat,
+    /// even from the phone, puts it back there.
+    fn adopt(&mut self, stickers: Vec<Sticker>, cx: &mut Context<Self>) {
+        let mut found = false;
+        for sticker in stickers {
+            if let Some(favorite) = self
+                .favorites
+                .iter_mut()
+                .find(|favorite| favorite.sticker.hash == sticker.hash && favorite.file.is_none())
+            {
+                favorite.sticker.media = sticker.media;
+                found = true;
+            }
+        }
+        if found {
+            self.fetch_missing(cx);
+            cx.notify();
+        }
     }
 
     /// Reads the favorites from WhatsApp, as the phone keeps them now.
@@ -318,6 +353,18 @@ impl StickerShelf {
     fn file_path(&self, hash: &str) -> PathBuf {
         file_path_in(&self.dir, hash)
     }
+}
+
+/// The stickers in `event`'s messages whose link still works.
+fn live_stickers(event: &Event) -> Vec<Sticker> {
+    event
+        .messages()
+        .filter_map(|inbound| Content::of(&inbound.message))
+        .filter(|content| content.kind == ContentKind::Sticker)
+        .filter_map(|content| content.media)
+        .filter(|media| !media.link_expired())
+        .map(Sticker::of)
+        .collect()
 }
 
 /// Where the file of the sticker `hash` is kept in `dir`: its hash, made

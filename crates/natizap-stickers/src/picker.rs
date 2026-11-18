@@ -133,7 +133,7 @@ fn cell(index: usize, favorite: Favorite, cx: &mut Context<StickerPicker>) -> St
         })
         .when(!sendable, |cell| {
             cell.opacity(0.4).tooltip(Tooltip::text(
-                "Only your phone still has this one. Add it again from a chat to use it here.",
+                "Only your phone still has this one. Send it once from your phone, in any chat, to have it here.",
             ))
         })
         .text_color(rgb(TEXT))
