@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use natizap_protocol::{ChatId, ContentKind, Forwarding, HdThumbnail, Media, Quote, Unread};
+use natizap_protocol::{
+    ChatId, ContentKind, Forwarding, HdThumbnail, LinkPreview, Media, Quote, Unread,
+};
 use rusqlite::{Connection, Row, params, params_from_iter};
 
 use crate::message::{Delivery, Message, MessageChange, Reaction};
@@ -61,6 +63,10 @@ const MIGRATIONS: &[&str] = &[
     // Stills taken before videos were turned upright show phone videos
     // sideways; forgetting them makes them again, upright.
     "UPDATE messages SET media_poster = NULL WHERE kind = 'Video';",
+    "ALTER TABLE messages ADD COLUMN link_url TEXT;
+     ALTER TABLE messages ADD COLUMN link_title TEXT;
+     ALTER TABLE messages ADD COLUMN link_description TEXT;
+     ALTER TABLE messages ADD COLUMN link_thumbnail BLOB;",
 ];
 
 /// Every message natizap has seen, on disk.
@@ -371,6 +377,7 @@ fn insert(tx: &rusqlite::Transaction<'_>, message: &Message) -> rusqlite::Result
     let quote = message.quote.as_ref();
     let media = message.media.as_ref();
     let hd = media.and_then(|media| media.hd_thumbnail.as_ref());
+    let link = message.link.as_ref();
     tx.prepare_cached(
         "INSERT INTO messages (chat, id, from_me, sender, author, sent_at,
              kind, text, edited, deleted, delivery, quoted_id, quoted_sender,
@@ -378,10 +385,11 @@ fn insert(tx: &rusqlite::Transaction<'_>, message: &Message) -> rusqlite::Result
              media_height, media_seconds, media_thumbnail, media_direct_path,
              media_key, media_sha256, media_enc_sha256, media_file, media_waveform,
              media_hd_thumbnail_path, media_hd_thumbnail_sha256,
-             media_hd_thumbnail_enc_sha256, sender_phone, extra, forwarding, media_pages)
+             media_hd_thumbnail_enc_sha256, sender_phone, extra, forwarding, media_pages,
+             link_url, link_title, link_description, link_thumbnail)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14,
              ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28,
-             ?29, ?30, ?31, ?32, ?33, ?34)
+             ?29, ?30, ?31, ?32, ?33, ?34, ?35, ?36, ?37, ?38)
              ON CONFLICT (chat, id) DO UPDATE SET
                  media_mime = coalesce(media_mime, excluded.media_mime),
                  media_name = coalesce(media_name, excluded.media_name),
@@ -401,7 +409,11 @@ fn insert(tx: &rusqlite::Transaction<'_>, message: &Message) -> rusqlite::Result
                  sender_phone = coalesce(sender_phone, excluded.sender_phone),
                  extra = coalesce(extra, excluded.extra),
                  forwarding = coalesce(forwarding, excluded.forwarding),
-                 media_pages = coalesce(media_pages, excluded.media_pages)",
+                 media_pages = coalesce(media_pages, excluded.media_pages),
+                 link_url = coalesce(link_url, excluded.link_url),
+                 link_title = coalesce(link_title, excluded.link_title),
+                 link_description = coalesce(link_description, excluded.link_description),
+                 link_thumbnail = coalesce(link_thumbnail, excluded.link_thumbnail)",
     )?
     .execute(params![
         message.chat.as_str(),
@@ -448,6 +460,10 @@ fn insert(tx: &rusqlite::Transaction<'_>, message: &Message) -> rusqlite::Result
             Forwarding::Often => 2,
         }),
         media.and_then(|media| media.pages),
+        link.and_then(|link| link.url.as_ref()),
+        link.and_then(|link| link.title.as_ref()),
+        link.and_then(|link| link.description.as_ref()),
+        link.and_then(|link| link.thumbnail.as_ref()),
     ])?;
 
     Ok(())
@@ -550,7 +566,19 @@ fn message_from_row(row: &Row<'_>) -> rusqlite::Result<Message> {
                 _ => None,
             },
         ),
+        link: link_from_row(row)?,
     })
+}
+
+/// The link preview kept with a message, when it has one.
+fn link_from_row(row: &Row<'_>) -> rusqlite::Result<Option<LinkPreview>> {
+    let preview = LinkPreview {
+        url: row.get("link_url")?,
+        title: row.get("link_title")?,
+        description: row.get("link_description")?,
+        thumbnail: row.get("link_thumbnail")?,
+    };
+    Ok((preview.title.is_some() || preview.thumbnail.is_some()).then_some(preview))
 }
 
 mod extra;

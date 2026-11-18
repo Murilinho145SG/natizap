@@ -3,8 +3,9 @@
 //! web links written in its messages, newest first.
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
-use gpui::SharedString;
+use gpui::{Image, ImageFormat, SharedString};
 use natizap_protocol::{ChatId, ContentKind, LinkKind, Mark, Marked};
 
 use crate::items::{MediaView, media_view};
@@ -40,9 +41,21 @@ pub(crate) struct Shelved {
     pub(crate) words: String,
 }
 
+/// What a link's page looks like, as the sender's phone previewed it.
+#[derive(Debug, Clone)]
+pub(crate) struct PagePreview {
+    pub(crate) title: Option<SharedString>,
+    pub(crate) description: Option<SharedString>,
+    pub(crate) picture: Option<Arc<Image>>,
+}
+
 /// A web link someone wrote.
 #[derive(Debug, Clone)]
 pub(crate) struct SharedLink {
+    /// The site it leads to: `github.com`.
+    pub(crate) site: SharedString,
+    /// The page's preview, when the sender's phone made one.
+    pub(crate) preview: Option<PagePreview>,
     /// The address to open.
     pub(crate) target: SharedString,
     /// The link as written.
@@ -74,8 +87,32 @@ impl Library {
         let mut library = Self::default();
         for message in messages {
             let text = message.text.as_deref().unwrap_or_default();
-            for (target, shown) in web_links(text) {
+            let links = web_links(text);
+            // The phone previews one link per message: the one it names,
+            // or the only one there is.
+            let previewed = message.link.as_ref().and_then(|link| {
+                let named = link.url.as_deref().map(|url| LinkKind::Web.target(url));
+                links
+                    .iter()
+                    .position(|(target, _)| Some(target) == named.as_ref())
+                    .or_else(|| (links.len() == 1).then_some(0))
+                    .map(|index| (index, link))
+            });
+            for (index, (target, shown)) in links.into_iter().enumerate() {
+                let preview =
+                    previewed
+                        .filter(|(previewed, _)| *previewed == index)
+                        .map(|(_, link)| PagePreview {
+                            title: link.title.clone().map(Into::into),
+                            description: link.description.clone().map(Into::into),
+                            picture: link
+                                .thumbnail
+                                .clone()
+                                .map(|jpeg| Arc::new(Image::from_bytes(ImageFormat::Jpeg, jpeg))),
+                        });
                 library.links.push(SharedLink {
+                    site: site_of(&target).into(),
+                    preview,
                     target: target.into(),
                     shown: shown.into(),
                     message: text.into(),
@@ -117,6 +154,18 @@ impl Library {
     }
 }
 
+/// The site `target` leads to, as people name it: `github.com` for
+/// `https://www.github.com/natizap`.
+fn site_of(target: &str) -> String {
+    let rest = target.split_once("://").map_or(target, |(_, rest)| rest);
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or(rest);
+    let host = authority
+        .rsplit_once('@')
+        .map_or(authority, |(_, host)| host);
+    let host = host.split(':').next().unwrap_or(host);
+    host.strip_prefix("www.").unwrap_or(host).to_lowercase()
+}
+
 /// The web links in message `text`, each once: where it leads and how it
 /// was written.
 fn web_links(text: &str) -> Vec<(String, String)> {
@@ -139,7 +188,7 @@ fn web_links(text: &str) -> Vec<(String, String)> {
 
 #[cfg(test)]
 mod tests {
-    use super::web_links;
+    use super::{site_of, web_links};
 
     #[test]
     fn finds_web_links_and_where_they_lead() {
@@ -164,6 +213,17 @@ mod tests {
             web_links("write to ana@example.com or call +55 11 98765-0001"),
             Vec::<(String, String)>::new()
         );
+    }
+
+    #[test]
+    fn names_the_site_a_link_leads_to() {
+        assert_eq!(
+            site_of("https://www.github.com/natizap?tab=1"),
+            "github.com"
+        );
+        assert_eq!(site_of("https://youtu.be/jyTXKi-Avxk"), "youtu.be");
+        assert_eq!(site_of("http://Example.COM:8080/a"), "example.com");
+        assert_eq!(site_of("https://user@host.dev/path"), "host.dev");
     }
 
     #[test]

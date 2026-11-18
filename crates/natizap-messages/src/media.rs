@@ -173,6 +173,7 @@ mod tests {
             sender_phone: None,
             extra: None,
             forwarding: None,
+            link: None,
         }
     }
 

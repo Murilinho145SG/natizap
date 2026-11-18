@@ -5,6 +5,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use chrono::{Local, TimeZone as _};
 use gpui::prelude::*;
@@ -32,6 +33,20 @@ pub(crate) struct MediaChosen(pub(crate) MediaView);
 /// The user closed the window.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct BrowserClosed;
+
+/// A time the lines rose in.
+#[derive(Debug, Clone, Copy)]
+struct Entrance {
+    /// Which time, naming its animations so each plays once.
+    count: u32,
+    at: Instant,
+}
+
+impl Entrance {
+    /// How long lines keep entering after it starts: long enough for the
+    /// last line on screen to start late and finish rising.
+    const LASTS: Duration = Duration::from_millis(900);
+}
 
 /// One of the window's tabs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -75,6 +90,8 @@ pub(crate) struct MediaBrowser {
     /// Whether the search field took the keyboard yet: it does at the
     /// first draw, the first moment a window is at hand.
     focused: bool,
+    /// The latest time the lines rose in.
+    entrance: Option<Entrance>,
     /// Small copies made while the window shows, by index into the media.
     made: Arc<HashMap<usize, PathBuf>>,
     _reading: Task<()>,
@@ -104,6 +121,7 @@ impl MediaBrowser {
             let _ = this.update(cx, |this, cx| {
                 this.library = Some(Arc::new(library));
                 this.arrange(cx);
+                this.enter();
                 this.make_small_copies(cx);
             });
         });
@@ -115,6 +133,7 @@ impl MediaBrowser {
             lines: Arc::from([]),
             list: ListState::new(0, ListAlignment::Top, px(800.0)),
             focused: false,
+            entrance: None,
             made: Arc::default(),
             _reading: reading,
             making: Task::ready(()),
@@ -165,10 +184,20 @@ impl MediaBrowser {
         });
     }
 
+    /// Has the lines on screen rise in, one after another, as the window
+    /// opens or a tab is chosen; typing a search only narrows them.
+    fn enter(&mut self) {
+        self.entrance = Some(Entrance {
+            count: self.entrance.map_or(0, |entrance| entrance.count + 1),
+            at: Instant::now(),
+        });
+    }
+
     fn choose_tab(&mut self, tab: Tab, window: &mut Window, cx: &mut Context<Self>) {
         if self.tab != tab {
             self.tab = tab;
             self.arrange(cx);
+            self.enter();
             window.focus(&self.search.focus_handle(cx), cx);
         }
     }

@@ -3,22 +3,31 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use chrono::{Local, TimeZone as _};
 use gpui::prelude::*;
 use gpui::{
     AnyElement, App, Context, Div, Focusable as _, FontWeight, ImageSource, ObjectFit,
-    SharedString, WeakEntity, Window, div, img, list, px, rgb, rgba, svg,
+    SharedString, Stateful, WeakEntity, Window, div, img, list, px, rgb, rgba, svg,
 };
 use natizap_protocol::ContentKind;
+use natizap_ui::motion::rise_in_after;
 use natizap_ui::theme::{
     ACCENT, ACCENT_INK, DEEP, LINE, LINK, MUTED, PANEL, RAISED, SCRIM, TEXT, glass,
 };
 use natizap_ui::{Button, ButtonVariant, Icon, dialog};
 
-use super::{BrowserClosed, COLUMNS, Line, MediaBrowser, MediaChosen, Tab};
+use super::{BrowserClosed, COLUMNS, Entrance, Line, MediaBrowser, MediaChosen, Tab};
 use crate::items::MediaView;
 use crate::library::{Library, SharedLink, Shelved};
+
+/// Lines that rise in one after another; the rest are off screen.
+const ENTERING_LINES: usize = 16;
+/// How far each line rises, in pixels.
+const LINE_RISE: f32 = 10.0;
+/// How much later each line starts rising than the one above.
+const LINE_STAGGER: Duration = Duration::from_millis(28);
 
 /// Side of a photo or video in the grid.
 const TILE: f32 = 128.0;
@@ -183,11 +192,25 @@ impl MediaBrowser {
         }
         let (lines, made) = (Arc::clone(&self.lines), Arc::clone(&self.made));
         let browser = cx.weak_entity();
+        let entering = self
+            .entrance
+            .filter(|entrance| entrance.at.elapsed() < Entrance::LASTS)
+            .map(|entrance| entrance.count);
         list(self.list.clone(), move |index, _, _| {
             let Some(line) = lines.get(index) else {
                 return div().into_any_element();
             };
-            render_line(line, &library, &made, &browser)
+            let shown = render_line(line, &library, &made, &browser);
+            match entering {
+                Some(count) if index < ENTERING_LINES => rise_in_after(
+                    SharedString::from(format!("line-{count}-{index}")),
+                    div().child(shown),
+                    LINE_RISE,
+                    LINE_STAGGER * u32::try_from(index).unwrap_or(0),
+                )
+                .into_any_element(),
+                _ => shown,
+            }
         })
         .flex_1()
         .min_h_0()
@@ -277,6 +300,7 @@ fn tile(item: &Shelved, small: Option<&PathBuf>, browser: &WeakEntity<MediaBrows
         .bg(rgb(DEEP))
         .cursor_pointer()
         .hover(|tile| tile.opacity(0.85))
+        .active(|tile| tile.opacity(0.7))
         .child(match picture(&media, small) {
             Some(picture) => img(picture)
                 .size(px(TILE))
@@ -316,33 +340,27 @@ fn tile(item: &Shelved, small: Option<&PathBuf>, browser: &WeakEntity<MediaBrows
         .into_any_element()
 }
 
-/// A row with an icon, a title and a muted line below it.
-fn entry(icon: Icon, title: SharedString, title_color: u32, below: SharedString) -> Div {
+/// A row: something to know it by on the left, a title, and muted lines
+/// below. It lights up on hover and dims while pressed.
+fn entry(
+    id: SharedString,
+    leading: AnyElement,
+    title: SharedString,
+    title_color: u32,
+    below: Vec<SharedString>,
+) -> Stateful<Div> {
     div()
+        .id(id)
         .flex()
         .items_center()
         .gap_3()
         .px_2()
         .py_2()
         .rounded_lg()
-        .hover(|row| row.bg(rgb(RAISED)))
         .cursor_pointer()
-        .child(
-            div()
-                .size(px(40.0))
-                .flex_none()
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded_lg()
-                .bg(rgb(RAISED))
-                .child(
-                    svg()
-                        .path(icon.path())
-                        .size(px(18.0))
-                        .text_color(rgb(MUTED)),
-                ),
-        )
+        .hover(|row| row.bg(rgb(RAISED)))
+        .active(|row| row.bg(rgb(LINE)))
+        .child(leading)
         .child(
             div()
                 .flex_1()
@@ -357,14 +375,33 @@ fn entry(icon: Icon, title: SharedString, title_color: u32, below: SharedString)
                         .text_color(rgb(title_color))
                         .child(title),
                 )
-                .child(
+                .children(below.into_iter().map(|line| {
                     div()
                         .truncate()
                         .text_size(px(12.5))
                         .text_color(rgb(MUTED))
-                        .child(below),
-                ),
+                        .child(line)
+                })),
         )
+}
+
+/// A rounded square holding `icon`, `side` pixels wide.
+fn badge(icon: Icon, side: f32) -> AnyElement {
+    div()
+        .size(px(side))
+        .flex_none()
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded_lg()
+        .bg(rgb(RAISED))
+        .child(
+            svg()
+                .path(icon.path())
+                .size(px(18.0))
+                .text_color(rgb(MUTED)),
+        )
+        .into_any_element()
 }
 
 fn doc(item: &Shelved, browser: &WeakEntity<MediaBrowser>) -> AnyElement {
@@ -384,34 +421,54 @@ fn doc(item: &Shelved, browser: &WeakEntity<MediaBrowser>) -> AnyElement {
     .filter(|part| !part.is_empty())
     .collect::<Vec<_>>()
     .join(" · ");
-    div()
-        .id(SharedString::from(media.fetch.message_id.clone()))
-        .child(entry(
-            if audio { Icon::Waveform } else { Icon::File },
-            title,
-            TEXT,
-            below.into(),
-        ))
-        .on_click(move |_, _, cx| choose(&browser, &media, cx))
-        .into_any_element()
+    entry(
+        SharedString::from(media.fetch.message_id.clone()),
+        badge(if audio { Icon::Waveform } else { Icon::File }, 40.0),
+        title,
+        TEXT,
+        vec![below.into()],
+    )
+    .on_click(move |_, _, cx| choose(&browser, &media, cx))
+    .into_any_element()
 }
 
+/// Side of a link's picture.
+const LINK_PICTURE: f32 = 56.0;
+
+/// A link as the phone lists it: the page's picture and title, what it
+/// says about itself, and where it leads; a link without a preview shows
+/// itself and the message it came in.
 fn link(link: &SharedLink) -> AnyElement {
     let target = link.target.clone();
-    let message = link.message.replace('\n', " ");
-    div()
-        .id(SharedString::from(format!(
-            "{}-{}",
-            link.sent_at, link.target
-        )))
-        .child(entry(
-            Icon::Link,
-            link.shown.clone(),
-            LINK,
-            format!("{} · {message}", day(link.sent_at)).into(),
-        ))
-        .on_click(move |_, _, cx| cx.open_url(&target))
-        .into_any_element()
+    let preview = link.preview.as_ref();
+    let leading = match preview.and_then(|preview| preview.picture.clone()) {
+        Some(picture) => img(picture)
+            .size(px(LINK_PICTURE))
+            .flex_none()
+            .rounded_lg()
+            .object_fit(ObjectFit::Cover)
+            .into_any_element(),
+        None => badge(Icon::Link, LINK_PICTURE),
+    };
+    let title = preview.and_then(|preview| preview.title.clone());
+    let about = preview
+        .and_then(|preview| preview.description.clone())
+        .or_else(|| {
+            // A message that is just the link would only repeat it.
+            let message = link.message.replace('\n', " ");
+            (message.trim() != link.shown.as_ref()).then(|| message.into())
+        });
+    let place = format!("{} · {}", link.site, day(link.sent_at)).into();
+    let below = about.into_iter().chain([place]).collect();
+    entry(
+        SharedString::from(format!("{}-{}", link.sent_at, link.target)),
+        leading,
+        title.clone().unwrap_or_else(|| link.shown.clone()),
+        if title.is_some() { TEXT } else { LINK },
+        below,
+    )
+    .on_click(move |_, _, cx| cx.open_url(&target))
+    .into_any_element()
 }
 
 /// The day `sent_at` falls on: "12 Nov".

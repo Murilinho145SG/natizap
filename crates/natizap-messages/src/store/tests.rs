@@ -21,6 +21,7 @@ fn message(chat: &str, id: &str, sent_at: i64, text: &str) -> Message {
         sender_phone: None,
         extra: None,
         forwarding: None,
+        link: None,
     }
 }
 
@@ -319,5 +320,28 @@ fn a_resent_copy_fills_in_the_media_the_first_lacked() -> rusqlite::Result<()> {
         stored.media.map(|media| media.direct_path),
         Some("/v/sticker".to_owned())
     );
+    Ok(())
+}
+
+#[test]
+fn a_resent_copy_fills_in_the_link_preview_the_first_lacked() -> rusqlite::Result<()> {
+    let mut store = MessageStore::in_memory()?;
+    let chat = ChatId::new("1@lid");
+    let preview = LinkPreview {
+        url: Some("https://natizap.dev".into()),
+        title: Some("natizap".into()),
+        description: Some("A WhatsApp client".into()),
+        thumbnail: Some(vec![0xff, 0xd8]),
+    };
+    let mut with_preview = message("1@lid", "a", 10, "see https://natizap.dev");
+    with_preview.link = Some(preview.clone());
+    store.apply(&[
+        MessageChange::Received(message("1@lid", "a", 10, "see https://natizap.dev")),
+        MessageChange::Received(with_preview),
+    ])?;
+
+    let stored = store.library(std::slice::from_ref(&chat))?;
+    assert_eq!(stored.len(), 1);
+    assert_eq!(stored[0].link, Some(preview));
     Ok(())
 }

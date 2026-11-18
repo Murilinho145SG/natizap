@@ -184,6 +184,7 @@ pub(super) fn outgoing_message(
         sender_phone: None,
         extra: None,
         forwarding: None,
+        link: None,
         quote: reply.map(|reply| Quote {
             id: reply.id.clone(),
             sender: reply.sender.clone(),
