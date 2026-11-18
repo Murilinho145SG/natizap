@@ -58,6 +58,9 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE messages ADD COLUMN extra TEXT;",
     "ALTER TABLE messages ADD COLUMN forwarding INTEGER;",
     "ALTER TABLE messages ADD COLUMN media_pages INTEGER;",
+    // Stills taken before videos were turned upright show phone videos
+    // sideways; forgetting them makes them again, upright.
+    "UPDATE messages SET media_poster = NULL WHERE kind = 'Video';",
 ];
 
 /// Every message natizap has seen, on disk.
