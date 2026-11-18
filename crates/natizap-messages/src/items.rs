@@ -388,7 +388,7 @@ fn media_view(message: &Message) -> Option<MediaView> {
     clippy::cast_precision_loss,
     reason = "a rounded size needs no exact bytes"
 )]
-fn file_size(bytes: u64) -> String {
+pub(crate) fn file_size(bytes: u64) -> String {
     match bytes {
         0..1_000 => format!("{bytes} B"),
         1_000..1_000_000 => format!("{:.0} kB", bytes as f64 / 1e3),

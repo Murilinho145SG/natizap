@@ -13,23 +13,21 @@ use crate::message::MessageChange;
 use crate::outbox::prepare;
 
 impl MessageLog {
-    /// Sends each file at `paths` to the open chat as a message of its own,
-    /// the first carrying `caption` and replying to `reply`, as the phone
-    /// does. Each shows in the chat as soon as it is read, before WhatsApp
-    /// has it.
+    /// Sends each file to the open chat as a message of its own, with its
+    /// caption, the first replying to `reply`, as the phone does. Each
+    /// shows in the chat as soon as it is read, before WhatsApp has it.
     pub(crate) fn send_files(
         &mut self,
-        paths: Vec<PathBuf>,
-        mut caption: Option<String>,
+        files: Vec<(PathBuf, Option<String>)>,
         mut reply: Option<Reply>,
         as_document: bool,
         cx: &mut Context<Self>,
     ) {
-        for path in paths {
+        for (path, caption) in files {
             let Some((chat, local_id, sent_at)) = self.next_outgoing() else {
                 return;
             };
-            let (caption, reply) = (caption.take(), reply.take());
+            let reply = reply.take();
             let media_dir = self.media_dir.clone();
             let id = local_id.clone();
             cx.spawn(async move |this, cx| {

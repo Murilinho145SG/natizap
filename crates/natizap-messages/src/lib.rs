@@ -21,6 +21,7 @@ mod presence;
 mod preview;
 mod quote;
 mod rich_text;
+mod send_preview;
 mod store;
 mod sync;
 mod view;

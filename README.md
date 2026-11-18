@@ -42,8 +42,9 @@ end-to-end encrypted; keys and history live only on your machine.
 - **Media**: photos with a full-size viewer, videos in a built-in player,
   voice notes with their waveform and playback speeds, documents with their
   first page, stickers, shared contacts and polls.
-- **Sending**: text, files, photos, documents, pasted files and screenshots,
-  recorded voice notes, contacts and polls.
+- **Sending**: text, recorded voice notes, contacts and polls, and files,
+  photos and documents dropped, pasted or picked, previewed first with a
+  caption for each, up to 30 at once.
 - **Profiles** of people, businesses (seal, hours, banner, links) and groups
   (members and admins), with presence: online, last seen and typing.
 - **Notifications**: system notifications while natizap is in the

@@ -2,9 +2,9 @@ use gpui::prelude::*;
 use std::time::Duration;
 
 use gpui::{
-    ClipboardItem, Context, Div, Entity, EventEmitter, FocusHandle, Focusable as _, FontWeight,
-    KeyDownEvent, ListAlignment, ListState, MouseButton, Pixels, Point, SharedString, Window,
-    anchored, deferred, div, list, px, rgb, svg,
+    ClipboardItem, Context, Div, Entity, EventEmitter, ExternalPaths, FocusHandle, Focusable as _,
+    FontWeight, KeyDownEvent, ListAlignment, ListState, MouseButton, Pixels, Point, SharedString,
+    Window, anchored, deferred, div, list, px, rgb, svg,
 };
 use natizap_playback::{Recorder, Speed};
 use natizap_profiles::ProfilePictures;
@@ -18,16 +18,19 @@ use crate::items::{Bubble, Item, MediaView};
 use crate::log::{MessageLog, SoundReady};
 use crate::poll_composer::PollComposer;
 use crate::rich_text::Selection;
+use crate::send_preview::SendPreview;
 use crate::voice::Voices;
 
 mod attach;
 mod composer;
+mod drop;
 mod header;
 mod message_menu;
 mod recorder;
 mod viewer;
 
 pub use attach::ContactsRequested;
+use drop::drop_zone;
 use header::header;
 pub use header::{ChatClosed, MuteRequested};
 use message_menu::MessagePopup;
@@ -73,6 +76,8 @@ pub struct ConversationView {
     chat_menu: Option<Point<Pixels>>,
     /// A voice note being recorded.
     recorder: Option<Recorder>,
+    /// Files about to be sent, shown in place of the messages.
+    sending: Option<Entity<SendPreview>>,
 }
 
 /// The user clicked the conversation's header to see the chat's profile.
@@ -155,7 +160,7 @@ impl ConversationView {
             &composer,
             window,
             |_, _, pasted: &FilesPasted, window, cx| {
-                Self::send_pasted(pasted, window, cx);
+                Self::stage_pasted(pasted, window, cx);
             },
         )
         .detach();
@@ -188,6 +193,7 @@ impl ConversationView {
             viewing: None,
             chat_menu: None,
             recorder: None,
+            sending: None,
             reaction_emojis,
         }
     }
@@ -205,6 +211,8 @@ impl ConversationView {
             self.replying = None;
             self.reacting = None;
             self.picking_emoji = false;
+            // The files were for the chat left behind.
+            self.sending = None;
             self.voices.stop();
             // A newly opened chat is where the user is about to type.
             let focus: FocusHandle = self.composer.focus_handle(cx);
@@ -342,7 +350,7 @@ impl ConversationView {
     /// question, popups, then the reply being composed. Returns whether
     /// anything was open; escape and the back button both use it.
     pub fn step_back(&mut self, cx: &mut Context<Self>) -> bool {
-        if self.viewing.take().is_some() {
+        if self.viewing.take().is_some() || self.sending.take().is_some() {
             cx.notify();
         } else if self.message_popup.is_some() {
             self.close_message_popup(cx);
@@ -450,69 +458,79 @@ impl Render for ConversationView {
         let voice = self.voices.ui();
         let selection = self.selection.clone();
 
+        let messages = div()
+            .flex_1()
+            .min_h_0()
+            .flex()
+            .flex_col()
+            .items_center()
+            // A press anywhere drops the selected text; one on a
+            // message's text then starts a new selection.
+            .capture_any_mouse_down(cx.listener(|this, _, _, cx| {
+                if this.selection.take().is_some() {
+                    cx.notify();
+                }
+            }))
+            // Clicking the conversation closes the emoji picker; the
+            // quick reactions close themselves.
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, _, _, cx| {
+                    if this.picking_emoji {
+                        this.picking_emoji = false;
+                        cx.notify();
+                    }
+                }),
+            )
+            .child(
+                list(self.messages.clone(), move |index, _, cx| {
+                    let Some(item) = items.get(index) else {
+                        return div().into_any_element();
+                    };
+                    // Only a burst's first message shows its sender.
+                    let picture = match item {
+                        Item::Bubble(bubble) => bubble.author.as_ref().and_then(|author| {
+                            pictures.update(cx, |pictures, cx| pictures.picture(&author.id, cx))
+                        }),
+                        Item::Day(_) => None,
+                    };
+                    render_item(
+                        item,
+                        &view,
+                        reacting.as_ref(),
+                        &voice,
+                        selection.as_ref(),
+                        picture,
+                    )
+                })
+                .h_full()
+                .w_full()
+                .py_3()
+                .when(centered, |list| list.max_w(px(CENTERED_WIDTH)).px_4())
+                .when(!centered, |list| list.px(px(56.0))),
+            );
+
         div()
             .size_full()
+            .relative()
+            .group("conversation")
             .flex()
             .flex_col()
             .bg(rgb(PANE))
+            .on_drop(cx.listener(|this, dropped: &ExternalPaths, window, cx| {
+                this.stage(dropped.paths().to_vec(), false, window, cx);
+            }))
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| this.key_down(event, cx)))
             .child(header(&chat, picture, members, presence, cx))
-            .children(pinned.map(|pinned| self.pinned_bar(pinned, cx)))
-            .child(
-                div()
-                    .flex_1()
-                    .min_h_0()
-                    .flex()
-                    .flex_col()
-                    .items_center()
-                    // A press anywhere drops the selected text; one on a
-                    // message's text then starts a new selection.
-                    .capture_any_mouse_down(cx.listener(|this, _, _, cx| {
-                        if this.selection.take().is_some() {
-                            cx.notify();
-                        }
-                    }))
-                    // Clicking the conversation closes the emoji picker; the
-                    // quick reactions close themselves.
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(|this, _, _, cx| {
-                            if this.picking_emoji {
-                                this.picking_emoji = false;
-                                cx.notify();
-                            }
-                        }),
-                    )
-                    .child(
-                        list(self.messages.clone(), move |index, _, cx| {
-                            let Some(item) = items.get(index) else {
-                                return div().into_any_element();
-                            };
-                            // Only a burst's first message shows its sender.
-                            let picture = match item {
-                                Item::Bubble(bubble) => bubble.author.as_ref().and_then(|author| {
-                                    pictures
-                                        .update(cx, |pictures, cx| pictures.picture(&author.id, cx))
-                                }),
-                                Item::Day(_) => None,
-                            };
-                            render_item(
-                                item,
-                                &view,
-                                reacting.as_ref(),
-                                &voice,
-                                selection.as_ref(),
-                                picture,
-                            )
-                        })
-                        .h_full()
-                        .w_full()
-                        .py_3()
-                        .when(centered, |list| list.max_w(px(CENTERED_WIDTH)).px_4())
-                        .when(!centered, |list| list.px(px(56.0))),
-                    ),
-            )
-            .child(self.composer(cx))
+            .when_some(self.sending.clone(), |pane, preview| {
+                pane.child(div().flex_1().min_h_0().child(preview))
+            })
+            .when(self.sending.is_none(), |pane| {
+                pane.children(pinned.map(|pinned| self.pinned_bar(pinned, cx)))
+                    .child(messages)
+                    .child(self.composer(cx))
+            })
+            .child(drop_zone())
             .children(self.message_popup(cx))
             .children(self.reaction_picker(cx))
             .children(self.attach_menu(cx))
