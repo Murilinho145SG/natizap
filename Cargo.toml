@@ -71,6 +71,7 @@ natizap-player = { path = "crates/natizap-player" }
 natizap-protocol = { path = "crates/natizap-protocol" }
 natizap-ui = { path = "crates/natizap-ui" }
 natizap-session = { path = "crates/natizap-session" }
+natizap-stickers = { path = "crates/natizap-stickers" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
