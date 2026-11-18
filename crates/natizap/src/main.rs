@@ -26,7 +26,9 @@ actions!(
     natizap,
     [
         /// Opens the window showing every component in every state.
-        OpenComponents
+        OpenComponents,
+        /// Closes natizap and opens it again.
+        Restart
     ]
 );
 
@@ -38,14 +40,23 @@ fn main() -> anyhow::Result<()> {
         .init();
 
     let data_dir = data_dir()?;
+    // Read now: a rebuild replaces the file, and the path the running
+    // process reports for it afterwards no longer opens.
+    let executable = std::env::current_exe().context("could not find natizap's executable")?;
     gpui_platform::application()
         .with_assets(Assets)
+        .with_restart_arguments(std::env::args_os().skip(1).collect())
         .run(move |cx: &mut App| {
             gpui_tokio::init(cx);
             // Names natizap in the system's notifications.
             cx.set_app_identity("natizap", "natizap");
             bind_text_input_keys(cx);
-            cx.bind_keys([KeyBinding::new("ctrl-alt-g", OpenComponents, None)]);
+            cx.bind_keys([
+                KeyBinding::new("ctrl-alt-g", OpenComponents, None),
+                KeyBinding::new("ctrl-r", Restart, None),
+            ]);
+            cx.set_restart_path(executable.clone());
+            cx.on_action(|_: &Restart, cx| cx.restart());
             cx.on_action(|_: &OpenComponents, cx| {
                 if let Err(error) = open_components_window(cx) {
                     tracing::error!(?error, "could not open the components window");
