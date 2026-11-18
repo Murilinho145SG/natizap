@@ -2,13 +2,17 @@
 
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, App, Div, FontWeight, MouseButton, SharedString, Stateful, WeakEntity, div, px,
-    relative, rgb, rgba, svg,
+    Animation, AnimationExt as _, AnyElement, App, BoxShadow, Div, FontWeight, Hsla, MouseButton,
+    SharedString, Stateful, WeakEntity, div, point, px, relative, rgb, rgba, svg,
 };
 use natizap_protocol::{ContentKind, Forwarding};
-use natizap_ui::theme::{ALERT, LINE, MINT, MUTED, OUTGOING, PANEL, RAISED, SCRIM, TEXT, glass};
+use natizap_ui::motion::ease_out;
+use natizap_ui::theme::{
+    ACCENT, ALERT, LINE, MINT, MUTED, OUTGOING, PANEL, RAISED, SCRIM, TEXT, glass,
+};
 use natizap_ui::{Button, ButtonSize, ButtonVariant, Icon, avatar};
 use std::path::PathBuf;
+use std::time::Duration;
 
 use crate::authors::Author;
 use crate::extra_view::render_extra;
@@ -27,6 +31,33 @@ const SENDER_PICTURE: f32 = 28.0;
 /// Quick reactions offered on every bubble, as in WhatsApp.
 pub(crate) const QUICK_REACTIONS: [&str; 6] = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
+/// How long a message gone to stays lit up.
+pub(crate) const LIT_FOR: Duration = Duration::from_millis(1600);
+
+/// A bubble just gone to: its rim glows in the accent and fades back,
+/// marking where the eye should land without moving anything around it.
+fn lit_up(id: &str, shape: Div) -> AnyElement {
+    shape
+        .with_animation(
+            SharedString::from(format!("lit-{id}")),
+            Animation::new(LIT_FOR).with_easing(ease_out),
+            |shape, delta| {
+                let mut rim: Hsla = rgb(ACCENT).into();
+                rim.a = 1.0 - delta;
+                let mut glow = rim;
+                glow.a = 0.5 * (1.0 - delta);
+                shape.border_color(rim).shadow(vec![BoxShadow {
+                    color: glow,
+                    offset: point(px(0.0), px(0.0)),
+                    blur_radius: px(16.0),
+                    spread_radius: px(1.0),
+                    inset: false,
+                }])
+            },
+        )
+        .into_any_element()
+}
+
 pub(crate) fn render_item(
     item: &Item,
     view: &WeakEntity<ConversationView>,
@@ -34,6 +65,7 @@ pub(crate) fn render_item(
     voice: &VoiceUi,
     focus: &TextFocus,
     picture: Option<PathBuf>,
+    lit: bool,
 ) -> AnyElement {
     match item {
         Item::Day(label) => div()
@@ -60,6 +92,7 @@ pub(crate) fn render_item(
             voice,
             focus,
             picture,
+            lit,
         ),
     }
 }
@@ -71,6 +104,7 @@ fn render_bubble(
     voice: &VoiceUi,
     focus: &TextFocus,
     picture: Option<PathBuf>,
+    lit: bool,
 ) -> AnyElement {
     // In groups, others' messages make room on the left for their sender's
     // picture, shown beside the first of a burst, as on the phone.
@@ -105,7 +139,14 @@ fn render_bubble(
         .gap_0p5()
         .when(bubble.from_me, Styled::items_end)
         .when(!bubble.from_me, Styled::items_start)
-        .child(shape(bubble, view, voice, focus).max_w_full())
+        .child({
+            let shape = shape(bubble, view, voice, focus).max_w_full();
+            if lit {
+                lit_up(&bubble.id, shape)
+            } else {
+                shape.into_any_element()
+            }
+        })
         .when(!bubble.reactions.is_empty(), |message| {
             message.child(reaction_chips(bubble))
         });
