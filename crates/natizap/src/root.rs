@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, Context, Div, Entity, FontWeight, MouseButton, NavigationDirection, SharedString,
-    Window, div, px, rgb,
+    AnyElement, Context, Div, Entity, FontWeight, MouseButton, NavigationDirection, Pixels,
+    SharedString, Window, div, px, rgb,
 };
 use natizap_chats::{
     ChatList, ChatListView, ChatPicker, ChatRow, ChatSelected, ChatsPicked, PickerDismissed,
@@ -29,6 +29,12 @@ use opening::Opening;
 mod notify;
 mod opening;
 mod profiles;
+
+/// Width of the chat list, and of a profile beside the conversation.
+const SIDE_PANEL: f32 = 380.0;
+/// The narrowest a conversation gets with a profile beside it; narrower
+/// windows show the profile over it.
+const LEAST_CONVERSATION: f32 = 420.0;
 
 /// The features the main window shows, built by `main`.
 pub(crate) struct Features {
@@ -385,7 +391,8 @@ impl Root {
         }
     }
 
-    fn content(&self, cx: &Context<Self>) -> AnyElement {
+    /// The window's content, laid out for a window `width` wide.
+    fn content(&self, width: Pixels, cx: &Context<Self>) -> AnyElement {
         if !self.shows_chats(cx) {
             return self.pairing.clone().into_any_element();
         }
@@ -399,22 +406,43 @@ impl Root {
             .flex()
             .child(
                 div()
-                    .w(px(380.0))
+                    .w(px(SIDE_PANEL))
                     .h_full()
                     .flex_none()
                     .border_r_1()
                     .border_color(rgb(LINE))
                     .child(self.chat_list.clone()),
             )
-            .child(div().flex_1().h_full().child(self.conversation.clone()))
+            .child(
+                // Free to shrink below what it holds, so a long line in it
+                // is cut or wrapped instead of pushing it past the window.
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .h_full()
+                    .child(self.conversation.clone()),
+            )
             .children(self.profile.clone().map(|profile| {
-                // Each profile slides in from the side it opens on.
+                // Each profile slides in from the side it opens on: beside the
+                // conversation when the window has room for both, over it
+                // otherwise, so the conversation never shrinks to nothing.
                 let id = SharedString::from(format!("profile-{}", profile.entity_id()));
-                slide_in(
-                    id,
-                    div().w(px(380.0)).h_full().flex_none().child(profile),
-                    24.0,
-                )
+                let beside = f32::from(width) - 2.0 * SIDE_PANEL >= LEAST_CONVERSATION;
+                let panel = slide_in(id, div().size_full().child(profile), 24.0);
+                if beside {
+                    div().w(px(SIDE_PANEL)).h_full().flex_none().child(panel)
+                } else {
+                    div()
+                        .absolute()
+                        .top_0()
+                        .right_0()
+                        .w(px(SIDE_PANEL))
+                        .h_full()
+                        .border_l_1()
+                        .border_color(rgb(LINE))
+                        .shadow_lg()
+                        .child(panel)
+                }
             }))
             .children(self.picker.clone())
             .children(self.settings.clone())
@@ -446,7 +474,7 @@ impl Render for Root {
         let content = div()
             .size_full()
             .relative()
-            .child(self.content(cx))
+            .child(self.content(window.viewport_size().width, cx))
             .children(opening)
             .into_any_element();
         div()
