@@ -67,8 +67,9 @@ share. Local data lives in the platform's per-user data directory, one
 file per owner (`session.db` for protocol keys, `chats.db` for the chat
 list, `messages.db` for messages, `notifications.conf` for notification
 settings, `stickers.db` for favorite stickers, `media/` for downloaded
-attachments, `media/thumbs/` for the small copies media grids draw and
-`media/stickers/` for favorite stickers' files).
+attachments, `media/thumbs/` for the small copies media grids draw,
+`media/stickers/` for favorite stickers' files and `updates/` for
+downloaded update packages).
 
 Local stores are migrated, never dropped and rebuilt: WhatsApp sends the
 history only once, right after linking, so lost data cannot be synced
@@ -96,7 +97,8 @@ background it also posts system notifications; clicking one emits
 `StickerPicker` to show from its composer, sends what it emits as
 `StickerPicked` through `MessageLog::send_sticker`, tells the conversation
 which stickers are favorites, and passes its `StickerFavoriteToggled` to
-the `StickerShelf`.
+the `StickerShelf`. The `Updater` stands alone: the binary only shows it in
+the title bar.
 
 ## Architecture: one crate per feature
 
@@ -142,6 +144,7 @@ organizing rule of the codebase.
 | `natizap-player`   | feature | The full-window video player.                            |
 | `natizap-profiles` | shared  | Profile pictures: fetched on sight, cached on disk.        |
 | `natizap-ui`       | shared  | Theme, fonts, icons, window frame and the component library. |
+| `natizap-update`   | feature | Finds, downloads and installs new releases from GitHub.   |
 
 Keep this table current when a crate is added, renamed or removed.
 

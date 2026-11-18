@@ -3695,6 +3695,7 @@ dependencies = [
  "natizap-session",
  "natizap-stickers",
  "natizap-ui",
+ "natizap-update",
  "tracing",
  "tracing-subscriber",
 ]
@@ -3832,6 +3833,21 @@ dependencies = [
  "gpui",
  "tracing",
  "unicode-segmentation",
+]
+
+[[package]]
+name = "natizap-update"
+version = "0.1.0"
+dependencies = [
+ "gpui",
+ "natizap-ui",
+ "semver",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 2.0.21",
+ "tracing",
+ "ureq",
 ]
 
 [[package]]

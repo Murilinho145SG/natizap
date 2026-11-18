@@ -55,11 +55,19 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png",
 phonenumber = "0.3"
 # Must share libsqlite3-sys with whatsapp-rust's SQLite store.
 rusqlite = "0.39"
+# Reads which natizap release is the newest.
+semver = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Checks a downloaded update against the release's checksums.
+sha2 = "0.10"
 qrcode = { version = "0.14", default-features = false }
 thiserror = "2"
 tokio = { version = "1", default-features = false, features = ["fs"] }
 tracing = "0.1"
 unicode-segmentation = "1"
+# Already in the tree through whatsapp-rust; fetches releases over rustls.
+ureq = { version = "3", default-features = false, features = ["rustls"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 natizap-chats = { path = "crates/natizap-chats" }
@@ -73,6 +81,7 @@ natizap-protocol = { path = "crates/natizap-protocol" }
 natizap-ui = { path = "crates/natizap-ui" }
 natizap-session = { path = "crates/natizap-session" }
 natizap-stickers = { path = "crates/natizap-stickers" }
+natizap-update = { path = "crates/natizap-update" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
