@@ -99,8 +99,6 @@ pub(crate) fn render_media(media: &MediaView, view: &WeakEntity<ConversationView
                 .overflow_hidden()
                 .bg(rgb(DEEP))
                 .map(pressable)
-                .hover(|media| media.opacity(0.88))
-                .active(|media| media.opacity(0.75))
                 .on_click(open(media, view))
                 // A document's first page, as its sender's phone drew it.
                 .children(
