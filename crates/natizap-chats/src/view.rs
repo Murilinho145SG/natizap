@@ -1,8 +1,8 @@
 use chrono::{DateTime, Datelike as _, Local, TimeZone as _};
 use gpui::prelude::*;
 use gpui::{
-    Context, Div, Entity, EventEmitter, FontWeight, Stateful, UniformListScrollHandle, Window, div,
-    px, relative, rgb, svg, uniform_list,
+    AnyView, Context, Div, Entity, EventEmitter, FontWeight, Stateful, UniformListScrollHandle,
+    Window, div, px, relative, rgb, svg, uniform_list,
 };
 use natizap_ui::theme::{ACCENT, DISPLAY_FONT, LINE, MUTED, PANEL, RAISED, TEXT};
 use natizap_ui::{
@@ -17,6 +17,10 @@ use natizap_protocol::ChatId;
 
 use crate::filters::{Filter, chips, narrowed, search_field};
 use crate::list::{ChatList, ChatRow};
+
+mod searching;
+
+pub use searching::QueryChanged;
 
 const ROW_HEIGHT: f32 = 68.0;
 const AVATAR_SIZE: f32 = 44.0;
@@ -34,6 +38,12 @@ pub struct ChatListView {
     in_archive: bool,
     /// How far the list is scrolled, for its scrollbar.
     scroll: UniformListScrollHandle,
+    /// The chats matching a search, above the messages holding it.
+    search_scroll: UniformListScrollHandle,
+    /// What is typed in the search field, as last told.
+    query: String,
+    /// The messages holding what is typed, as the app hands them over.
+    message_results: Option<AnyView>,
 }
 
 /// The user picked a chat in the list.
@@ -41,6 +51,7 @@ pub struct ChatListView {
 pub struct ChatSelected(pub ChatRow);
 
 impl EventEmitter<ChatSelected> for ChatListView {}
+impl EventEmitter<QueryChanged> for ChatListView {}
 
 impl ChatListView {
     /// Creates a view that re-renders whenever `list` changes or a chat's
@@ -53,8 +64,12 @@ impl ChatListView {
         cx.observe(&list, |_, _, cx| cx.notify()).detach();
         cx.observe(&pictures, |_, _, cx| cx.notify()).detach();
         let search = cx.new(|cx| TextInput::new("Search", cx));
-        // Typing narrows the list.
-        cx.observe(&search, |_, _, cx| cx.notify()).detach();
+        // Typing narrows the list, and searches the messages.
+        cx.observe(&search, |view, _, cx| {
+            view.query_changed(cx);
+            cx.notify();
+        })
+        .detach();
         Self {
             list,
             pictures,
@@ -64,6 +79,9 @@ impl ChatListView {
             filter: Filter::All,
             in_archive: false,
             scroll: UniformListScrollHandle::new(),
+            search_scroll: UniformListScrollHandle::new(),
+            query: String::new(),
+            message_results: None,
         }
     }
 
@@ -108,7 +126,10 @@ impl Render for ChatListView {
         let archived = list.archived().len();
         let narrowing = !query.trim().is_empty() || self.filter != Filter::All;
 
-        let body = if rows.is_empty() && source.is_empty() && self.syncing {
+        let nothing_yet = source.is_empty();
+        let body = if let Some(searching) = self.searching(rows.clone(), cx) {
+            searching
+        } else if rows.is_empty() && nothing_yet && self.syncing {
             placeholder_rows().into_any_element()
         } else if rows.is_empty() && !narrowing && !self.in_archive {
             empty_state().into_any_element()

@@ -94,6 +94,10 @@ which chat `MessageLog` has open and which chats `ChatList` has muted, and
 it chimes for messages anywhere else. While the window is in the
 background it also posts system notifications; clicking one emits
 `NotificationOpened`, which the binary answers by opening that chat. The
+chat list emits `QueryChanged` as its search field is typed in; the binary
+hands it the messages' `MessageSearch` through
+`ChatListView::set_message_results`, passes the query on, and answers its
+`SearchHitOpened` with `ConversationView::go_to`. The
 binary draws the navigation rail (`natizap-ui`'s `Rail`) itself: its
 Settings button opens the notifications' `NotificationSettings` dialog, and
 your avatar opens the contacts' `OwnProfile` in place of the chat list,

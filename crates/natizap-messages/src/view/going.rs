@@ -31,7 +31,7 @@ impl ConversationView {
     /// Goes to the message `id`, sent at `sent_at` in the chat known by
     /// `chats`: opens that chat if another is open, shows it back far
     /// enough, scrolls to the message and lights it up.
-    pub(crate) fn go_to(
+    pub fn go_to(
         &mut self,
         id: SharedString,
         sent_at: i64,

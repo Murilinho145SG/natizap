@@ -25,6 +25,7 @@ mod presence;
 mod preview;
 mod quote;
 mod rich_text;
+mod search_view;
 mod send_preview;
 mod store;
 mod sync;
@@ -38,6 +39,7 @@ mod zoom;
 
 pub use log::{ForwardRequested, MessageLog, MessageSent, OpenChat};
 pub use overview::{ChatOverview, MediaTile, TileImage};
+pub use search_view::{MessageSearch, SearchHitOpened};
 pub use view::{
     ChatClosed, ChatRequested, ContactsRequested, ConversationView, MuteRequested, PlayRequested,
     ProfileRequested, StickerFavoriteToggled,

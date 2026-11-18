@@ -32,6 +32,7 @@ mod notify;
 mod opening;
 mod profiles;
 mod rail;
+mod search;
 mod stickers;
 
 /// Width of the chat list, and of a profile beside the conversation.
@@ -144,6 +145,7 @@ impl Root {
         Self::share_contacts(&conversation, messages, &chats, pictures, window, cx);
         Self::feed_notifier(&notifier, &chats, messages, window, cx);
         Self::share_stickers(&stickers, &conversation, messages, cx);
+        Self::search_messages(&chat_list, &chats, messages, &conversation, cx);
 
         Self {
             session,
