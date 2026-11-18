@@ -29,6 +29,7 @@ mod send_preview;
 mod store;
 mod sync;
 mod text_pill;
+mod text_search;
 mod thumbs;
 mod view;
 mod voice;

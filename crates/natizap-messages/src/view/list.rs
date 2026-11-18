@@ -53,6 +53,7 @@ impl ConversationView {
         let focus = TextFocus {
             selection: self.selection.clone(),
             hovered_link: self.hovered_link.clone(),
+            found: self.found(cx),
         };
 
         let scrollbar = scrollbar("messages-scrollbar", &self.messages, window, cx);

@@ -71,19 +71,36 @@ pub(super) fn header(
                 })),
         )
         .child(
-            div().ml_auto().child(
-                Button::new("chat-menu")
-                    .icon(Icon::More)
-                    .variant(ButtonVariant::Ghost)
-                    .round()
-                    .tooltip("Menu")
-                    .on_click(cx.listener(|this, event: &ClickEvent, _, cx| {
-                        // The header behind opens the profile.
-                        cx.stop_propagation();
-                        this.chat_menu = Some(event.position());
-                        cx.notify();
-                    })),
-            ),
+            div()
+                .ml_auto()
+                .flex()
+                .items_center()
+                .gap_1()
+                .child(
+                    Button::new("chat-search")
+                        .icon(Icon::Search)
+                        .variant(ButtonVariant::Ghost)
+                        .round()
+                        .tooltip("Search (Ctrl+F)")
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            // The header behind opens the profile.
+                            cx.stop_propagation();
+                            this.open_find(window, cx);
+                        })),
+                )
+                .child(
+                    Button::new("chat-menu")
+                        .icon(Icon::More)
+                        .variant(ButtonVariant::Ghost)
+                        .round()
+                        .tooltip("Menu")
+                        .on_click(cx.listener(|this, event: &ClickEvent, _, cx| {
+                            // The header behind opens the profile.
+                            cx.stop_propagation();
+                            this.chat_menu = Some(event.position());
+                            cx.notify();
+                        })),
+                ),
         )
 }
 

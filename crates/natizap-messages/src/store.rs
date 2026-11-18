@@ -75,6 +75,26 @@ const MIGRATIONS: &[&str] = &[
         cast_at INTEGER NOT NULL,
         PRIMARY KEY (poll_id, voter)
     );",
+    // A full-text index of every message's text, for search. Trigrams
+    // find any run of three or more characters, mid-word and in any
+    // language, folding case; the triggers keep it in step with every
+    // write, edits and deletions included.
+    "CREATE VIRTUAL TABLE messages_fts USING fts5(
+        text, content = 'messages', content_rowid = 'rowid', tokenize = 'trigram'
+     );
+     CREATE TRIGGER messages_fts_insert AFTER INSERT ON messages BEGIN
+        INSERT INTO messages_fts (rowid, text) VALUES (new.rowid, new.text);
+     END;
+     CREATE TRIGGER messages_fts_delete AFTER DELETE ON messages BEGIN
+        INSERT INTO messages_fts (messages_fts, rowid, text)
+            VALUES ('delete', old.rowid, old.text);
+     END;
+     CREATE TRIGGER messages_fts_update AFTER UPDATE OF text ON messages BEGIN
+        INSERT INTO messages_fts (messages_fts, rowid, text)
+            VALUES ('delete', old.rowid, old.text);
+        INSERT INTO messages_fts (rowid, text) VALUES (new.rowid, new.text);
+     END;
+     INSERT INTO messages_fts (messages_fts) VALUES ('rebuild');",
 ];
 
 /// Every message natizap has seen, on disk.
@@ -506,6 +526,7 @@ mod votes;
 pub(crate) use votes::Vote;
 mod library;
 mod rows;
+mod search;
 
 use rows::message_from_row;
 

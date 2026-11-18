@@ -1,4 +1,5 @@
 use super::*;
+use crate::text_search::Case;
 use std::path::PathBuf;
 
 use natizap_protocol::{ContentKind, Extra, HdThumbnail, LinkPreview, Poll};
@@ -437,6 +438,101 @@ fn keeps_each_voters_latest_vote_on_a_poll() -> rusqlite::Result<()> {
                 mine: true
             },
         ]
+    );
+    Ok(())
+}
+
+fn ids(messages: &[Message]) -> Vec<&str> {
+    messages.iter().map(|m| m.id.as_str()).collect()
+}
+
+#[test]
+fn finds_text_mid_word_newest_first_in_one_chat_or_all() -> rusqlite::Result<()> {
+    let mut store = MessageStore::in_memory()?;
+    store.apply(&[
+        MessageChange::Received(message("1@lid", "a", 10, "Finalizamos seu atendimento")),
+        MessageChange::Received(message("1@lid", "b", 20, "quero ATENDIMENTO agora")),
+        MessageChange::Received(message("2@lid", "c", 30, "outro atendimento")),
+        MessageChange::Received(message("status@broadcast", "s", 40, "atendimento")),
+        MessageChange::Received(message("1@lid", "d", 50, "nada a ver")),
+    ])?;
+    let one = [ChatId::new("1@lid")];
+    assert_eq!(
+        ids(&store.search(Some(&one), "tendim", Case::Insensitive, 10)?),
+        ["b", "a"]
+    );
+    assert_eq!(
+        ids(&store.search(None, "atendimento", Case::Insensitive, 10)?),
+        ["c", "b", "a"]
+    );
+    assert_eq!(
+        ids(&store.search(None, "atendimento", Case::Insensitive, 2)?),
+        ["c", "b"]
+    );
+    Ok(())
+}
+
+#[test]
+fn tells_capitals_apart_only_when_asked() -> rusqlite::Result<()> {
+    let mut store = MessageStore::in_memory()?;
+    store.apply(&[
+        MessageChange::Received(message("1@lid", "a", 10, "Ação marcada")),
+        MessageChange::Received(message("1@lid", "b", 20, "AÇÃO MARCADA")),
+    ])?;
+    assert_eq!(
+        ids(&store.search(None, "ação", Case::Insensitive, 10)?),
+        ["b", "a"]
+    );
+    assert_eq!(
+        ids(&store.search(None, "Ação", Case::Sensitive, 10)?),
+        ["a"]
+    );
+    // Shorter than the index reads, still folded beyond ASCII.
+    assert_eq!(
+        ids(&store.search(None, "çã", Case::Insensitive, 10)?),
+        ["b", "a"]
+    );
+    assert_eq!(ids(&store.search(None, "ÇÃ", Case::Sensitive, 10)?), ["b"]);
+    Ok(())
+}
+
+#[test]
+fn forgets_old_text_once_edited_or_deleted() -> rusqlite::Result<()> {
+    let mut store = MessageStore::in_memory()?;
+    let chat = ChatId::new("1@lid");
+    store.apply(&[
+        MessageChange::Received(message("1@lid", "a", 10, "primeira versão")),
+        MessageChange::Received(message("1@lid", "b", 20, "vai sumir")),
+        MessageChange::Received(message("1@lid", "c", 30, "vai sair do aparelho")),
+        MessageChange::Edited {
+            chat: chat.clone(),
+            id: "a".into(),
+            text: Some("segunda versão".into()),
+        },
+        MessageChange::Deleted {
+            chat: chat.clone(),
+            id: "b".into(),
+        },
+        MessageChange::Removed {
+            chat,
+            id: "c".into(),
+        },
+    ])?;
+    assert_eq!(
+        ids(&store.search(None, "primeira", Case::Insensitive, 10)?),
+        Vec::<&str>::new()
+    );
+    assert_eq!(
+        ids(&store.search(None, "segunda", Case::Insensitive, 10)?),
+        ["a"]
+    );
+    assert_eq!(
+        ids(&store.search(None, "vai", Case::Insensitive, 10)?),
+        Vec::<&str>::new()
+    );
+    assert_eq!(
+        ids(&store.search(None, "   ", Case::Insensitive, 10)?),
+        Vec::<&str>::new()
     );
     Ok(())
 }

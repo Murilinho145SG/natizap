@@ -58,6 +58,8 @@ icons! {
     Checks => "checks.svg",
     /// Opens a menu below it.
     ChevronDown => "chevron-down.svg",
+    /// Back to an earlier item above, e.g. the previous search hit.
+    ChevronUp => "chevron-up.svg",
     /// Back to an earlier item, e.g. the previous photo.
     ChevronLeft => "chevron-left.svg",
     /// On to a later item, e.g. the next photo.

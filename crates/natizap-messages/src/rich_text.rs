@@ -12,9 +12,12 @@ use gpui::{
 };
 use natizap_protocol::{ChatId, LinkKind, Mark};
 use natizap_ui::code_block;
-use natizap_ui::theme::{ACCENT, DEEP, LINK, MONO_FONT, MUTED, SELECTION, TEXT, base_font};
+use natizap_ui::theme::{
+    ACCENT, ACCENT_INK, DEEP, LINK, MONO_FONT, MUTED, SELECTION, TEXT, base_font,
+};
 
 use crate::items::Text;
+use crate::text_search::{Case, occurrences};
 use crate::view::{ChatRequested, ConversationView};
 
 /// Text selected in one stretch of a message, by dragging over it.
@@ -53,12 +56,22 @@ impl HoveredLink {
     }
 }
 
-/// What the pointer did to the texts on screen: the selected text and the
-/// link it rests on.
+/// What the texts on screen show lit: the selected text, the link the
+/// pointer rests on, and what a search found.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct TextFocus {
     pub(crate) selection: Option<Selection>,
     pub(crate) hovered_link: Option<HoveredLink>,
+    pub(crate) found: Option<Found>,
+}
+
+/// A search in the open conversation, lit in every message holding it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Found {
+    pub(crate) query: SharedString,
+    pub(crate) case: Case,
+    /// The message the search is on, lit stronger than the rest.
+    pub(crate) current: Option<SharedString>,
 }
 
 /// A stretch of text on screen that mouse drags select in.
@@ -210,7 +223,22 @@ impl Shown<'_> {
             .as_ref()
             .filter(|hovered| hovered.key == key)
             .map(|hovered| hovered.range.clone());
-        let runs = runs(shown.len(), &marks, selected, hovered);
+        let (found, current) = self.focus.found.as_ref().map_or_else(
+            || (Vec::new(), false),
+            |found| {
+                (
+                    occurrences(&shown, &found.query, found.case),
+                    found.current.as_deref() == Some(self.id),
+                )
+            },
+        );
+        let lit = Lit {
+            selected,
+            hovered,
+            found: &found,
+            current,
+        };
+        let runs = runs(shown.len(), &marks, &lit);
         let links: Vec<(Range<usize>, LinkKind)> = marks
             .iter()
             .filter_map(|(range, mark)| match mark {
@@ -265,21 +293,31 @@ fn open(kind: LinkKind, target: &str, view: &WeakEntity<ConversationView>, cx: &
     }
 }
 
-/// One text run per stretch of `len` bytes that `marks` style alike, with
-/// `selected` behind a highlight and the `hovered` link lit up.
-fn runs(
-    len: usize,
-    marks: &[(Range<usize>, Mark)],
+/// What lights a stretch of text up, besides its marks.
+#[derive(Debug, Default)]
+struct Lit<'a> {
+    /// The text selected in it.
     selected: Option<Range<usize>>,
+    /// The link the pointer rests on.
     hovered: Option<Range<usize>>,
-) -> Vec<TextRun> {
-    let selected = selected.filter(|range| !range.is_empty());
-    let hovered = hovered.filter(|range| !range.is_empty());
+    /// What a search found in it.
+    found: &'a [Range<usize>],
+    /// Whether the search is on this message.
+    current: bool,
+}
+
+/// One text run per stretch of `len` bytes that `marks` style alike, with
+/// the selected text behind a highlight, the hovered link lit up and what
+/// a search found marked.
+fn runs(len: usize, marks: &[(Range<usize>, Mark)], lit: &Lit<'_>) -> Vec<TextRun> {
+    let selected = lit.selected.clone().filter(|range| !range.is_empty());
+    let hovered = lit.hovered.clone().filter(|range| !range.is_empty());
     let mut edges: Vec<usize> = marks
         .iter()
         .flat_map(|(range, _)| [range.start, range.end])
         .chain(selected.iter().flat_map(|range| [range.start, range.end]))
         .chain(hovered.iter().flat_map(|range| [range.start, range.end]))
+        .chain(lit.found.iter().flat_map(|range| [range.start, range.end]))
         .chain([0, len])
         .filter(|&edge| edge <= len)
         .collect();
@@ -293,6 +331,16 @@ fn runs(
                 .filter(|(range, _)| range.start <= edge[0] && range.end >= edge[1])
                 .map(|(_, mark)| *mark);
             let mut run = run(edge[1] - edge[0], covering);
+            let covers = |range: &Range<usize>| range.start <= edge[0] && range.end >= edge[1];
+            if lit.found.iter().any(covers) {
+                // The message the search is on stands out from the others
+                // holding the same words.
+                let alpha = if lit.current { 0xb0 } else { 0x48 };
+                run.background_color = Some(rgba((ACCENT << 8) | alpha).into());
+                if lit.current {
+                    run.color = rgb(ACCENT_INK).into();
+                }
+            }
             if hovered
                 .as_ref()
                 .is_some_and(|range| range.start <= edge[0] && range.end >= edge[1])
@@ -357,7 +405,7 @@ mod tests {
     #[test]
     fn splits_text_where_its_styles_change() {
         let marks = [(0..4, Mark::Bold), (2..8, Mark::Link(LinkKind::Web))];
-        let runs: Vec<(usize, bool, bool)> = runs(10, &marks, None, None)
+        let runs: Vec<(usize, bool, bool)> = runs(10, &marks, &Lit::default())
             .iter()
             .map(|run| {
                 (
@@ -384,10 +432,28 @@ mod tests {
             (0..4, Mark::Link(LinkKind::Web)),
             (6..10, Mark::Link(LinkKind::Web)),
         ];
-        let lit: Vec<(usize, bool)> = runs(10, &marks, None, Some(6..10))
+        let hovering = Lit {
+            hovered: Some(6..10),
+            ..Lit::default()
+        };
+        let lit: Vec<(usize, bool)> = runs(10, &marks, &hovering)
             .iter()
             .map(|run| (run.len, run.background_color.is_some()))
             .collect();
         assert_eq!(lit, [(4, false), (2, false), (4, true)]);
+    }
+
+    #[test]
+    fn marks_what_a_search_found() {
+        let found = [Range { start: 2, end: 5 }];
+        let searching = Lit {
+            found: &found,
+            ..Lit::default()
+        };
+        let marked: Vec<(usize, bool)> = runs(8, &[], &searching)
+            .iter()
+            .map(|run| (run.len, run.background_color.is_some()))
+            .collect();
+        assert_eq!(marked, [(2, false), (3, true), (3, false)]);
     }
 }

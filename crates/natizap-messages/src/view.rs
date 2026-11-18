@@ -29,6 +29,7 @@ mod attach;
 mod carousel;
 mod composer;
 mod drop;
+mod find;
 mod going;
 mod header;
 mod list;
@@ -98,6 +99,8 @@ pub struct ConversationView {
     viewing: Option<MediaView>,
     /// The photo or video open over the window, among the chat's others.
     carousel: Option<Carousel>,
+    /// The search in the open chat, while its bar shows.
+    find: Option<find::Find>,
     /// Where the header's menu is open.
     chat_menu: Option<Point<Pixels>>,
     /// A voice note being recorded.
@@ -234,6 +237,7 @@ impl ConversationView {
             flash: None,
             viewing: None,
             carousel: None,
+            find: None,
             chat_menu: None,
             recorder: None,
             sticker_picker: None,
@@ -271,6 +275,7 @@ impl ConversationView {
             // The files and the media window were for the chat left behind.
             self.sending = None;
             self.browsing = None;
+            self.find = None;
             self.voices.stop();
             // A newly opened chat is where the user is about to type.
             let focus: FocusHandle = self.composer.focus_handle(cx);
@@ -420,9 +425,12 @@ impl ConversationView {
 
     /// Escape steps back out of what is open; the copy shortcut copies the
     /// text selected in a message.
-    fn key_down(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) {
+    fn key_down(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         let keystroke = &event.keystroke;
-        if keystroke.key == "escape" {
+        if keystroke.key == "f" && keystroke.modifiers.secondary(cx) {
+            self.open_find(window, cx);
+            cx.stop_propagation();
+        } else if keystroke.key == "escape" {
             self.step_back(cx);
         } else if keystroke.key == "c"
             && keystroke.modifiers.secondary(cx)
@@ -497,8 +505,9 @@ impl Render for ConversationView {
             .on_drop(cx.listener(|this, dropped: &ExternalPaths, window, cx| {
                 this.stage(dropped.paths().to_vec(), false, window, cx);
             }))
-            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| this.key_down(event, cx)))
+            .on_key_down(cx.listener(Self::key_down))
             .child(header(&chat, picture, members, presence, cx))
+            .children(self.find_bar(cx))
             .when_some(self.sending.clone(), |pane, preview| {
                 pane.child(div().flex_1().min_h_0().child(preview))
             })

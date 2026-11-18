@@ -11,10 +11,12 @@ use natizap_protocol::{Anchor, ChatId, Forward, GroupInfo, PersonName, Protocol,
 use crate::items::{Item, Members};
 use crate::library::Library;
 use crate::media::{Fetch, PosterJob};
-use crate::message::MessageChange;
+use crate::message::{Message, MessageChange};
 use crate::overview::{self, ChatOverview};
 use crate::presence::Presence;
+use crate::store::MessageStore;
 use crate::sync::Sync;
+use crate::text_search::Case;
 
 mod actions;
 mod downloads;
@@ -325,6 +327,27 @@ impl MessageLog {
     pub(crate) fn library(&self, addresses: Vec<ChatId>, cx: &App) -> Task<Library> {
         let (path, media_dir) = (self.store_path.clone(), self.media_dir.clone());
         cx.background_spawn(async move { Library::read(&path, &media_dir, &addresses) })
+    }
+
+    /// The messages holding `query`, newest first, at most `limit`: in
+    /// `chats` when given, else in every chat. Read off the UI thread.
+    pub(crate) fn search(
+        &self,
+        chats: Option<Vec<ChatId>>,
+        query: String,
+        case: Case,
+        limit: usize,
+        cx: &App,
+    ) -> Task<Vec<Message>> {
+        let path = self.store_path.clone();
+        cx.background_spawn(async move {
+            let found = MessageStore::open(&path)
+                .and_then(|store| store.search(chats.as_deref(), &query, case, limit));
+            found.unwrap_or_else(|error| {
+                tracing::warn!(%error, "could not search the messages");
+                Vec::new()
+            })
+        })
     }
 
     /// Who runs the open group and who may write in it, once known.
