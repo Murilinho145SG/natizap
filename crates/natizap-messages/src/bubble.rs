@@ -226,6 +226,13 @@ fn shape(
     if let Some(media) = voice_note {
         return padded(bubble, view).child(render_voice(media, voice, meta, view));
     }
+    if let Some(sticker) = bubble
+        .media
+        .as_ref()
+        .filter(|media| media.fetch.kind == ContentKind::Sticker)
+    {
+        return sticker_bubble(bubble, sticker, meta, view);
+    }
     let picture = bubble
         .media
         .as_ref()
@@ -294,6 +301,42 @@ fn shape(
 
 /// A photo or video filling its bubble but for a thin rim, as on the
 /// phone: the time sits on the picture, or beside the caption if any.
+/// A sticker, as the phone shows it: no bubble, just the sticker, with
+/// its author's name above it in groups and its time on a dark pill over
+/// its corner.
+fn sticker_bubble(
+    bubble: &Bubble,
+    media: &MediaView,
+    meta: Div,
+    view: &WeakEntity<ConversationView>,
+) -> Div {
+    div()
+        .flex()
+        .flex_col()
+        .gap_1()
+        .when(bubble.from_me, Styled::items_end)
+        .children(author(bubble, view).map(Styled::px_1))
+        .children(forwarded(bubble).map(Styled::px_1))
+        .children(
+            bubble
+                .quote
+                .as_ref()
+                .map(|quote| jump_to_quoted(quote, view)),
+        )
+        .child(
+            div().relative().child(render_media(media, view)).child(
+                div()
+                    .absolute()
+                    .bottom(px(4.0))
+                    .right(px(4.0))
+                    .px_1p5()
+                    .rounded_full()
+                    .bg(rgba(SCRIM))
+                    .child(meta.text_color(rgb(TEXT))),
+            ),
+        )
+}
+
 /// The bubble's padding around a picture.
 const PICTURE_PADDING: f32 = 3.0;
 
