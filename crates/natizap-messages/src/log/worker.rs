@@ -14,7 +14,7 @@ use crate::items::{Members, items, summary};
 use crate::media::{fetch_on_sight, posters_on_sight};
 use crate::message::{Message, MessageChange};
 use crate::store::MessageStore;
-use crate::sync::changes;
+use crate::sync::Sync;
 
 /// Stores incoming changes and rebuilds the open chat's rows when it is
 /// affected, off the UI thread.
@@ -34,6 +34,7 @@ pub(super) async fn sync(
     let mut names = Arc::default();
     // Chats whose missing media was asked for, once per launch.
     let mut asked: HashSet<ChatId> = HashSet::new();
+    let mut translating = Sync::default();
 
     while let Ok(input) = inputs.recv().await {
         let mut refresh = false;
@@ -80,7 +81,7 @@ pub(super) async fn sync(
                     refresh = true;
                 }
                 Input::Event(event) => {
-                    let changes = changes(&event);
+                    let changes = translating.changes(&event);
                     refresh |= touches(open.as_ref(), &changes);
                     arrived.extend(arrivals(open.as_ref(), &changes));
                     log_error(store.apply(&changes), "could not store messages");

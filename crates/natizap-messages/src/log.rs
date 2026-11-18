@@ -14,7 +14,7 @@ use crate::media::{Fetch, PosterJob};
 use crate::message::MessageChange;
 use crate::overview::{self, ChatOverview};
 use crate::presence::Presence;
-use crate::sync::MESSAGE_EVENTS;
+use crate::sync::Sync;
 
 mod actions;
 mod downloads;
@@ -180,7 +180,7 @@ impl MessageLog {
         let (inputs_tx, inputs) = async_channel::unbounded();
         let (outputs_tx, outputs) = async_channel::unbounded();
 
-        let events = protocol.read(cx).subscribe(MESSAGE_EVENTS);
+        let events = protocol.read(cx).subscribe(&Sync::events());
         let forward_tx = inputs_tx.clone();
         let forward = cx.background_spawn(async move {
             while let Ok(event) = events.recv().await {

@@ -41,6 +41,7 @@ pub(crate) fn quote_block(
         ContentKind::VoiceMessage => Some(Icon::Mic),
         ContentKind::Audio => Some(Icon::Waveform),
         ContentKind::Document => Some(Icon::File),
+        ContentKind::MissedVoiceCall | ContentKind::MissedVideoCall => Some(Icon::CallMissed),
         ContentKind::Text | ContentKind::Location | ContentKind::Contact | ContentKind::Poll => {
             None
         }

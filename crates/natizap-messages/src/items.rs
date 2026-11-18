@@ -68,6 +68,11 @@ pub(crate) struct Bubble {
 pub(crate) enum Body {
     /// The message was deleted for everyone.
     Deleted,
+    /// A call nobody answered; natizap cannot take calls yet.
+    MissedCall {
+        /// It was a video call.
+        video: bool,
+    },
     /// The message's content.
     Content {
         /// What the media is, for non-text messages.
@@ -207,6 +212,10 @@ fn bubble(
         forwarding: message.forwarding,
         body: if message.deleted {
             Body::Deleted
+        } else if let ContentKind::MissedVoiceCall | ContentKind::MissedVideoCall = message.kind {
+            Body::MissedCall {
+                video: message.kind == ContentKind::MissedVideoCall,
+            }
         } else {
             Body::Content {
                 // Downloadable attachments render themselves; the rest

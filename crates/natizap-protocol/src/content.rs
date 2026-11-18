@@ -28,11 +28,15 @@ pub enum ContentKind {
     Contact,
     /// A poll.
     Poll,
+    /// A voice call nobody answered.
+    MissedVoiceCall,
+    /// A video call nobody answered.
+    MissedVideoCall,
 }
 
 impl ContentKind {
     /// Every kind, e.g. to read a stored [`ContentKind::label`] back.
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 12] = [
         Self::Text,
         Self::Photo,
         Self::Video,
@@ -43,6 +47,8 @@ impl ContentKind {
         Self::Location,
         Self::Contact,
         Self::Poll,
+        Self::MissedVoiceCall,
+        Self::MissedVideoCall,
     ];
 
     /// The kind whose [`ContentKind::label`] is `label`.
@@ -65,6 +71,8 @@ impl ContentKind {
             Self::Location => "Location",
             Self::Contact => "Contact",
             Self::Poll => "Poll",
+            Self::MissedVoiceCall => "Missed voice call",
+            Self::MissedVideoCall => "Missed video call",
         }
     }
 }

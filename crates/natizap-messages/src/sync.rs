@@ -3,12 +3,13 @@
 use natizap_protocol::whatsapp_rust::prelude::{Event, EventKind, MessageExt as _, wa};
 use natizap_protocol::whatsapp_rust::types::events::{InboundMessage, LazyHistorySync};
 use natizap_protocol::whatsapp_rust::types::presence::ReceiptType;
-use natizap_protocol::{ChatId, Content};
+use natizap_protocol::{ChatId, Content, ContentKind, MissedCall, Ringing};
 
 use crate::message::{Delivery, Message, MessageChange};
 
-/// Protocol events the message store learns from.
-pub(crate) const MESSAGE_EVENTS: &[EventKind] = &[
+/// Protocol events the message store learns from, besides the calls
+/// [`Ringing`] follows.
+const MESSAGE_EVENTS: &[EventKind] = &[
     EventKind::HistorySync,
     EventKind::Messages,
     EventKind::Receipt,
@@ -16,8 +17,65 @@ pub(crate) const MESSAGE_EVENTS: &[EventKind] = &[
     EventKind::StarUpdate,
 ];
 
-/// Everything `event` says about messages.
-pub(crate) fn changes(event: &Event) -> Vec<MessageChange> {
+/// Translates protocol events, following calls between them to mark the
+/// ones nobody answered.
+#[derive(Debug, Default)]
+pub(crate) struct Sync {
+    ringing: Ringing,
+}
+
+impl Sync {
+    /// Every event kind [`Sync::changes`] reads.
+    pub(crate) fn events() -> Vec<EventKind> {
+        MESSAGE_EVENTS
+            .iter()
+            .chain(Ringing::EVENTS)
+            .copied()
+            .collect()
+    }
+
+    /// Everything `event` says about messages.
+    pub(crate) fn changes(&mut self, event: &Event) -> Vec<MessageChange> {
+        match self.ringing.hear(event) {
+            Some(missed) => vec![missed_call(missed)],
+            None => changes(event),
+        }
+    }
+}
+
+/// A call nobody answered, as a message in its chat.
+fn missed_call(call: MissedCall) -> MessageChange {
+    MessageChange::Received(Message {
+        chat: call.chat,
+        // The call's id: a call reported twice is filed once.
+        id: call.id,
+        from_me: false,
+        sender: call.caller,
+        author: None,
+        sent_at: call.at,
+        kind: if call.video {
+            ContentKind::MissedVideoCall
+        } else {
+            ContentKind::MissedVoiceCall
+        },
+        text: None,
+        quote: None,
+        media: None,
+        extra: None,
+        forwarding: None,
+        link: None,
+        media_file: None,
+        media_poster: None,
+        starred: false,
+        sender_phone: None,
+        edited: false,
+        deleted: false,
+        delivery: Delivery::Sent,
+    })
+}
+
+/// Everything `event` says about messages, calls aside.
+fn changes(event: &Event) -> Vec<MessageChange> {
     match event {
         Event::HistorySync(history) => history_changes(history),
         Event::Messages(batch) => batch.messages.iter().filter_map(live_change).collect(),
@@ -198,9 +256,36 @@ fn history_message(chat: &ChatId, info: &wa::WebMessageInfo) -> Vec<MessageChang
         .collect()
 }
 
+/// The content of a missed call the phone kept in the history, which
+/// carries no message, only its kind.
+fn missed_call_stub(info: &wa::WebMessageInfo) -> Option<Content> {
+    use wa::web_message_info::StubType;
+    let kind = match info.message_stub_type? {
+        StubType::CALL_MISSED_VOICE | StubType::CALL_MISSED_GROUP_VOICE => {
+            ContentKind::MissedVoiceCall
+        }
+        StubType::CALL_MISSED_VIDEO | StubType::CALL_MISSED_GROUP_VIDEO => {
+            ContentKind::MissedVideoCall
+        }
+        _ => return None,
+    };
+    Some(Content {
+        kind,
+        text: None,
+        quote: None,
+        media: None,
+        extra: None,
+        forwarding: None,
+        link: None,
+    })
+}
+
 fn history_content(chat: &ChatId, info: &wa::WebMessageInfo) -> Option<MessageChange> {
     let key = info.key.as_option()?;
-    let content = Content::of(info.message.as_option()?)?;
+    let content = match info.message.as_option() {
+        Some(message) => Content::of(message)?,
+        None => missed_call_stub(info)?,
+    };
     let from_me = key.from_me.unwrap_or(false);
     let in_group = chat.is_group() && !from_me;
     let sender = info.participant.as_ref().or(key.participant.as_ref());

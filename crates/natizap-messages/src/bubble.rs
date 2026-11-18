@@ -8,7 +8,7 @@ use gpui::{
 use natizap_protocol::{ContentKind, Forwarding};
 use natizap_ui::motion::ease_out;
 use natizap_ui::theme::{
-    ACCENT, ALERT, LINE, MINT, MUTED, OUTGOING, PANEL, RAISED, SCRIM, TEXT, glass,
+    ACCENT, ALERT, DEEP, LINE, MINT, MUTED, OUTGOING, PANEL, RAISED, SCRIM, TEXT, glass,
 };
 use natizap_ui::{Button, ButtonSize, ButtonVariant, Icon, avatar};
 use std::path::PathBuf;
@@ -246,6 +246,7 @@ fn shape(
             .italic()
             .text_color(rgb(MUTED))
             .child("This message was deleted"),
+        Body::MissedCall { video } => missed_call(*video),
         Body::Content {
             media, text, extra, ..
         } => div()
@@ -335,6 +336,35 @@ fn sticker_bubble(
                     .child(meta.text_color(rgb(TEXT))),
             ),
         )
+}
+
+/// The body of a call nobody answered: its icon and what it was.
+fn missed_call(video: bool) -> Div {
+    div()
+        .flex()
+        .items_center()
+        .gap_2()
+        .child(
+            div()
+                .size(px(30.0))
+                .flex_none()
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded_full()
+                .bg(rgb(DEEP))
+                .child(
+                    svg()
+                        .path(Icon::CallMissed.path())
+                        .size(px(15.0))
+                        .text_color(rgb(ALERT)),
+                ),
+        )
+        .child(div().font_weight(FontWeight::MEDIUM).child(if video {
+            ContentKind::MissedVideoCall.label()
+        } else {
+            ContentKind::MissedVoiceCall.label()
+        }))
 }
 
 /// The bubble's padding around a picture.
