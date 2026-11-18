@@ -7,6 +7,7 @@ use ffmpeg::media::Type;
 use ffmpeg_next as ffmpeg;
 
 use crate::MediaFileError;
+use crate::turn::Turn;
 
 /// A media file's length and picture size, as far as its container says.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -34,17 +35,20 @@ pub fn probe(path: &Path) -> Result<Probe, MediaFileError> {
         .ok()
         .filter(|&micros| micros > 0)
         .map(Duration::from_micros);
-    let picture = input
-        .streams()
-        .best(Type::Video)
-        .and_then(|stream| {
-            ffmpeg::codec::context::Context::from_parameters(stream.parameters())
-                .ok()?
-                .decoder()
-                .video()
-                .ok()
+    let picture = input.streams().best(Type::Video).and_then(|stream| {
+        let video = ffmpeg::codec::context::Context::from_parameters(stream.parameters())
+            .ok()?
+            .decoder()
+            .video()
+            .ok()?;
+        // An upright phone video is stored sideways; its size as shown is
+        // what bubbles are laid out by.
+        Some(if Turn::of(&stream).swaps_sides() {
+            (video.height(), video.width())
+        } else {
+            (video.width(), video.height())
         })
-        .map(|video| (video.width(), video.height()));
+    });
     Ok(Probe {
         duration,
         width: picture.map(|(width, _)| width),

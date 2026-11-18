@@ -13,6 +13,7 @@ use ffmpeg_next as ffmpeg;
 use image::codecs::jpeg::JpegEncoder;
 
 use crate::decode::{fit, packed_rows, seconds};
+use crate::turn::Turn;
 
 /// Widest poster worth keeping: a bubble never shows one wider.
 const POSTER_WIDTH: u32 = 640;
@@ -71,7 +72,7 @@ pub fn still_jpeg(video: &Path, max_width: u32) -> Result<Vec<u8>, MediaFileErro
     } else {
         Duration::ZERO
     };
-    let still = decode_still(&mut input, still_at)?;
+    let (still, turn) = decode_still(&mut input, still_at)?;
 
     let (width, height) = fit(still.width(), still.height(), max_width);
     let mut scaler = scaling::Context::get(
@@ -85,7 +86,8 @@ pub fn still_jpeg(video: &Path, max_width: u32) -> Result<Vec<u8>, MediaFileErro
     )?;
     let mut rgb = frame::Video::empty();
     scaler.run(&still, &mut rgb)?;
-    let pixels = packed_rows(&rgb, width as usize * 3, height as usize);
+    let packed = packed_rows(&rgb, width as usize * 3, height as usize);
+    let (pixels, width, height) = turn.apply(packed, width, height, 3);
     let mut jpeg = Cursor::new(Vec::new());
     JpegEncoder::new_with_quality(&mut jpeg, 85).encode(
         &pixels,
@@ -97,17 +99,22 @@ pub fn still_jpeg(video: &Path, max_width: u32) -> Result<Vec<u8>, MediaFileErro
 }
 
 /// The first picture at or after `still_at`, or the last one if the video
-/// ends before it.
+/// ends before it, and how to turn it upright.
 fn decode_still(
     input: &mut ffmpeg::format::context::Input,
     still_at: Duration,
-) -> Result<frame::Video, MediaFileError> {
-    let (index, time_base, parameters) = {
+) -> Result<(frame::Video, Turn), MediaFileError> {
+    let (index, time_base, parameters, turn) = {
         let stream = input
             .streams()
             .best(Type::Video)
             .ok_or(MediaFileError::NoVideo)?;
-        (stream.index(), stream.time_base(), stream.parameters())
+        (
+            stream.index(),
+            stream.time_base(),
+            stream.parameters(),
+            Turn::of(&stream),
+        )
     };
     let mut decoder = codec::context::Context::from_parameters(parameters)?
         .decoder()
@@ -124,7 +131,7 @@ fn decode_still(
         while decoder.receive_frame(&mut still).is_ok() {
             found = true;
             if seconds(still.timestamp(), time_base) >= still_at {
-                return Ok(still);
+                return Ok((still, turn));
             }
         }
     }
@@ -133,7 +140,7 @@ fn decode_still(
         found = true;
     }
     if found {
-        Ok(still)
+        Ok((still, turn))
     } else {
         Err(MediaFileError::NoVideo)
     }

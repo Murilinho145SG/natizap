@@ -17,6 +17,7 @@ mod poster;
 mod probe;
 mod record;
 mod speed;
+mod turn;
 
 use std::path::Path;
 use std::sync::{Arc, mpsc};

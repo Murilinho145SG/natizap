@@ -15,6 +15,7 @@ use ffmpeg_next as ffmpeg;
 
 use crate::audio::AudioOutput;
 use crate::clock::Clock;
+use crate::turn::Turn;
 use crate::{Picture as Image, PlaybackError, Speed, Status};
 
 /// Widest picture worth decoding to; larger videos are scaled down while
@@ -195,8 +196,10 @@ struct VideoTrack {
     time_base: Rational,
     decoder: ffmpeg::decoder::Video,
     scaler: scaling::Context,
+    /// The scaled picture's size, before turning.
     width: u32,
     height: u32,
+    turn: Turn,
 }
 
 impl VideoTrack {
@@ -225,6 +228,7 @@ impl VideoTrack {
             scaler,
             width,
             height,
+            turn: Turn::of(stream),
         })
     }
 
@@ -237,12 +241,14 @@ impl VideoTrack {
             }
             let mut bgra = frame::Video::empty();
             self.scaler.run(&decoded, &mut bgra)?;
+            let packed = packed_rows(&bgra, self.width as usize * 4, self.height as usize);
+            let (bgra, width, height) = self.turn.apply(packed, self.width, self.height, 4);
             shared.pictures().push_back(Picture {
                 at,
                 image: Image {
-                    width: self.width,
-                    height: self.height,
-                    bgra: packed_rows(&bgra, self.width as usize * 4, self.height as usize),
+                    width,
+                    height,
+                    bgra,
                 },
             });
         }
