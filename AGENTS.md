@@ -162,6 +162,11 @@ Keep this table current when a crate is added, renamed or removed.
   `[patch.crates-io]` mirrors the patches Zed applies at that commit; update
   both together when bumping the pin.
 - `whatsapp-rust` is used without its `simd` feature, which needs nightly.
+- `patches/` holds copies of published crates carrying a fix upstream has
+  not released, wired through `[patch.crates-io]` and excluded from the
+  workspace; `patches/README.md` says what each changes and why. Keep the
+  change minimal and marked `natizap:`, and drop the copy once a release
+  carries the fix.
 - Media plays inside natizap: FFmpeg is compiled from source and linked
   statically (`ffmpeg-next`'s `build` feature), decoding runs on a dedicated
   thread, and sound goes through `cpal`. Never hand media to system players
