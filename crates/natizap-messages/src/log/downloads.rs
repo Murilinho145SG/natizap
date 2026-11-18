@@ -5,11 +5,15 @@ use std::path::{Path, PathBuf};
 
 use gpui::{AppContext as _, Context, Task};
 use natizap_playback::save_poster;
-use natizap_protocol::ContentKind;
+use natizap_protocol::{ActionError, ContentKind};
 
 use super::{Input, MessageLog, PlayRequested, SoundReady};
 use crate::media::{Fetch, PosterJob, PosterSource};
 use crate::message::MessageChange;
+
+/// A downloaded file, and the link it came from when its sender's phone
+/// had to upload it again.
+type Downloaded = (Vec<u8>, Option<String>);
 
 impl MessageLog {
     /// Opens an attachment, downloading it first if needed.
@@ -55,24 +59,37 @@ impl MessageLog {
             return;
         }
         let path = fetch.path_in(&self.media_dir);
-        let downloading = self.protocol.read(cx).download(fetch.kind, fetch.media, cx);
+        let protocol = self.protocol.read(cx);
+        // An expired link cannot serve the file; the phone that sent it is
+        // asked to upload it again, as a tap does in the phone app.
+        let downloading: Task<Result<Downloaded, ActionError>> = if fetch.media.link_expired() {
+            let recovering = protocol.recover(fetch.kind, fetch.media, fetch.origin, cx);
+            cx.background_spawn(async move {
+                let (bytes, media) = recovering.await?;
+                Ok((bytes, Some(media.direct_path)))
+            })
+        } else {
+            let downloading = protocol.download(fetch.kind, fetch.media, cx);
+            cx.background_spawn(async move { Ok((downloading.await?, None)) })
+        };
         let (message_id, kind) = (fetch.message_id, fetch.kind);
         cx.spawn(async move |this, cx| {
             let saved = match downloading.await {
-                Ok(bytes) => {
+                Ok((bytes, direct_path)) => {
                     let path = path.clone();
-                    cx.background_spawn(async move { save(&path, &bytes) })
+                    cx.background_spawn(async move { save(&path, &bytes).map(|()| direct_path) })
                         .await
                 }
                 Err(error) => Err(error.to_string()),
             };
             let _ = this.update(cx, |log, cx| {
                 match saved {
-                    Ok(()) => {
+                    Ok(direct_path) => {
                         log.fetching.remove(&message_id);
                         log.send_input(Input::from(MessageChange::MediaSaved {
                             message_id: message_id.clone(),
                             file: path.clone(),
+                            direct_path,
                         }));
                         if open {
                             log.reveal(kind, message_id, path, cx);

@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use gpui::{AppContext as _, Context};
 use natizap_playback::{Heard, save_recording};
-use natizap_protocol::{ChatId, ContentKind, Media, Outgoing, Reply};
+use natizap_protocol::{ChatId, ContentKind, Media, MediaOrigin, Outgoing, Reply};
 
 use super::sending::outgoing_message;
 use super::{Input, MessageLog, MessageSent};
@@ -29,7 +29,7 @@ impl MessageLog {
             };
             let reply = reply.take();
             let media_dir = self.media_dir.clone();
-            let id = local_id.clone();
+            let (id, origin_chat) = (local_id.clone(), chat.clone());
             cx.spawn(async move |this, cx| {
                 let prepared = cx
                     .background_spawn(async move {
@@ -38,9 +38,15 @@ impl MessageLog {
                         // The bubble shows and plays this copy, the very
                         // bytes sent, from the start.
                         let kept = Fetch {
-                            message_id: id,
+                            message_id: id.clone(),
                             kind: outgoing.kind,
                             media: describe(&outgoing),
+                            origin: MediaOrigin {
+                                chat: origin_chat,
+                                message_id: id,
+                                from_me: true,
+                                sender: None,
+                            },
                         }
                         .path_in(&media_dir);
                         std::fs::create_dir_all(&media_dir).map_err(|error| error.to_string())?;

@@ -125,6 +125,33 @@ fn keeps_one_reaction_per_person_and_drops_retracted_ones() -> rusqlite::Result<
 }
 
 #[test]
+fn keeps_the_link_a_file_was_uploaded_again_to() -> rusqlite::Result<()> {
+    let mut store = MessageStore::in_memory()?;
+    let chat = ChatId::new("1@lid");
+    let mut sticker = message("1@lid", "s", 10, "");
+    sticker.kind = ContentKind::Sticker;
+    sticker.media = Some(Media {
+        direct_path: "/v/old?oe=5F000000".into(),
+        media_key: vec![1],
+        ..Media::default()
+    });
+    store.apply(&[MessageChange::Received(sticker)])?;
+    store.apply(&[MessageChange::MediaSaved {
+        message_id: "s".into(),
+        file: PathBuf::from("/tmp/s.webp"),
+        direct_path: Some("/v/fresh".into()),
+    }])?;
+
+    let stored = store.latest(std::slice::from_ref(&chat), 1)?.remove(0);
+    assert_eq!(
+        stored.media.map(|media| media.direct_path).as_deref(),
+        Some("/v/fresh")
+    );
+    assert_eq!(stored.media_file, Some(PathBuf::from("/tmp/s.webp")));
+    Ok(())
+}
+
+#[test]
 fn keeps_media_details_and_where_the_file_was_saved() -> rusqlite::Result<()> {
     let mut store = MessageStore::in_memory()?;
     let chat = ChatId::new("1@lid");
@@ -148,6 +175,7 @@ fn keeps_media_details_and_where_the_file_was_saved() -> rusqlite::Result<()> {
     store.apply(&[MessageChange::MediaSaved {
         message_id: "p".into(),
         file: PathBuf::from("/tmp/p.jpg"),
+        direct_path: None,
     }])?;
     store.apply(&[MessageChange::PosterSaved {
         message_id: "p".into(),

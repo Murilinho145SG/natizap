@@ -9,7 +9,7 @@ use natizap_protocol::ContentKind;
 use natizap_ui::Icon;
 use natizap_ui::theme::{DEEP, MUTED, SCRIM, TEXT};
 
-use crate::items::MediaView;
+use crate::items::{MediaView, file_size};
 use crate::view::ConversationView;
 
 /// Width of a document's card.
@@ -140,9 +140,11 @@ fn picture(media: &MediaView) -> Div {
         .aspect_ratio(width / height)
         .rounded(px(11.0))
         .overflow_hidden()
-        .when(media.fetch.kind != ContentKind::Sticker, |frame| {
-            frame.bg(rgb(DEEP))
-        })
+        .relative()
+        .when(
+            media.fetch.kind != ContentKind::Sticker || source.is_none(),
+            |frame| frame.bg(rgb(DEEP)),
+        )
         // Nothing to show yet, such as a photo still downloading that came
         // without a preview: what it is, rather than an empty frame. Videos
         // show their play button there already.
@@ -156,6 +158,10 @@ fn picture(media: &MediaView) -> Div {
                         .text_color(rgb(MUTED)),
                 )
             },
+        )
+        .children(
+            (is_image && !on_disk(media) && media.fetch.media.link_expired())
+                .then(|| download_badge(media)),
         )
         .children(source.map(|source| {
             let fit = if media.fetch.kind == ContentKind::Sticker {
@@ -219,15 +225,58 @@ fn pressable(media: Stateful<Div>) -> Stateful<Div> {
 }
 
 /// A sticker: a click offers its actions, keeping it among favorites first
-/// of all, as on the phone.
+/// of all, as on the phone. One whose file is not here yet downloads
+/// instead.
 fn sticker(media: &MediaView, view: &WeakEntity<ConversationView>) -> AnyElement {
-    let (id, view) = (media.fetch.message_id.clone(), view.clone());
-    picture(media)
+    let (media, view) = (media.clone(), view.clone());
+    picture(&media)
         .id("media")
         .cursor_pointer()
         .on_click(move |event, _, cx| {
-            let (id, at) = (SharedString::from(id.clone()), event.position());
-            let _ = view.update(cx, |view, cx| view.open_message_menu(id, at, cx));
+            let _ = view.update(cx, |view, cx| {
+                if on_disk(&media) {
+                    let id = SharedString::from(media.fetch.message_id.clone());
+                    view.open_message_menu(id, event.position(), cx);
+                } else {
+                    view.download_media(&media, cx);
+                }
+            });
         })
         .into_any_element()
+}
+
+/// Whether `media`'s file is downloaded.
+fn on_disk(media: &MediaView) -> bool {
+    media.file.as_deref().is_some_and(std::path::Path::exists)
+}
+
+/// What a photo or sticker whose link expired shows over itself: the
+/// download its click starts, with the file's size, as on the phone.
+fn download_badge(media: &MediaView) -> Div {
+    div()
+        .absolute()
+        .inset_0()
+        .flex()
+        .items_center()
+        .justify_center()
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap_1p5()
+                .px_3()
+                .py_1p5()
+                .rounded_full()
+                .bg(rgba(SCRIM))
+                .text_size(px(13.0))
+                .font_weight(FontWeight::MEDIUM)
+                .text_color(rgb(TEXT))
+                .child(
+                    svg()
+                        .path(Icon::Download.path())
+                        .size(px(16.0))
+                        .text_color(rgb(TEXT)),
+                )
+                .children(media.fetch.media.size.map(file_size)),
+        )
 }

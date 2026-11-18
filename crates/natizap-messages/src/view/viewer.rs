@@ -26,6 +26,13 @@ impl ConversationView {
         cx.notify();
     }
 
+    /// Downloads `media`'s file without showing it, as a tap on a sticker
+    /// that is not here yet does.
+    pub(crate) fn download_media(&mut self, media: &MediaView, cx: &mut Context<Self>) {
+        let fetch = media.fetch.clone();
+        self.log.update(cx, |log, cx| log.download(fetch, cx));
+    }
+
     /// Opens a photo or video from a chat's profile.
     pub fn show_tile(&mut self, tile: &MediaTile, cx: &mut Context<Self>) {
         if let Some(media) = &tile.media {

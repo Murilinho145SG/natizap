@@ -157,10 +157,11 @@ impl MessageStore {
                         progress.execute(params![delivery.name(), id])?;
                     }
                 }
-                MessageChange::MediaSaved { message_id, file } => {
-                    tx.prepare_cached("UPDATE messages SET media_file = ?2 WHERE id = ?1")?
-                        .execute(params![message_id, file.to_string_lossy()])?;
-                }
+                MessageChange::MediaSaved {
+                    message_id,
+                    file,
+                    direct_path,
+                } => save_media(&tx, message_id, file, direct_path.as_deref())?,
                 MessageChange::Pinned { message_id, until } => {
                     tx.prepare_cached("UPDATE messages SET pinned_until = ?2 WHERE id = ?1")?
                         .execute(params![message_id, until])?;
@@ -173,8 +174,7 @@ impl MessageStore {
                         .execute(params![message_id, starred])?;
                 }
                 MessageChange::PosterSaved { message_id, file } => {
-                    tx.prepare_cached("UPDATE messages SET media_poster = ?2 WHERE id = ?1")?
-                        .execute(params![message_id, file.to_string_lossy()])?;
+                    save_poster(&tx, message_id, file)?;
                 }
                 MessageChange::Reacted {
                     message_id,
@@ -472,5 +472,33 @@ mod library;
 mod rows;
 
 use rows::message_from_row;
+
+/// Records where a still of `message_id`'s video was saved.
+fn save_poster(
+    tx: &rusqlite::Transaction<'_>,
+    message_id: &str,
+    file: &Path,
+) -> rusqlite::Result<()> {
+    tx.prepare_cached("UPDATE messages SET media_poster = ?2 WHERE id = ?1")?
+        .execute(params![message_id, file.to_string_lossy()])
+        .map(drop)
+}
+
+/// Records where `message_id`'s attachment was downloaded to, and the link
+/// it now lives at when it had to be uploaded again.
+fn save_media(
+    tx: &rusqlite::Transaction<'_>,
+    message_id: &str,
+    file: &Path,
+    direct_path: Option<&str>,
+) -> rusqlite::Result<()> {
+    tx.prepare_cached(
+        "UPDATE messages SET media_file = ?2, \
+         media_direct_path = COALESCE(?3, media_direct_path) WHERE id = ?1",
+    )?
+    .execute(params![message_id, file.to_string_lossy(), direct_path])
+    .map(drop)
+}
+
 #[cfg(test)]
 mod tests;

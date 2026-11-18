@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use natizap_protocol::{ContentKind, Media};
+use natizap_protocol::{ContentKind, Media, MediaOrigin};
 
 use crate::message::Message;
 
@@ -12,6 +12,8 @@ pub(crate) struct Fetch {
     pub(crate) message_id: String,
     pub(crate) kind: ContentKind,
     pub(crate) media: Media,
+    /// The message it came in, to ask for it again once its link expired.
+    pub(crate) origin: MediaOrigin,
 }
 
 impl Fetch {
@@ -21,6 +23,12 @@ impl Fetch {
             message_id: message.id.clone(),
             kind: message.kind,
             media: message.media.clone()?,
+            origin: MediaOrigin {
+                chat: message.chat.clone(),
+                message_id: message.id.clone(),
+                from_me: message.from_me,
+                sender: message.sender.clone(),
+            },
         })
     }
 
@@ -173,6 +181,12 @@ mod tests {
                 mime: mime.map(str::to_owned),
                 file_name: name.map(str::to_owned),
                 ..Media::default()
+            },
+            origin: MediaOrigin {
+                chat: natizap_protocol::ChatId::new("1@lid"),
+                message_id: "3EB0:ab/c".into(),
+                from_me: false,
+                sender: None,
             },
         }
     }

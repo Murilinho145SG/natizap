@@ -132,8 +132,13 @@ pub(crate) enum MessageChange {
         ids: Vec<String>,
         delivery: Delivery,
     },
-    /// A message's attachment was downloaded to `file`. Matched by id.
-    MediaSaved { message_id: String, file: PathBuf },
+    /// A message's attachment was downloaded to `file`, from `direct_path`
+    /// when its sender's phone had to upload it again. Matched by id.
+    MediaSaved {
+        message_id: String,
+        file: PathBuf,
+        direct_path: Option<String>,
+    },
     /// A still of a message's video was saved to `file`. Matched by id.
     PosterSaved { message_id: String, file: PathBuf },
     /// Someone pinned a message for everyone until `until` (Unix seconds),
