@@ -1,5 +1,6 @@
 //! Downloading attachments, opening them, and taking stills of videos.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use gpui::{AppContext as _, Context, Task};
@@ -78,8 +79,11 @@ impl MessageLog {
                         }
                     }
                     // Stays in `fetching` so a failing file is not retried on
-                    // every refresh; a click retries it after a restart.
-                    Err(error) => tracing::warn!(%error, "could not download an attachment"),
+                    // every refresh, until the connection comes back.
+                    Err(error) => {
+                        tracing::warn!(%error, "could not download an attachment");
+                        log.failed.fetches.insert(message_id);
+                    }
                 }
             });
         })
@@ -91,7 +95,7 @@ impl MessageLog {
     /// preview WhatsApp keeps, then records where it went.
     pub(super) fn make_poster(&mut self, job: PosterJob, cx: &mut Context<Self>) {
         // Also keeps a still that cannot be made from being retried on every
-        // refresh; a restart retries it.
+        // refresh, until the connection comes back.
         if !self.posters.insert(job.fetch.message_id.clone()) {
             return;
         }
@@ -123,10 +127,39 @@ impl MessageLog {
                     }));
                 });
             }
-            Err(error) => tracing::warn!(%error, "could not make a still of a video"),
+            Err(error) => {
+                tracing::warn!(%error, "could not make a still of a video");
+                let _ = this.update(cx, |log, _| {
+                    log.failed.posters.insert(message_id);
+                });
+            }
         })
         .detach();
     }
+
+    /// Tries again what failed: the connection is back. Reading the open
+    /// chat anew fetches what it shows.
+    pub(super) fn retry_failed(&mut self) {
+        let failed = std::mem::take(&mut self.failed);
+        if failed.fetches.is_empty() && failed.posters.is_empty() {
+            return;
+        }
+        tracing::info!(
+            downloads = failed.fetches.len(),
+            stills = failed.posters.len(),
+            "trying failed attachments again"
+        );
+        self.fetching.retain(|id| !failed.fetches.contains(id));
+        self.posters.retain(|id| !failed.posters.contains(id));
+        self.send_input(Input::Refresh);
+    }
+}
+
+/// Downloads and stills that failed, by message id.
+#[derive(Debug, Default)]
+pub(super) struct Failed {
+    fetches: HashSet<String>,
+    posters: HashSet<String>,
 }
 
 fn save(path: &Path, bytes: &[u8]) -> Result<(), String> {

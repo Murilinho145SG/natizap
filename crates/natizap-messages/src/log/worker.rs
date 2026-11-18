@@ -46,6 +46,7 @@ pub(super) async fn sync(
                     open = None;
                     reach = None;
                 }
+                Input::Refresh => refresh = true,
                 Input::Reach(sent_at) => {
                     reach = Some(reach.map_or(sent_at, |reach: i64| reach.min(sent_at)));
                     refresh = true;

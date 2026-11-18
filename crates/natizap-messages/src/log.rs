@@ -22,6 +22,8 @@ mod sending;
 mod uploads;
 mod worker;
 
+use downloads::Failed;
+
 use worker::sync;
 
 /// How many of a chat's newest messages a conversation shows.
@@ -59,6 +61,8 @@ enum Input {
     Event(Arc<Event>),
     Open(OpenChat),
     Close,
+    /// Read the open chat again, to fetch what it shows anew.
+    Refresh,
     /// Show the open chat back to messages sent at this Unix second.
     Reach(i64),
     Apply(Box<MessageChange>),
@@ -113,13 +117,16 @@ pub struct MessageLog {
     fetching: HashSet<String>,
     /// Videos whose still is being taken, by message id.
     posters: HashSet<String>,
+    /// Downloads and stills that failed, by message id: kept out of the
+    /// above until the connection comes back, then tried again.
+    failed: Failed,
     pinned: Option<Pinned>,
     group: Option<GroupInfo>,
     /// What people are called, by address.
     names: Arc<HashMap<ChatId, PersonName>>,
     /// Whether the person in the open one-to-one chat is around.
     seen: Presence,
-    _tasks: [Task<()>; 4],
+    _tasks: [Task<()>; 5],
 }
 
 impl EventEmitter<MessageSent> for MessageLog {}
@@ -199,6 +206,16 @@ impl MessageLog {
                 }
             }
         });
+        // Attachments fail while the connection is down, and natizap shows
+        // chats before it is up: they are tried again once it is.
+        let connects = protocol.read(cx).subscribe(&[EventKind::Connected]);
+        let retry = cx.spawn(async move |this, cx| {
+            while connects.recv().await.is_ok() {
+                if this.update(cx, |log, _| log.retry_failed()).is_err() {
+                    break;
+                }
+            }
+        });
         let apply = cx.spawn(async move |this, cx| {
             while let Ok(output) = outputs.recv().await {
                 if this.update(cx, |log, cx| log.receive(output, cx)).is_err() {
@@ -217,11 +234,12 @@ impl MessageLog {
             store_path,
             fetching: HashSet::new(),
             posters: HashSet::new(),
+            failed: Failed::default(),
             pinned: None,
             group: None,
             names: Arc::default(),
             seen: Presence::default(),
-            _tasks: [forward, sync, apply, seen],
+            _tasks: [forward, sync, apply, seen, retry],
         }
     }
 
