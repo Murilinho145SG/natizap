@@ -111,6 +111,14 @@ impl IqSpec for FullProfile {
                             .and_then(NodeRef::content_as_string)
                             .map(|url| url.to_string())
                     })
+                    // What WhatsApp sends today: `<cover_photo id="…">`
+                    // holding the link itself.
+                    .or_else(|| {
+                        cover
+                            .content_as_string()
+                            .map(|url| url.trim().to_owned())
+                            .filter(|url| url.starts_with("https://"))
+                    })
             });
         if let Some(node) = node {
             let tags: Vec<String> = node
