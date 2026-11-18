@@ -143,6 +143,20 @@ fn picture(media: &MediaView) -> Div {
         .when(media.fetch.kind != ContentKind::Sticker, |frame| {
             frame.bg(rgb(DEEP))
         })
+        // Nothing to show yet, such as a photo still downloading that came
+        // without a preview: what it is, rather than an empty frame. Videos
+        // show their play button there already.
+        .when(
+            source.is_none() && media.fetch.kind == ContentKind::Photo,
+            |frame| {
+                frame.flex().items_center().justify_center().child(
+                    svg()
+                        .path(Icon::Camera.path())
+                        .size(px(32.0))
+                        .text_color(rgb(MUTED)),
+                )
+            },
+        )
         .children(source.map(|source| {
             let fit = if media.fetch.kind == ContentKind::Sticker {
                 ObjectFit::Contain
