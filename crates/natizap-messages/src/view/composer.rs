@@ -10,12 +10,13 @@ use gpui::{
 };
 use natizap_protocol::ContentKind;
 use natizap_ui::motion::{fade_in, rise_in};
-use natizap_ui::theme::{LINE, MUTED, PANEL, RAISED, TEXT, glass};
+use natizap_ui::theme::{LINE, MUTED, PANEL, RAISED};
 use natizap_ui::{Button, ButtonSize, ButtonVariant, FilesPasted, Icon};
 
 use super::ConversationView;
 use crate::quote::quote_block;
 use crate::send_preview::{PreviewClosed, PreviewSent, SendPreview, write_pasted};
+use crate::text_pill::text_pill;
 
 impl ConversationView {
     /// Sends what the composer holds, if anything, and empties it.
@@ -188,7 +189,7 @@ impl ConversationView {
         })
     }
 
-    pub(super) fn composer(&self, cx: &mut Context<Self>) -> Stateful<Div> {
+    pub(super) fn composer(&self, window: &mut Window, cx: &mut Context<Self>) -> Stateful<Div> {
         if let Some(notice) = self.who_may_write(cx) {
             return div()
                 .id("composer")
@@ -228,15 +229,15 @@ impl ConversationView {
                 composer.child(rise_in("recording-in", self.recording_bar(cx), 8.0))
             })
             .when(!self.recording(), |composer| {
-                composer.child(self.writing_bar(cx))
+                composer.child(self.writing_bar(window, cx))
             })
     }
 
     /// Attach, emoji, the text field, and send or record.
-    fn writing_bar(&self, cx: &mut Context<Self>) -> Div {
+    fn writing_bar(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
         div()
             .flex()
-            .items_center()
+            .items_end()
             .gap_3()
             .child(
                 Button::new("attach")
@@ -268,17 +269,9 @@ impl ConversationView {
                     })),
             )
             .child(
-                div()
+                text_pill("composer-scrollbar", &self.composer, window, cx)
                     .flex_1()
-                    .min_w_0()
-                    .px_4()
-                    .py_2p5()
-                    .rounded_full()
-                    .bg(rgb(RAISED))
-                    .map(glass)
-                    .text_size(px(14.5))
-                    .text_color(rgb(TEXT))
-                    .child(self.composer.clone()),
+                    .min_w_0(),
             )
             // Send and record swap places as the field fills and empties;
             // each fades in, so the swap reads as one control changing.

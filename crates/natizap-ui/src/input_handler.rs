@@ -4,7 +4,7 @@
 
 use std::ops::Range;
 
-use gpui::{Bounds, Context, EntityInputHandler, Pixels, Point, UTF16Selection, Window, point};
+use gpui::{Bounds, Context, EntityInputHandler, Pixels, Point, UTF16Selection, Window};
 
 use crate::input::TextInput;
 
@@ -117,25 +117,16 @@ impl EntityInputHandler for TextInput {
     fn bounds_for_range(
         &mut self,
         range_utf16: Range<usize>,
-        bounds: Bounds<Pixels>,
+        _: Bounds<Pixels>,
         _: &mut Window,
         _: &mut Context<Self>,
     ) -> Option<Bounds<Pixels>> {
-        let layout = self.last_layout.as_ref()?;
-        if layout.text != self.content {
-            return None;
-        }
+        let layout = self
+            .layout
+            .as_ref()
+            .filter(|layout| layout.text() == &*self.content)?;
         let range = self.range_from_utf16(&range_utf16);
-        Some(Bounds::from_corners(
-            point(
-                bounds.left() + layout.x_for_index(range.start),
-                bounds.top(),
-            ),
-            point(
-                bounds.left() + layout.x_for_index(range.end),
-                bounds.bottom(),
-            ),
-        ))
+        Some(layout.bounds_for_range(range.start, range.end))
     }
 
     fn selection_bounds_for_range(
@@ -156,11 +147,10 @@ impl EntityInputHandler for TextInput {
         _: &mut Window,
         _: &mut Context<Self>,
     ) -> Option<usize> {
-        let local = self.last_bounds?.localize(&point)?;
-        let layout = self.last_layout.as_ref()?;
-        if layout.text != self.content {
-            return None;
-        }
-        Some(self.offset_to_utf16(layout.closest_index_for_x(local.x)))
+        let layout = self
+            .layout
+            .as_ref()
+            .filter(|layout| layout.text() == &*self.content)?;
+        Some(self.offset_to_utf16(layout.index_for_position(point)))
     }
 }

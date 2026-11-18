@@ -14,12 +14,13 @@ use natizap_ui::{Button, ButtonSize, ButtonVariant, Icon};
 
 use super::{MOST_FILES, PreviewClosed, SendPreview, Staged};
 use crate::items::file_size;
+use crate::text_pill::text_pill;
 
 /// Side of a file's thumbnail in the strip.
 const THUMB: f32 = 56.0;
 
 impl Render for SendPreview {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let Some(file) = self.files.get(self.selected).cloned() else {
             return div();
         };
@@ -39,34 +40,26 @@ impl Render for SendPreview {
                     .p_6()
                     .child(big_preview(&file)),
             )
-            .child(self.caption_bar(cx))
+            .child(self.caption_bar(window, cx))
             .child(self.strip(cx))
     }
 }
 
 impl SendPreview {
     /// The caption field and the send button.
-    fn caption_bar(&self, cx: &mut Context<Self>) -> Div {
+    fn caption_bar(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
         let count = self.files.len();
         div()
             .flex()
-            .items_center()
+            .items_end()
             .justify_center()
             .gap_3()
             .px_6()
             .pb_3()
             .child(
-                div()
+                text_pill("caption-scrollbar", &self.caption, window, cx)
                     .flex_1()
-                    .max_w(px(640.0))
-                    .px_4()
-                    .py_2p5()
-                    .rounded_full()
-                    .bg(rgb(RAISED))
-                    .map(glass)
-                    .text_size(px(14.5))
-                    .text_color(rgb(TEXT))
-                    .child(self.caption.clone()),
+                    .max_w(px(640.0)),
             )
             .child(
                 div()

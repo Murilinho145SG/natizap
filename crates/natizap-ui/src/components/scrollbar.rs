@@ -1,5 +1,5 @@
-//! A thin scrollbar over the right edge of a scrolling list: it shows how
-//! far the list has scrolled and can be dragged, or clicked to jump.
+//! A thin scrollbar over the right edge of a scrolling list or text field:
+//! it shows how far it has scrolled and can be dragged, or clicked to jump.
 
 use std::cell::Cell;
 
@@ -10,6 +10,7 @@ use gpui::{
     Window, canvas, point, px, quad, rgba, size,
 };
 
+use crate::input::TextInput;
 use crate::theme::{THUMB, THUMB_ACTIVE};
 
 /// Width the bar takes over the list's edge.
@@ -27,6 +28,8 @@ pub enum ScrollSource {
     List(ListState),
     /// A `uniform_list`, or any element scrolled with a `ScrollHandle`.
     Handle(ScrollHandle),
+    /// A wrapping [`TextInput`] grown past its tallest.
+    Text(Entity<TextInput>),
 }
 
 impl std::fmt::Debug for ScrollSource {
@@ -34,6 +37,7 @@ impl std::fmt::Debug for ScrollSource {
         f.write_str(match self {
             Self::List(_) => "ScrollSource::List",
             Self::Handle(_) => "ScrollSource::Handle",
+            Self::Text(_) => "ScrollSource::Text",
         })
     }
 }
@@ -56,10 +60,17 @@ impl From<&ScrollHandle> for ScrollSource {
     }
 }
 
+impl From<&Entity<TextInput>> for ScrollSource {
+    fn from(input: &Entity<TextInput>) -> Self {
+        Self::Text(input.clone())
+    }
+}
+
 impl ScrollSource {
     /// How far the list has scrolled down, and how far it can.
-    fn position(&self) -> (Pixels, Pixels) {
+    fn position(&self, cx: &App) -> (Pixels, Pixels) {
         match self {
+            Self::Text(input) => input.read(cx).vertical_scroll(),
             Self::List(list) => (
                 -list.scroll_px_offset_for_scrollbar().y,
                 list.max_offset_for_scrollbar().y,
@@ -69,15 +80,17 @@ impl ScrollSource {
     }
 
     /// How tall the visible part of the list is.
-    fn viewport(&self) -> Pixels {
+    fn viewport(&self, cx: &App) -> Pixels {
         match self {
+            Self::Text(input) => input.read(cx).viewport_height(),
             Self::List(list) => list.viewport_bounds().size.height,
             Self::Handle(handle) => handle.bounds().size.height,
         }
     }
 
-    fn scroll_to(&self, offset: Pixels) {
+    fn scroll_to(&self, offset: Pixels, cx: &mut App) {
         match self {
+            Self::Text(input) => input.update(cx, |input, cx| input.scroll_down_to(offset, cx)),
             Self::List(list) => list.set_offset_from_scrollbar(point(px(0.0), -offset)),
             Self::Handle(handle) => {
                 let x = handle.offset().x;
@@ -130,8 +143,8 @@ pub fn scrollbar(
     canvas(
         |bounds, window, _| window.insert_hitbox(bounds, HitboxBehavior::BlockMouse),
         move |track, hitbox, window, cx| {
-            let (offset, max) = source.position();
-            let viewport = source.viewport();
+            let (offset, max) = source.position(cx);
+            let viewport = source.viewport(cx);
             if max <= px(0.5) || viewport <= px(0.0) {
                 return;
             }
@@ -170,7 +183,7 @@ pub fn scrollbar(
                 };
                 grab.read(cx).set(Some(held));
                 source.dragging(true);
-                source.scroll_to(drag_offset(track, thumb, max, y - held));
+                source.scroll_to(drag_offset(track, thumb, max, y - held), cx);
                 cx.stop_propagation();
                 window.refresh();
             });
@@ -183,7 +196,7 @@ pub fn scrollbar(
                 if event.pressed_button != Some(MouseButton::Left) {
                     return;
                 }
-                source.scroll_to(drag_offset(track, thumb, max, event.position.y - held));
+                source.scroll_to(drag_offset(track, thumb, max, event.position.y - held), cx);
                 window.refresh();
             });
             let releasing = (source.clone(), grab.clone());

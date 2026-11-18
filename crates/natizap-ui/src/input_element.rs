@@ -1,16 +1,18 @@
 use gpui::{
-    App, Bounds, Element, ElementId, ElementInputHandler, Entity, GlobalElementId,
-    InspectorElementId, LayoutId, PaintQuad, Pixels, ShapedLine, Style, TextAlign, TextRun,
-    UnderlineStyle, Window, fill, point, px, relative, rgb, rgba, size,
+    App, AvailableSpace, Bounds, ContentMask, Element, ElementId, ElementInputHandler, Entity,
+    GlobalElementId, InspectorElementId, LayoutId, PaintQuad, Pixels, Size, Style, Window, fill,
+    rgb, size,
 };
 
 use crate::input::TextInput;
-use crate::theme::{ACCENT, MUTED};
+use crate::input_layout::{CARET_WIDTH, TextLayout};
+use crate::theme::ACCENT;
 
-/// Selection highlight: the accent at a quarter opacity.
-const SELECTION: u32 = (ACCENT << 8) | 0x40;
+/// How many rows a wrapping field grows to before it scrolls, as on the
+/// phone's composer.
+const MOST_ROWS: u8 = 6;
 
-/// Lays out and paints a [`TextInput`]'s single line, caret and selection, and
+/// Lays out and paints a [`TextInput`]'s text, caret and selection, and
 /// connects it to the platform's text input.
 pub(crate) struct TextElement {
     input: Entity<TextInput>,
@@ -23,9 +25,9 @@ impl TextElement {
 }
 
 pub(crate) struct Prepaint {
-    line: Option<ShapedLine>,
+    layout: Option<TextLayout>,
     cursor: Option<PaintQuad>,
-    selection: Option<PaintQuad>,
+    selection: Vec<PaintQuad>,
 }
 
 impl Element for TextElement {
@@ -48,9 +50,26 @@ impl Element for TextElement {
         cx: &mut App,
     ) -> (LayoutId, Self::RequestLayoutState) {
         let mut style = Style::default();
-        style.size.width = relative(1.).into();
-        style.size.height = window.line_height().into();
-        (window.request_layout(style, [], cx), ())
+        style.size.width = gpui::relative(1.).into();
+        let line_height = window.line_height();
+        if !self.input.read(cx).wraps {
+            style.size.height = line_height.into();
+            return (window.request_layout(style, [], cx), ());
+        }
+        let input = self.input.clone();
+        let layout_id = window.request_measured_layout(
+            style,
+            move |known: Size<Option<Pixels>>, available: Size<AvailableSpace>, window, cx| {
+                let width = known.width.or(match available.width {
+                    AvailableSpace::Definite(width) => Some(width),
+                    AvailableSpace::MinContent | AvailableSpace::MaxContent => None,
+                });
+                let rows = TextLayout::rows(input.read(cx), width, window);
+                let rows = u8::try_from(rows).unwrap_or(u8::MAX).min(MOST_ROWS);
+                size(width.unwrap_or_default(), line_height * f32::from(rows))
+            },
+        );
+        (layout_id, ())
     }
 
     fn prepaint(
@@ -63,76 +82,29 @@ impl Element for TextElement {
         cx: &mut App,
     ) -> Self::PrepaintState {
         let input = self.input.read(cx);
-        let style = window.text_style();
-        let (text, color) = if input.content.is_empty() {
-            (input.placeholder.clone(), rgb(MUTED).into())
+        let mut layout = TextLayout::new(input, bounds, window);
+        // Follow the caret only when it moved or the text changed, so the
+        // text stays where the mouse wheel left it.
+        let moved = input
+            .layout
+            .as_ref()
+            .is_none_or(|last| last.cursor() != layout.cursor() || last.text() != layout.text());
+        if moved {
+            layout.follow_caret();
         } else {
-            (input.content.clone(), style.color)
-        };
-
-        let run = TextRun {
-            len: text.len(),
-            font: style.font(),
-            color,
-            background_color: None,
-            underline: None,
-            strikethrough: None,
-        };
-        let runs = match input.marked_range.as_ref() {
-            // IME composition in progress: underline the composing text.
-            Some(marked) => [
-                TextRun {
-                    len: marked.start,
-                    ..run.clone()
-                },
-                TextRun {
-                    len: marked.end - marked.start,
-                    underline: Some(UnderlineStyle {
-                        color: Some(run.color),
-                        thickness: px(1.0),
-                        wavy: false,
-                    }),
-                    ..run.clone()
-                },
-                TextRun {
-                    len: text.len() - marked.end,
-                    ..run
-                },
-            ]
-            .into_iter()
-            .filter(|run| run.len > 0)
-            .collect(),
-            None => vec![run],
-        };
-
-        let font_size = style.font_size.to_pixels(window.rem_size());
-        let line = window
-            .text_system()
-            .shape_line(text, font_size, &runs, None);
+            layout.scroll_to(input.scroll);
+        }
 
         let selected = input.selected_range.clone();
         let (selection, cursor) = if selected.is_empty() {
-            let x = line.x_for_index(input.cursor_offset());
-            let caret = Bounds::new(
-                point(bounds.left() + x, bounds.top()),
-                size(px(2.), bounds.size.height),
-            );
-            (None, Some(fill(caret, rgb(ACCENT))))
+            let caret = layout.position_for_index(input.cursor_offset());
+            let caret = Bounds::new(caret, size(CARET_WIDTH, layout.line_height));
+            (Vec::new(), Some(fill(caret, rgb(ACCENT))))
         } else {
-            let area = Bounds::from_corners(
-                point(
-                    bounds.left() + line.x_for_index(selected.start),
-                    bounds.top(),
-                ),
-                point(
-                    bounds.left() + line.x_for_index(selected.end),
-                    bounds.bottom(),
-                ),
-            );
-            (Some(fill(area, rgba(SELECTION))), None)
+            (layout.selection(selected.start, selected.end), None)
         };
         Prepaint {
-            line: Some(line),
+            layout: Some(layout),
             cursor,
             selection,
         }
@@ -154,30 +126,23 @@ impl Element for TextElement {
             ElementInputHandler::new(bounds, self.input.clone()),
             cx,
         );
-        if let Some(selection) = prepaint.selection.take() {
-            window.paint_quad(selection);
-        }
-        let Some(line) = prepaint.line.take() else {
+        let Some(layout) = prepaint.layout.take() else {
             return;
         };
-        if let Err(error) = line.paint(
-            bounds.origin,
-            window.line_height(),
-            TextAlign::Left,
-            None,
-            window,
-            cx,
-        ) {
-            tracing::error!(%error, "could not paint text input");
-        }
-        if focus_handle.is_focused(window)
-            && let Some(cursor) = prepaint.cursor.take()
-        {
-            window.paint_quad(cursor);
-        }
+        window.with_content_mask(Some(ContentMask { bounds }), |window| {
+            for selection in prepaint.selection.drain(..) {
+                window.paint_quad(selection);
+            }
+            layout.paint(window, cx);
+            if focus_handle.is_focused(window)
+                && let Some(cursor) = prepaint.cursor.take()
+            {
+                window.paint_quad(cursor);
+            }
+        });
         self.input.update(cx, |input, _| {
-            input.last_layout = Some(line);
-            input.last_bounds = Some(bounds);
+            input.scroll = layout.scroll();
+            input.layout = Some(layout);
         });
     }
 }

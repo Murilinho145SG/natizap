@@ -159,7 +159,7 @@ impl ConversationView {
         cx: &mut Context<Self>,
     ) -> Self {
         cx.observe(&pictures, |_, _, cx| cx.notify()).detach();
-        let composer = cx.new(|cx| TextInput::new("Message", cx));
+        let composer = cx.new(|cx| TextInput::new("Message", cx).wrapping());
         let emoji_picker = cx.new(|_| EmojiPicker::new());
         let reaction_emojis = cx.new(|_| EmojiPicker::new());
         cx.subscribe(&reaction_emojis, |this, _, EmojiPicked(emoji), cx| {
@@ -545,7 +545,7 @@ impl Render for ConversationView {
             .when(self.sending.is_none(), |pane| {
                 pane.children(pinned.map(|pinned| self.pinned_bar(pinned, cx)))
                     .child(messages)
-                    .child(self.composer(cx))
+                    .child(self.composer(window, cx))
             })
             // Only while a drag is on: the zone animates, and an animation
             // redraws every frame.

@@ -31,7 +31,7 @@ impl EventEmitter<PollDropped> for PollComposer {}
 
 impl PollComposer {
     pub(crate) fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let question = cx.new(|cx| TextInput::new("Ask a question", cx));
+        let question = cx.new(|cx| TextInput::new("Ask a question", cx).wrapping());
         cx.observe(&question, |_, _, cx| cx.notify()).detach();
         window.focus(&question.focus_handle(cx), cx);
         let mut composer = Self {
@@ -47,7 +47,7 @@ impl PollComposer {
     /// An empty choice at the end. Typing in the last one adds the next,
     /// as on the phone.
     fn add_option(&mut self, cx: &mut Context<Self>) {
-        let option = cx.new(|cx| TextInput::new("Add option", cx));
+        let option = cx.new(|cx| TextInput::new("Add option", cx).wrapping());
         cx.observe(&option, |composer, option, cx| {
             let last = composer.options.last() == Some(&option);
             if last

@@ -69,7 +69,7 @@ impl SendPreview {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let input = cx.new(|cx| TextInput::new("Add a caption", cx));
+        let input = cx.new(|cx| TextInput::new("Add a caption", cx).wrapping());
         cx.subscribe(&input, |this, _, _: &Submitted, cx| this.send(cx))
             .detach();
         cx.subscribe_in(&input, window, |_, _, pasted: &FilesPasted, _, cx| {

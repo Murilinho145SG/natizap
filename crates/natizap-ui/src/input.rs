@@ -1,110 +1,35 @@
-//! A single-line text field.
+//! A text field, on one line or wrapping onto several.
 //!
 //! Adapted from GPUI's `input` example (Apache-2.0): editing follows the
 //! platform input handler protocol (see `input_handler`), so IME
 //! composition and the emoji picker work.
 
 use std::ops::Range;
-use std::rc::Rc;
 
 use gpui::prelude::*;
 use gpui::{
-    Action, App, Bounds, ClipboardEntry, ClipboardItem, Context, CursorStyle, EntityInputHandler,
-    EventEmitter, FocusHandle, Focusable, KeyBinding, KeyBindingContextPredicate, MouseButton,
-    MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, ShapedLine, SharedString, Window,
-    actions, div,
+    App, ClipboardEntry, ClipboardItem, Context, CursorStyle, EntityInputHandler, EventEmitter,
+    FocusHandle, Focusable, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels,
+    Point, ScrollEvent, SharedString, Window, div, point, px,
 };
 
 use crate::copied_files::copied_paths;
 use crate::input_element::TextElement;
+use crate::input_keys::{
+    Backspace, Copy, Cut, Delete, DeleteWordLeft, DeleteWordRight, Down, End, Home, KEY_CONTEXT,
+    Left, Newline, Paste, Right, SelectAll, SelectLeft, SelectRight, SelectWordLeft,
+    SelectWordRight, Submit, Up, WordLeft, WordRight,
+};
+use crate::input_layout::TextLayout;
 use crate::text_boundary::{next_grapheme, next_word, previous_grapheme, previous_word};
-
-actions!(
-    text_input,
-    [
-        Backspace,
-        Delete,
-        DeleteWordLeft,
-        DeleteWordRight,
-        Left,
-        Right,
-        WordLeft,
-        WordRight,
-        SelectLeft,
-        SelectRight,
-        SelectWordLeft,
-        SelectWordRight,
-        SelectAll,
-        Home,
-        End,
-        Paste,
-        Cut,
-        Copy,
-        Submit,
-    ]
-);
-
-const KEY_CONTEXT: &str = "TextInput";
-
-/// Registers the keyboard shortcuts every [`TextInput`] responds to. Call
-/// once at startup.
-pub fn bind_text_input_keys(cx: &mut App) {
-    let context = match KeyBindingContextPredicate::parse(KEY_CONTEXT) {
-        Ok(context) => Some(Rc::new(context)),
-        Err(error) => {
-            tracing::error!(%error, "invalid text input key context");
-            return;
-        }
-    };
-    // Words are Alt on macOS and Ctrl elsewhere, unlike `secondary`.
-    let word = if cfg!(target_os = "macos") {
-        "alt"
-    } else {
-        "ctrl"
-    };
-    let word_bindings: [(String, Box<dyn Action>); 6] = [
-        (format!("{word}-backspace"), Box::new(DeleteWordLeft)),
-        (format!("{word}-delete"), Box::new(DeleteWordRight)),
-        (format!("{word}-left"), Box::new(WordLeft)),
-        (format!("{word}-right"), Box::new(WordRight)),
-        (format!("{word}-shift-left"), Box::new(SelectWordLeft)),
-        (format!("{word}-shift-right"), Box::new(SelectWordRight)),
-    ];
-    let bindings: [(&str, Box<dyn Action>); 13] = [
-        ("backspace", Box::new(Backspace)),
-        ("delete", Box::new(Delete)),
-        ("left", Box::new(Left)),
-        ("right", Box::new(Right)),
-        ("shift-left", Box::new(SelectLeft)),
-        ("shift-right", Box::new(SelectRight)),
-        // `secondary` is Cmd on macOS and Ctrl elsewhere.
-        ("secondary-a", Box::new(SelectAll)),
-        ("secondary-v", Box::new(Paste)),
-        ("secondary-c", Box::new(Copy)),
-        ("secondary-x", Box::new(Cut)),
-        ("home", Box::new(Home)),
-        ("end", Box::new(End)),
-        ("enter", Box::new(Submit)),
-    ];
-    let bindings: Vec<KeyBinding> = bindings
-        .into_iter()
-        .map(|(keys, action)| (keys.to_owned(), action))
-        .chain(word_bindings)
-        .filter_map(|(keys, action)| {
-            KeyBinding::load(&keys, action, context.clone(), false, None, cx)
-                .inspect_err(|error| tracing::error!(%error, keys, "invalid key binding"))
-                .ok()
-        })
-        .collect();
-    cx.bind_keys(bindings);
-}
 
 /// The user pressed Enter in a [`TextInput`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Submitted(pub String);
 
-/// A single-line text field. Emits [`Submitted`] on Enter; the owner decides
-/// whether to [`clear`](TextInput::clear) it.
+/// A text field, on one line unless made [`wrapping`](TextInput::wrapping).
+/// Emits [`Submitted`] on Enter; the owner decides whether to
+/// [`clear`](TextInput::clear) it.
 #[derive(Debug)]
 pub struct TextInput {
     pub(crate) focus_handle: FocusHandle,
@@ -113,8 +38,11 @@ pub struct TextInput {
     pub(crate) selected_range: Range<usize>,
     pub(crate) selection_reversed: bool,
     pub(crate) marked_range: Option<Range<usize>>,
-    pub(crate) last_layout: Option<ShapedLine>,
-    pub(crate) last_bounds: Option<Bounds<Pixels>>,
+    pub(crate) wraps: bool,
+    /// The text as last painted, for mapping the pointer and the IME.
+    pub(crate) layout: Option<TextLayout>,
+    /// How far the text is scrolled to keep the caret in view.
+    pub(crate) scroll: Point<Pixels>,
     is_selecting: bool,
 }
 
@@ -148,10 +76,19 @@ impl TextInput {
             selected_range: 0..0,
             selection_reversed: false,
             marked_range: None,
-            last_layout: None,
-            last_bounds: None,
+            wraps: false,
+            layout: None,
+            scroll: Point::default(),
             is_selecting: false,
         }
+    }
+
+    /// Wraps long text onto new lines, growing a few lines tall before it
+    /// scrolls, instead of scrolling sideways on one line.
+    #[must_use]
+    pub fn wrapping(mut self) -> Self {
+        self.wraps = true;
+        self
     }
 
     /// The current text.
@@ -177,6 +114,15 @@ impl TextInput {
 
     fn submit(&mut self, _: &Submit, _: &mut Window, cx: &mut Context<Self>) {
         cx.emit(Submitted(self.content.to_string()));
+    }
+
+    /// Starts a new line in a wrapping field; a one-line field has none.
+    fn newline(&mut self, _: &Newline, window: &mut Window, cx: &mut Context<Self>) {
+        if self.wraps {
+            self.replace_text_in_range(None, "\n", window, cx);
+        } else {
+            cx.propagate();
+        }
     }
 
     fn left(&mut self, _: &Left, window: &mut Window, cx: &mut Context<Self>) {
@@ -251,6 +197,28 @@ impl TextInput {
         cx: &mut Context<Self>,
     ) {
         self.select_to(next_word(&self.content, self.cursor_offset()), window, cx);
+    }
+
+    /// Moves the caret one wrapped line up or down, keeping its column. A
+    /// one-line field leaves the keys to its owner, such as a list below a
+    /// search field.
+    fn move_vertically(&mut self, rows: f32, window: &mut Window, cx: &mut Context<Self>) {
+        let target = match self.layout.as_ref() {
+            Some(layout) if self.wraps => layout.index_rows_away(self.cursor_offset(), rows),
+            _ => {
+                cx.propagate();
+                return;
+            }
+        };
+        self.move_to(target, window, cx);
+    }
+
+    fn up(&mut self, _: &Up, window: &mut Window, cx: &mut Context<Self>) {
+        self.move_vertically(-1.0, window, cx);
+    }
+
+    fn down(&mut self, _: &Down, window: &mut Window, cx: &mut Context<Self>) {
+        self.move_vertically(1.0, window, cx);
     }
 
     fn select_all(&mut self, _: &SelectAll, window: &mut Window, cx: &mut Context<Self>) {
@@ -346,7 +314,13 @@ impl TextInput {
         if !pasted.paths.is_empty() || !pasted.images.is_empty() {
             cx.emit(pasted);
         } else if let Some(text) = text {
-            self.replace_text_in_range(None, &text.replace('\n', " "), window, cx);
+            let text = text.replace("\r\n", "\n");
+            let text = if self.wraps {
+                text
+            } else {
+                text.replace('\n', " ")
+            };
+            self.replace_text_in_range(None, &text, window, cx);
         }
     }
 
@@ -394,6 +368,55 @@ impl TextInput {
         }
     }
 
+    /// Scrolls text that overflows the field: down a wrapping field, along a
+    /// one-line one. Once the text is at its end, the wheel goes on to
+    /// whatever holds the field.
+    fn on_scroll(&mut self, event: &ScrollEvent, _: &mut Window, cx: &mut Context<Self>) {
+        let Some(layout) = self.layout.as_mut() else {
+            return;
+        };
+        let delta = event.delta.pixel_delta(layout.line_height);
+        let delta = if self.wraps {
+            point(px(0.), delta.y)
+        } else if delta.x == px(0.) {
+            // A plain mouse wheel only turns vertically.
+            point(delta.y, px(0.))
+        } else {
+            point(delta.x, px(0.))
+        };
+        layout.scroll_to(self.scroll - delta);
+        let scroll = layout.scroll();
+        if scroll != self.scroll {
+            self.scroll = scroll;
+            cx.stop_propagation();
+            cx.notify();
+        }
+    }
+
+    /// How far the text has scrolled down, and how far it can.
+    pub(crate) fn vertical_scroll(&self) -> (Pixels, Pixels) {
+        self.layout
+            .as_ref()
+            .map_or_default(|layout| (self.scroll.y, layout.max_scroll_y()))
+    }
+
+    /// How tall the field shows the text.
+    pub(crate) fn viewport_height(&self) -> Pixels {
+        self.layout
+            .as_ref()
+            .map_or_default(TextLayout::viewport_height)
+    }
+
+    /// Scrolls the text `offset` down from its top, as its scrollbar is
+    /// dragged.
+    pub(crate) fn scroll_down_to(&mut self, offset: Pixels, cx: &mut Context<Self>) {
+        if let Some(layout) = self.layout.as_mut() {
+            layout.scroll_to(point(self.scroll.x, offset));
+            self.scroll = layout.scroll();
+            cx.notify();
+        }
+    }
+
     fn move_to(&mut self, offset: usize, window: &Window, cx: &mut Context<Self>) {
         self.selected_range = offset..offset;
         self.selection_reversed = false;
@@ -424,17 +447,10 @@ impl TextInput {
     }
 
     fn index_for_mouse_position(&self, position: Point<Pixels>) -> usize {
-        let (Some(bounds), Some(line)) = (self.last_bounds.as_ref(), self.last_layout.as_ref())
-        else {
-            return 0;
-        };
-        if self.content.is_empty() || position.y < bounds.top() {
-            return 0;
+        match self.layout.as_ref() {
+            Some(layout) if !self.content.is_empty() => layout.index_for_position(position),
+            _ => 0,
         }
-        if position.y > bounds.bottom() {
-            return self.content.len();
-        }
-        line.closest_index_for_x(position.x - bounds.left())
     }
 
     pub(crate) fn offset_from_utf16(&self, offset: usize) -> usize {
@@ -497,6 +513,8 @@ impl Render for TextInput {
             .on_action(cx.listener(Self::right))
             .on_action(cx.listener(Self::word_left))
             .on_action(cx.listener(Self::word_right))
+            .on_action(cx.listener(Self::up))
+            .on_action(cx.listener(Self::down))
             .on_action(cx.listener(Self::select_left))
             .on_action(cx.listener(Self::select_right))
             .on_action(cx.listener(Self::select_word_left))
@@ -508,10 +526,12 @@ impl Render for TextInput {
             .on_action(cx.listener(Self::cut))
             .on_action(cx.listener(Self::copy))
             .on_action(cx.listener(Self::submit))
+            .on_action(cx.listener(Self::newline))
             .on_mouse_down(MouseButton::Left, cx.listener(Self::on_mouse_down))
             .on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
             .on_mouse_up_out(MouseButton::Left, cx.listener(Self::on_mouse_up))
             .on_mouse_move(cx.listener(Self::on_mouse_move))
+            .on_scroll(cx.listener(Self::on_scroll))
             .child(TextElement::new(cx.entity()))
     }
 }
