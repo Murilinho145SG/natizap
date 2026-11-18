@@ -3,3 +3,6 @@
 .env
 .env.*
 !.env.example
+/dist
+# Made from brand/natizap-icon.png by the release workflow.
+/packaging/windows/natizap.ico

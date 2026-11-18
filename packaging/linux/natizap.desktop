@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=natizap
+GenericName=WhatsApp client
+Comment=A native desktop WhatsApp client
+Exec=natizap
+Icon=natizap
+Terminal=false
+Categories=Network;InstantMessaging;Chat;
+Keywords=WhatsApp;chat;messages;
+StartupWMClass=natizap

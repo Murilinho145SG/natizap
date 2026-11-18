@@ -1,0 +1,69 @@
+# Builds the .deb, .rpm and Arch packages from a release build:
+#   NATIZAP_VERSION=0.1.0 nfpm package -f packaging/linux/nfpm.yaml -p deb
+# Paths are relative to the repository root, where nfpm runs.
+name: natizap
+arch: amd64
+platform: linux
+version: ${NATIZAP_VERSION}
+release: 1
+section: net
+priority: optional
+maintainer: Murillo Deolino <88172584+Murilinho145SG@users.noreply.github.com>
+description: |
+  A native desktop WhatsApp client, written in Rust with GPUI.
+  Links to the phone as a companion device and speaks the WhatsApp
+  multi-device protocol directly; keys and history stay on the machine.
+vendor: natizap
+homepage: https://github.com/Murilinho145SG/natizap
+license: AGPL-3.0-or-later
+
+contents:
+  - src: target/release/natizap
+    dst: /usr/bin/natizap
+    file_info:
+      mode: 0755
+  - src: packaging/linux/natizap.desktop
+    dst: /usr/share/applications/natizap.desktop
+  - src: brand/natizap-icon.png
+    dst: /usr/share/icons/hicolor/512x512/apps/natizap.png
+  - src: LICENSE
+    dst: /usr/share/licenses/natizap/LICENSE
+
+# Each package tells the in-app updater which package manager installs the
+# next version (natizap-update reads it).
+overrides:
+  deb:
+    depends:
+      - libasound2t64 | libasound2
+      - libxkbcommon0
+      - libxkbcommon-x11-0
+      - libxcb1
+      - libvulkan1
+      - libwayland-client0
+    contents:
+      - src: packaging/linux/install-kind/deb
+        dst: /usr/lib/natizap/install-kind
+  rpm:
+    depends:
+      - alsa-lib
+      - libxkbcommon
+      - libxkbcommon-x11
+      - libxcb
+      - vulkan-loader
+      - libwayland-client
+    contents:
+      - src: packaging/linux/install-kind/rpm
+        dst: /usr/lib/natizap/install-kind
+  archlinux:
+    depends:
+      - alsa-lib
+      - libxkbcommon-x11
+      - libxcb
+      - vulkan-icd-loader
+      - wayland
+    contents:
+      - src: packaging/linux/install-kind/pacman
+        dst: /usr/lib/natizap/install-kind
+
+rpm:
+  group: Applications/Internet
