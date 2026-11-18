@@ -210,7 +210,7 @@ impl VideoTrack {
             kind: codec::threading::Type::Frame,
             count: 0,
         });
-        let decoder = context.decoder().video()?;
+        let decoder = timed(context, stream.time_base()).video()?;
         let (width, height) = fit(decoder.width(), decoder.height(), MAX_WIDTH);
         let scaler = scaling::Context::get(
             decoder.format(),
@@ -273,9 +273,11 @@ impl AudioTrack {
         stream: &ffmpeg::format::stream::Stream<'_>,
         clock: Arc<Clock>,
     ) -> Result<Self, PlaybackError> {
-        let decoder = codec::context::Context::from_parameters(stream.parameters())?
-            .decoder()
-            .audio()?;
+        let decoder = timed(
+            codec::context::Context::from_parameters(stream.parameters())?,
+            stream.time_base(),
+        )
+        .audio()?;
         let output = AudioOutput::open(clock)?;
         let layout = if decoder.channel_layout().is_empty() {
             ChannelLayout::default(i32::from(decoder.channels()))
@@ -384,6 +386,18 @@ fn tempo_graph(
     graph.output("in", 0)?.input("out", 0)?.parse(&chain)?;
     graph.validate()?;
     Ok(graph)
+}
+
+/// A decoder for packets stamped in `time_base`. Told it, FFmpeg can
+/// place the samples an Opus stream skips at its start; untold, it warns
+/// on the terminal about every voice note.
+pub(crate) fn timed(
+    context: codec::context::Context,
+    time_base: Rational,
+) -> codec::decoder::Decoder {
+    let mut decoder = context.decoder();
+    decoder.set_packet_time_base(time_base);
+    decoder
 }
 
 /// Scales `width`×`height` down to at most `max_width` wide, keeping the

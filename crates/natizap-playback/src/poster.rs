@@ -12,7 +12,7 @@ use ffmpeg::util::frame;
 use ffmpeg_next as ffmpeg;
 use image::codecs::jpeg::JpegEncoder;
 
-use crate::decode::{fit, packed_rows, seconds};
+use crate::decode::{fit, packed_rows, seconds, timed};
 use crate::turn::Turn;
 
 /// Widest poster worth keeping: a bubble never shows one wider.
@@ -116,9 +116,11 @@ fn decode_still(
             Turn::of(&stream),
         )
     };
-    let mut decoder = codec::context::Context::from_parameters(parameters)?
-        .decoder()
-        .video()?;
+    let mut decoder = timed(
+        codec::context::Context::from_parameters(parameters)?,
+        time_base,
+    )
+    .video()?;
     let mut still = frame::Video::empty();
     let mut found = false;
     for (stream, packet) in input.packets() {
