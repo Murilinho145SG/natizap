@@ -3,6 +3,8 @@
 
 use gpui::{App, Task};
 
+use crate::business::{self, Business};
+use crate::profile;
 use crate::{ActionError, ChatId, Protocol};
 
 /// This account, as its profile shows it.
@@ -27,6 +29,26 @@ impl Protocol {
             name: Some(name).filter(|name| !name.trim().is_empty()),
             phone: address(client.pn()?),
             lid: client.lid().map(address),
+        })
+    }
+
+    /// This account's about line, if it has one.
+    pub fn own_about(&self, cx: &App) -> Task<Result<Option<String>, ActionError>> {
+        self.connection.run(cx, move |client| async move {
+            let jid = client.pn().ok_or(ActionError::Offline)?.to_non_ad();
+            profile::about(client, jid).await
+        })
+    }
+
+    /// This account's business details, or `None` when it is not a
+    /// business account.
+    pub fn own_business(&self, cx: &App) -> Task<Result<Option<Business>, ActionError>> {
+        self.connection.run(cx, move |client| async move {
+            let jid = client.pn().ok_or(ActionError::Offline)?.to_non_ad();
+            let name = Some(client.push_name()).filter(|name| !name.trim().is_empty());
+            business::business_if_any(&client, &jid, name)
+                .await
+                .map_err(|error| ActionError::Rejected(error.to_string()))
         })
     }
 

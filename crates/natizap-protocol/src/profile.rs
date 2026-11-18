@@ -5,6 +5,7 @@ use std::sync::Arc;
 use whatsapp_rust::Jid;
 use whatsapp_rust::http::HttpRequest;
 use whatsapp_rust::prelude::Client;
+use whatsapp_rust::wacore::iq::usync::UserInfo;
 
 use crate::ActionError;
 use crate::business::{self, Business};
@@ -20,13 +21,7 @@ pub struct Profile {
 
 pub(crate) async fn profile(client: Arc<Client>, jid: Jid) -> Result<Profile, ActionError> {
     let rejected = |error: &dyn std::fmt::Display| ActionError::Rejected(error.to_string());
-    let Some(info) = client
-        .contacts()
-        .get_user_info(std::slice::from_ref(&jid))
-        .await
-        .map_err(|error| rejected(&error))?
-        .remove(&jid)
-    else {
+    let Some(info) = user_info(&client, &jid).await? else {
         // Not on WhatsApp, or it would not say: nothing to show.
         return Ok(Profile::default());
     };
@@ -41,9 +36,32 @@ pub(crate) async fn profile(client: Arc<Client>, jid: Jid) -> Result<Profile, Ac
         None
     };
     Ok(Profile {
-        about: info.status.filter(|about| !about.trim().is_empty()),
+        about: about_of(info.status),
         business,
     })
+}
+
+/// The about line of `jid`, if it shares one: the profile without the
+/// business query behind it.
+pub(crate) async fn about(client: Arc<Client>, jid: Jid) -> Result<Option<String>, ActionError> {
+    Ok(user_info(&client, &jid)
+        .await?
+        .and_then(|info| about_of(info.status)))
+}
+
+/// What WhatsApp's contacts service says of `jid`, if anything. It limits
+/// how often it may be asked.
+async fn user_info(client: &Client, jid: &Jid) -> Result<Option<UserInfo>, ActionError> {
+    Ok(client
+        .contacts()
+        .get_user_info(std::slice::from_ref(jid))
+        .await
+        .map_err(|error| ActionError::Rejected(error.to_string()))?
+        .remove(jid))
+}
+
+fn about_of(status: Option<String>) -> Option<String> {
+    status.filter(|about| !about.trim().is_empty())
 }
 
 /// The profile picture of `jid`, small or `full` size, or `None` when it has

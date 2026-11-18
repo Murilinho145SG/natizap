@@ -11,7 +11,7 @@ use natizap_ui::theme::{ALERT, DISPLAY_FONT, LINE, MUTED, PANEL, SCRIM, TEXT};
 use natizap_ui::{Button, ButtonVariant, Icon, Menu, avatar, separator};
 
 use super::field::Field;
-use super::{COVER, COVERED_PICTURE, OwnProfile, OwnProfileClosed, PICTURE};
+use super::{COVER, COVERED_PICTURE, Loaded, OwnProfile, OwnProfileClosed, PICTURE};
 use crate::business_view::business_info;
 
 impl Render for OwnProfile {
@@ -63,26 +63,34 @@ impl Render for OwnProfile {
                             .child(self.line(Field::Name, cx))
                             .child(self.line(Field::About, cx))
                             .child(phone_line(&self.me))
-                            .children(self.business.as_ref().map(|business| {
-                                div()
-                                    .w_full()
-                                    .flex()
-                                    .flex_col()
-                                    .gap_3()
-                                    .child(div().w_full().py_4().child(separator()))
-                                    .child(
-                                        div()
-                                            .font_family(DISPLAY_FONT)
-                                            .text_size(px(16.0))
-                                            .font_weight(FontWeight::BOLD)
-                                            .child("Business info"),
-                                    )
-                                    .child(business_info(business))
-                                    .child(div().text_size(px(12.5)).text_color(rgb(MUTED)).child(
-                                        "Change these from WhatsApp Business \
+                            .children(
+                                match &self.business {
+                                    Loaded::Ready(business) => business.as_ref(),
+                                    Loaded::Loading | Loaded::Failed => None,
+                                }
+                                .map(|business| {
+                                    div()
+                                        .w_full()
+                                        .flex()
+                                        .flex_col()
+                                        .gap_3()
+                                        .child(div().w_full().py_4().child(separator()))
+                                        .child(
+                                            div()
+                                                .font_family(DISPLAY_FONT)
+                                                .text_size(px(16.0))
+                                                .font_weight(FontWeight::BOLD)
+                                                .child("Business info"),
+                                        )
+                                        .child(business_info(business))
+                                        .child(
+                                            div().text_size(px(12.5)).text_color(rgb(MUTED)).child(
+                                                "Change these from WhatsApp Business \
                                                  on your phone.",
-                                    ))
-                            })),
+                                            ),
+                                        )
+                                }),
+                            ),
                     ),
             )
             .children(self.picture_menu(cx))
@@ -246,8 +254,11 @@ impl OwnProfile {
         let (text, dim) = match (&saving, self.value(field)) {
             (Some(text), _) => (text.clone(), true),
             (None, Some(text)) => (text, false),
-            (None, None) if field == Field::About && !self.about_read => {
+            (None, None) if field == Field::About && self.about == Loaded::Loading => {
                 ("Loading…".to_owned(), true)
+            }
+            (None, None) if field == Field::About && self.about == Loaded::Failed => {
+                ("WhatsApp is busy; it loads next time".to_owned(), true)
             }
             (None, None) => (String::new(), true),
         };

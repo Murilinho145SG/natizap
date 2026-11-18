@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use gpui::{App, AppContext as _, Context, Entity, SharedString, Task};
 use natizap_protocol::Protocol;
@@ -12,6 +12,10 @@ use natizap_protocol::{ChatId, Disappearing, Marked, PersonName};
 use crate::book::{Chat, ChatBook, ChatChange, Mute, Preview};
 use crate::store::ChatStore;
 use crate::sync::{CHAT_EVENTS, changes};
+
+/// Time left between background business lookups, so they stay under
+/// the contacts service's rate limit.
+const BUSINESS_LOOKUP_GAP: Duration = Duration::from_secs(2);
 
 /// One line of the chat list, ready to render.
 #[derive(Debug, Clone)]
@@ -300,6 +304,10 @@ impl ChatList {
         self.asking = true;
         cx.spawn(async move |this, cx| {
             let business = asking.await.ok().and_then(|profile| profile.business);
+            // WhatsApp's contacts service refuses a burst of lookups
+            // (`rate-overlimit`), and then refuses the profile the user
+            // opens too: these background ones leave room between them.
+            cx.background_executor().timer(BUSINESS_LOOKUP_GAP).await;
             let named = business.and_then(|business| Some((business.name?, business.verified)));
             let _ = this.update(cx, |list, cx| {
                 if let Some((name, verified)) = named {

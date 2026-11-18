@@ -15,7 +15,7 @@ use gpui::{
     Pixels, Point, SharedString, Window,
 };
 use natizap_profiles::ProfilePictures;
-use natizap_protocol::{ActionError, Business, Me, Profile, Protocol};
+use natizap_protocol::{ActionError, Business, Me, Protocol};
 use natizap_ui::{Submitted, TextInput};
 
 use crate::panel::image;
@@ -38,18 +38,27 @@ struct Editing {
     input: Entity<TextInput>,
 }
 
-/// Your own profile, shown in place of the chat list.
+/// Something your profile reads from WhatsApp.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Loaded<T> {
+    Loading,
+    /// WhatsApp would not say, often for being asked too often: asked
+    /// again when the profile opens next.
+    Failed,
+    Ready(T),
+}
+
+/// Your own profile, shown in place of the chat list. Keep it to show it
+/// again: what it read stays, and only what failed is asked again.
 pub struct OwnProfile {
     protocol: Entity<Protocol>,
     pictures: Entity<ProfilePictures>,
     me: Me,
     picture: Option<Arc<Image>>,
     /// Your about line, when you have one.
-    about: Option<String>,
-    /// Whether the about line was read yet.
-    about_read: bool,
+    about: Loaded<Option<String>>,
     /// Your business's public details, when this is a business account.
-    business: Option<Business>,
+    business: Loaded<Option<Business>>,
     /// Your business's banner.
     cover: Option<Arc<Image>>,
     editing: Option<Editing>,
@@ -94,9 +103,8 @@ impl OwnProfile {
             pictures: pictures.clone(),
             me,
             picture: None,
-            about: None,
-            about_read: false,
-            business: None,
+            about: Loaded::Loading,
+            business: Loaded::Loading,
             cover: None,
             editing: None,
             saving: None,
@@ -106,26 +114,62 @@ impl OwnProfile {
             focus: cx.focus_handle(),
         };
         profile.fetch_picture(cx);
-        let reading = protocol.read(cx).profile(&profile.me.phone, cx);
+        profile.fetch_about(cx);
+        profile.fetch_business(cx);
+        profile
+    }
+
+    /// Asks again for what WhatsApp would not give the last time, as the
+    /// profile shows again.
+    pub fn reload_missing(&mut self, cx: &mut Context<Self>) {
+        if self.about == Loaded::Failed {
+            self.about = Loaded::Loading;
+            self.fetch_about(cx);
+        }
+        if self.business == Loaded::Failed {
+            self.business = Loaded::Loading;
+            self.fetch_business(cx);
+        }
+        cx.notify();
+    }
+
+    fn fetch_about(&self, cx: &mut Context<Self>) {
+        let reading = self.protocol.read(cx).own_about(cx);
         cx.spawn(async move |this, cx| {
-            let read = reading.await.unwrap_or_else(|error| {
-                tracing::debug!(%error, "own profile unavailable");
-                Profile::default()
-            });
+            let about = match reading.await {
+                Ok(about) => Loaded::Ready(about),
+                Err(error) => {
+                    tracing::debug!(%error, "own about line unavailable");
+                    Loaded::Failed
+                }
+            };
             let _ = this.update(cx, |profile, cx| {
-                profile.about = read.about;
-                profile.cover = read
-                    .business
-                    .as_ref()
-                    .and_then(|business| business.cover.clone())
-                    .map(image);
-                profile.business = read.business;
-                profile.about_read = true;
+                profile.about = about;
                 cx.notify();
             });
         })
         .detach();
-        profile
+    }
+
+    fn fetch_business(&self, cx: &mut Context<Self>) {
+        let reading = self.protocol.read(cx).own_business(cx);
+        cx.spawn(async move |this, cx| {
+            let business = match reading.await {
+                Ok(business) => Loaded::Ready(business),
+                Err(error) => {
+                    tracing::debug!(%error, "own business details unavailable");
+                    Loaded::Failed
+                }
+            };
+            let _ = this.update(cx, |profile, cx| {
+                if let Loaded::Ready(Some(business)) = &business {
+                    profile.cover = business.cover.clone().map(image);
+                }
+                profile.business = business;
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     fn fetch_picture(&self, cx: &mut Context<Self>) {
@@ -153,7 +197,10 @@ impl OwnProfile {
     fn value(&self, field: Field) -> Option<String> {
         match field {
             Field::Name => self.me.name.clone(),
-            Field::About => self.about.clone(),
+            Field::About => match &self.about {
+                Loaded::Ready(about) => about.clone(),
+                Loaded::Loading | Loaded::Failed => None,
+            },
         }
     }
 
@@ -213,7 +260,7 @@ impl OwnProfile {
                 match saved {
                     Ok(()) => match field {
                         Field::Name => profile.me.name = Some(text),
-                        Field::About => profile.about = Some(text),
+                        Field::About => profile.about = Loaded::Ready(Some(text)),
                     },
                     Err(error) => profile.failed(Some(field), &error),
                 }

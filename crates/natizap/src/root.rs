@@ -71,8 +71,11 @@ pub(crate) struct Root {
     pictures: Entity<ProfilePictures>,
     /// The notification settings, over the chats.
     settings: Option<Entity<NotificationSettings>>,
-    /// Your own profile, in place of the chat list.
+    /// Your own profile, kept once opened so it shows again without
+    /// asking WhatsApp again.
     own_profile: Option<Entity<OwnProfile>>,
+    /// Whether your profile shows in place of the chat list.
+    own_shown: bool,
     notifier: Entity<Notifier>,
     /// The splash, while natizap opens.
     opening: Option<Opening>,
@@ -154,6 +157,7 @@ impl Root {
             pictures: pictures.clone(),
             settings: None,
             own_profile: None,
+            own_shown: false,
             notifier,
             opening: Some(Opening::start(cx)),
             updater,
@@ -417,14 +421,16 @@ impl Root {
                     .flex_none()
                     .border_r_1()
                     .border_color(rgb(LINE))
-                    .map(|pane| match self.own_profile.clone() {
-                        Some(profile) => pane.child(slide_in(
-                            SharedString::from(format!("own-profile-{}", profile.entity_id())),
-                            div().size_full().child(profile),
-                            -24.0,
-                        )),
-                        None => pane.child(self.chat_list.clone()),
-                    }),
+                    .map(
+                        |pane| match self.own_profile.clone().filter(|_| self.own_shown) {
+                            Some(profile) => pane.child(slide_in(
+                                SharedString::from(format!("own-profile-{}", profile.entity_id())),
+                                div().size_full().child(profile),
+                                -24.0,
+                            )),
+                            None => pane.child(self.chat_list.clone()),
+                        },
+                    ),
             )
             .child(
                 // Free to shrink below what it holds, so a long line in it

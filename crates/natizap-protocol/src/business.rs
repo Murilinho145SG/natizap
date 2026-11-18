@@ -139,12 +139,29 @@ impl IqSpec for FullProfile {
     }
 }
 
-/// The business profile of `jid`, named `name` by its verified name.
+/// The business profile of `jid`, a business named `name` by its verified
+/// name; one WhatsApp gives no details of shows only that name.
 pub(crate) async fn business(
     client: &Arc<Client>,
     jid: &Jid,
     name: Option<String>,
 ) -> anyhow::Result<Business> {
+    Ok(business_if_any(client, jid, name.clone())
+        .await?
+        .unwrap_or(Business {
+            name,
+            ..Business::default()
+        }))
+}
+
+/// The business profile of `jid`, named `name`, or `None` when it is not
+/// a business. Asks the business service only, not the contacts service
+/// whose rate limit a burst of lookups soon reaches.
+pub(crate) async fn business_if_any(
+    client: &Arc<Client>,
+    jid: &Jid,
+    name: Option<String>,
+) -> anyhow::Result<Option<Business>> {
     let answer = match client.execute(FullProfile { jid: jid.clone() }).await {
         Ok(answer) => answer,
         Err(error) => {
@@ -165,17 +182,14 @@ pub(crate) async fn business(
         }
     };
     let Some((details, extras)) = answer else {
-        return Ok(Business {
-            name,
-            ..Business::default()
-        });
+        return Ok(None);
     };
     let cover = match extras.cover_url {
         Some(url) => download(client, url).await,
         None => None,
     };
     let non_empty = |text: String| Some(text).filter(|text| !text.trim().is_empty());
-    Ok(Business {
+    Ok(Some(Business {
         name,
         verified: extras.verified,
         category: details
@@ -207,7 +221,7 @@ pub(crate) async fn business(
             })
             .collect(),
         cover,
-    })
+    }))
 }
 
 fn weekday(day: &DayOfWeek) -> Option<u8> {

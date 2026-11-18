@@ -13,7 +13,7 @@ impl Root {
     /// The rail, Chats lit unless your profile shows.
     pub(super) fn rail(&mut self, cx: &mut Context<Self>) -> Rail {
         let me = self.protocol.read(cx).me();
-        let on_profile = self.own_profile.is_some();
+        let on_profile = self.own_shown;
         let mut rail = Rail::new()
             .top(
                 Button::new("rail-chats")
@@ -69,8 +69,14 @@ impl Root {
     /// Opens your profile in place of the chat list, or goes back to the
     /// chats if it shows.
     fn toggle_own_profile(&mut self, cx: &mut Context<Self>) {
-        if self.own_profile.is_some() {
+        if self.own_shown {
             self.close_own_profile(cx);
+            return;
+        }
+        if let Some(profile) = &self.own_profile {
+            profile.update(cx, OwnProfile::reload_missing);
+            self.own_shown = true;
+            cx.notify();
             return;
         }
         let Some(me) = self.protocol.read(cx).me() else {
@@ -83,12 +89,13 @@ impl Root {
         })
         .detach();
         self.own_profile = Some(profile);
+        self.own_shown = true;
         cx.notify();
     }
 
     /// Goes back from your profile to the chats. Returns whether it showed.
     pub(super) fn close_own_profile(&mut self, cx: &mut Context<Self>) -> bool {
-        let shown = self.own_profile.take().is_some();
+        let shown = std::mem::take(&mut self.own_shown);
         if shown {
             cx.notify();
         }
