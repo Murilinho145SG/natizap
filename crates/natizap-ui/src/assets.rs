@@ -48,6 +48,8 @@ icons! {
     Alert => "alert.svg",
     /// Archived chats.
     Archive => "archive.svg",
+    /// Something comes down, e.g. into the drop tray.
+    ArrowDown => "arrow-down.svg",
     /// Go back to the previous screen.
     Back => "back.svg",
     /// Sent.
@@ -108,6 +110,8 @@ icons! {
     Settings => "settings.svg",
     /// A starred message.
     Star => "star.svg",
+    /// Where dropped files land.
+    Tray => "tray.svg",
     /// Delete.
     Trash => "trash.svg",
     /// A business WhatsApp vouches for.
