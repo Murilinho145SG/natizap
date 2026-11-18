@@ -32,6 +32,7 @@ mod header;
 mod list;
 mod message_menu;
 mod recorder;
+mod saving;
 mod stickers;
 mod tray;
 mod viewer;

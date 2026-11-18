@@ -56,6 +56,22 @@ impl Fetch {
         };
         dir.join(name)
     }
+
+    /// The name a save dialog offers for the file: a document's own name,
+    /// else what it is and the message it came in, so two saves of
+    /// different photos never clash.
+    pub(crate) fn save_name(&self) -> String {
+        if let Some(name) = &self.media.file_name {
+            return sanitize(name);
+        }
+        let id: String = self
+            .message_id
+            .chars()
+            .filter(char::is_ascii_alphanumeric)
+            .collect();
+        let extension = extension(self.media.mime.as_deref(), self.kind);
+        format!("WhatsApp {} {id}.{extension}", self.kind.label())
+    }
 }
 
 /// Videos this small are fetched on sight when they have no preview of
@@ -189,6 +205,21 @@ mod tests {
                 sender: None,
             },
         }
+    }
+
+    #[test]
+    fn offers_a_document_its_own_name() {
+        let report = fetch(ContentKind::Document, None, Some("Q3 report/final.pdf"));
+        assert_eq!(report.save_name(), "Q3 report_final.pdf");
+    }
+
+    #[test]
+    fn names_a_photo_by_what_it_is_and_its_message() {
+        let photo = fetch(ContentKind::Photo, Some("image/png"), None);
+        assert_eq!(
+            photo.save_name(),
+            format!("WhatsApp {} 3EB0abc.png", ContentKind::Photo.label())
+        );
     }
 
     fn video(id: &str, file: Option<PathBuf>, poster: Option<PathBuf>) -> Message {

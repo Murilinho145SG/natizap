@@ -1,5 +1,5 @@
 //! What a right click offers on something in the window: opening it, going
-//! to the message it came in, and copying a link.
+//! to the message it came in, saving or copying it, and copying a link.
 
 use gpui::prelude::*;
 use gpui::{
@@ -8,7 +8,9 @@ use gpui::{
 };
 use natizap_ui::{Icon, Menu};
 
-use super::{MediaBrowser, MediaChosen, MessageWanted, Pick};
+use natizap_protocol::ContentKind;
+
+use super::{MediaBrowser, MediaChosen, MediaUse, MessageWanted, Pick};
 
 impl MediaBrowser {
     /// The menu a right click opened, when one is open. It floats over the
@@ -24,10 +26,30 @@ impl MediaBrowser {
         };
         let dismiss = cx.weak_entity();
         let mut menu = Menu::new()
-            .action(Icon::Maximize, open_label(pick), act(Action::Open))
+            .action(
+                Icon::Maximize,
+                open_label(pick),
+                act(Action::Use(MediaUse::Open)),
+            )
             .action(Icon::Chats, "Go to message", act(Action::GoTo));
         if matches!(pick, Pick::Link(_)) {
             menu = menu.action(Icon::Copy, "Copy link", act(Action::Copy));
+        } else {
+            let photo = matches!(pick, Pick::Media(index) if self.library.as_ref()
+                .and_then(|library| library.media.get(index))
+                .is_some_and(|item| item.media.fetch.kind == ContentKind::Photo));
+            if photo {
+                menu = menu.action(
+                    Icon::Copy,
+                    "Copy image",
+                    act(Action::Use(MediaUse::CopyImage)),
+                );
+            }
+            menu = menu.action(
+                Icon::Download,
+                "Save as…",
+                act(Action::Use(MediaUse::SaveAs)),
+            );
         }
         let menu = menu.on_dismiss(move |_, cx| {
             let _ = dismiss.update(cx, |this, cx| {
@@ -59,9 +81,9 @@ impl MediaBrowser {
             Pick::Link(index) => (None, library.links.get(index)),
         };
         match action {
-            Action::Open => {
+            Action::Use(how) => {
                 if let Some(item) = media {
-                    cx.emit(MediaChosen(item.media.clone()));
+                    cx.emit(MediaChosen(item.media.clone(), how));
                 } else if let Some(link) = link {
                     cx.open_url(&link.target);
                 }
@@ -95,7 +117,8 @@ impl MediaBrowser {
 /// What the menu can do.
 #[derive(Debug, Clone, Copy)]
 enum Action {
-    Open,
+    /// Open, save or copy a photo, video or document; open a link.
+    Use(MediaUse),
     GoTo,
     Copy,
 }

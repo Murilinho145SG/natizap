@@ -22,7 +22,7 @@ mod sending;
 mod uploads;
 mod worker;
 
-use downloads::Failed;
+use downloads::{Failed, Then};
 
 use worker::sync;
 
@@ -113,8 +113,9 @@ pub struct MessageLog {
     sent_count: u64,
     media_dir: PathBuf,
     store_path: PathBuf,
-    /// Attachments being downloaded, by message id.
-    fetching: HashSet<String>,
+    /// Attachments being downloaded, by message id, with what to do with
+    /// each once it lands.
+    fetching: HashMap<String, Vec<Then>>,
     /// Videos whose still is being taken, by message id.
     posters: HashSet<String>,
     /// Downloads and stills that failed, by message id: kept out of the
@@ -233,7 +234,7 @@ impl MessageLog {
             sent_count: 0,
             media_dir,
             store_path,
-            fetching: HashSet::new(),
+            fetching: HashMap::new(),
             posters: HashSet::new(),
             failed: Failed::default(),
             pinned: None,
@@ -446,7 +447,7 @@ impl MessageLog {
                     self.items = items;
                     self.pinned = pinned;
                     for fetch in fetch {
-                        self.fetch(fetch, false, cx);
+                        self.fetch(fetch, Then::Keep, cx);
                     }
                     for job in posters {
                         self.make_poster(job, cx);

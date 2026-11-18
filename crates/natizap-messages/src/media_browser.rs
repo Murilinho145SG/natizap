@@ -28,9 +28,18 @@ const COLUMNS: usize = 6;
 /// Small copies made at a time, between showing them.
 const SMALL_COPY_BATCH: usize = 6;
 
-/// The user chose a photo, video, document or audio file to open.
+/// The user chose a photo, video, document or audio file, and what to do
+/// with it.
 #[derive(Debug, Clone)]
-pub(crate) struct MediaChosen(pub(crate) MediaView);
+pub(crate) struct MediaChosen(pub(crate) MediaView, pub(crate) MediaUse);
+
+/// What the user wants done with a chosen attachment.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MediaUse {
+    Open,
+    SaveAs,
+    CopyImage,
+}
 
 /// The user asked to go to the message something in the window came in.
 #[derive(Debug, Clone)]

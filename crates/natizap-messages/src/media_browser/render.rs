@@ -19,7 +19,9 @@ use natizap_ui::theme::{
 use natizap_ui::{Button, ButtonVariant, Icon, dialog};
 
 use super::menu::{RIGHT, on_right_click};
-use super::{BrowserClosed, COLUMNS, Entrance, Line, MediaBrowser, MediaChosen, Pick, Tab};
+use super::{
+    BrowserClosed, COLUMNS, Entrance, Line, MediaBrowser, MediaChosen, MediaUse, Pick, Tab,
+};
 use crate::items::MediaView;
 use crate::library::{Library, SharedLink, Shelved};
 
@@ -282,7 +284,7 @@ fn picture(media: &MediaView, small: Option<&PathBuf>) -> Option<ImageSource> {
 
 fn choose(browser: &WeakEntity<MediaBrowser>, media: &MediaView, cx: &mut App) {
     let media = media.clone();
-    let _ = browser.update(cx, |_, cx| cx.emit(MediaChosen(media)));
+    let _ = browser.update(cx, |_, cx| cx.emit(MediaChosen(media, MediaUse::Open)));
 }
 
 fn tile(

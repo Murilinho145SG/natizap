@@ -8,7 +8,7 @@ use natizap_ui::dialog;
 
 use super::ConversationView;
 use crate::items::MediaView;
-use crate::media_browser::{BrowserClosed, MediaBrowser, MediaChosen, MessageWanted};
+use crate::media_browser::{BrowserClosed, MediaBrowser, MediaChosen, MediaUse, MessageWanted};
 use crate::overview::MediaTile;
 
 /// How much of the window a photo may take.
@@ -53,8 +53,10 @@ impl ConversationView {
     ) {
         let library = self.log.read(cx).library(chats.clone(), cx);
         let browser = cx.new(|cx| MediaBrowser::new(title, chats, library, cx));
-        cx.subscribe(&browser, |this, _, MediaChosen(media), cx| {
-            this.show_media(media, cx);
+        cx.subscribe(&browser, |this, _, MediaChosen(media, how), cx| match how {
+            MediaUse::Open => this.show_media(media, cx),
+            MediaUse::SaveAs => Self::save_media_as(media, cx),
+            MediaUse::CopyImage => this.copy_media_image(media, cx),
         })
         .detach();
         cx.subscribe(&browser, |this, _, wanted: &MessageWanted, cx| {

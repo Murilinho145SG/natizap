@@ -115,6 +115,7 @@ impl ConversationView {
                     view.toggle_reactions(&id, cx);
                 });
             });
+            menu = with_saving(menu, bubble, &view);
             menu = with_forward(menu, bubble, &view);
             menu = with_pin(menu, bubble, pinned, &view);
             menu = with_star(menu, bubble, &view);
@@ -262,6 +263,29 @@ impl ConversationView {
 }
 
 /// Forward: asks the app which chats to send the message to.
+/// Copy image for photos, and Save as for any attachment.
+fn with_saving(mut menu: Menu, bubble: &Bubble, view: &WeakEntity<ConversationView>) -> Menu {
+    let Some(media) = bubble.media.clone() else {
+        return menu;
+    };
+    if media.fetch.kind == ContentKind::Photo {
+        let (view, media) = (view.clone(), media.clone());
+        menu = menu.action(Icon::Copy, "Copy image", move |_, cx| {
+            let _ = view.update(cx, |view, cx| {
+                view.close_message_popup(cx);
+                view.copy_media_image(&media, cx);
+            });
+        });
+    }
+    let view = view.clone();
+    menu.action(Icon::Download, "Save as…", move |_, cx| {
+        let _ = view.update(cx, |view, cx| {
+            view.close_message_popup(cx);
+            ConversationView::save_media_as(&media, cx);
+        });
+    })
+}
+
 fn with_forward(menu: Menu, bubble: &Bubble, view: &WeakEntity<ConversationView>) -> Menu {
     let view = view.clone();
     let forward = Forward {

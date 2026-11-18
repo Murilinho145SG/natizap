@@ -10,6 +10,7 @@ repository.workspace = true
 [dependencies]
 async-channel.workspace = true
 chrono.workspace = true
+dirs.workspace = true
 emojis.workspace = true
 gpui.workspace = true
 image.workspace = true
