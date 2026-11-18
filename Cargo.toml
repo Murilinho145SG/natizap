@@ -114,3 +114,5 @@ wacore-appstate = { path = "patches/wacore-appstate" }
 [profile.release]
 lto = "thin"
 codegen-units = 1
+# Symbols triple the download; releases are not debugged from the binary.
+strip = true
