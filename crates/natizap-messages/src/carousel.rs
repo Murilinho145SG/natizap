@@ -10,6 +10,7 @@ use natizap_protocol::ChatId;
 
 use crate::items::MediaView;
 use crate::library::Shelved;
+use crate::zoom::Zoom;
 
 /// Which way the carousel last moved, to slide the next item in from that
 /// side.
@@ -52,6 +53,10 @@ pub(crate) struct Carousel {
     pub(crate) focus: FocusHandle,
     /// Where a right click opened its menu.
     pub(crate) menu: Option<Point<Pixels>>,
+    /// How far the photo is zoomed and moved.
+    pub(crate) zoom: Zoom,
+    /// Where the pointer was as the zoomed photo is dragged.
+    pub(crate) dragging: Option<Point<Pixels>>,
     _reading: Task<()>,
     pub(crate) making: Task<()>,
 }
@@ -86,6 +91,8 @@ impl Carousel {
             strip: ScrollHandle::new(),
             focus,
             menu: None,
+            zoom: Zoom::default(),
+            dragging: None,
             _reading: reading,
             making: Task::ready(()),
         }
@@ -147,6 +154,8 @@ impl Carousel {
         self.player = None;
         self.asked = None;
         self.menu = None;
+        self.zoom = Zoom::default();
+        self.dragging = None;
         true
     }
 

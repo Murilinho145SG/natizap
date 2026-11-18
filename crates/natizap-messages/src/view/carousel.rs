@@ -21,8 +21,10 @@ use crate::carousel::{Carousel, Moved, Toward};
 use crate::items::MediaView;
 use crate::library::Library;
 use crate::thumbs;
+use crate::zoom::Zoom;
 
 mod strip;
+mod zoom;
 
 /// Height of the bar over the stage.
 const TOP_BAR: f32 = 56.0;
@@ -180,6 +182,15 @@ impl ConversationView {
         let toward = match event.keystroke.key.as_str() {
             "left" => Toward::Older,
             "right" => Toward::Newer,
+            // Escape first brings a zoomed photo back to fit.
+            "escape" | "0" => {
+                if let Some(carousel) = self.carousel.as_mut().filter(|c| c.zoom.zoomed()) {
+                    carousel.zoom = Zoom::default();
+                    cx.stop_propagation();
+                    cx.notify();
+                }
+                return;
+            }
             _ => return,
         };
         self.step_carousel(toward, cx);
@@ -301,22 +312,22 @@ impl ConversationView {
         let media = carousel.current();
         let id = SharedString::from(format!("carousel-{}", media.fetch.message_id));
         let content = match carousel.player() {
-            Some(player) => div().size_full().child(player.clone()),
-            None => self.still(media, window, cx),
+            Some(player) => div()
+                .size_full()
+                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .child(player.clone()),
+            None => self.still(carousel, media, window, cx),
         };
-        let content = content
-            .id(id.clone())
-            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .on_mouse_down(
-                MouseButton::Right,
-                cx.listener(|this, event: &MouseDownEvent, _, cx| {
-                    if let Some(carousel) = this.carousel.as_mut() {
-                        carousel.menu = Some(event.position);
-                    }
-                    cx.stop_propagation();
-                    cx.notify();
-                }),
-            );
+        let content = content.id(id.clone()).on_mouse_down(
+            MouseButton::Right,
+            cx.listener(|this, event: &MouseDownEvent, _, cx| {
+                if let Some(carousel) = this.carousel.as_mut() {
+                    carousel.menu = Some(event.position);
+                }
+                cx.stop_propagation();
+                cx.notify();
+            }),
+        );
         let content = match carousel.moved {
             Moved::Opened => fade_in(id, content).into_any_element(),
             Moved::Older => slide_in(id, content, -SLIDE).into_any_element(),
@@ -340,7 +351,13 @@ impl ConversationView {
     }
 
     /// A photo, or a video's still while it downloads or its player comes.
-    fn still(&self, media: &MediaView, window: &Window, cx: &mut Context<Self>) -> Div {
+    fn still(
+        &self,
+        carousel: &Carousel,
+        media: &MediaView,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> Div {
         let video = media.fetch.kind == ContentKind::Video;
         let file = on_disk(media).or_else(|| self.log.read(cx).saved_file(&media.fetch));
         let source: Option<ImageSource> = match file {
@@ -352,19 +369,15 @@ impl ConversationView {
                 .map(Into::into)
                 .or_else(|| media.preview.clone().map(Into::into)),
         };
-        let viewport = window.viewport_size();
-        let room_w = f32::from(viewport.width) - 2.0 * SIDE;
-        let room_h = f32::from(viewport.height) - TOP_BAR - strip::HEIGHT - 32.0;
-        // A size the message did not carry takes the whole room.
-        let (width, height) = match media.size {
-            (width, height) if width > 0.0 && height > 0.0 => (width, height),
-            _ => (room_w, room_h),
-        };
-        let scale = (room_w / width).min(room_h / height).max(0.0);
+        let geometry = zoom::Geometry::of(media, window.viewport_size());
+        if let (Some(source), false) = (&source, video) {
+            return zoom::photo(source.clone(), carousel.zoom, geometry, cx);
+        }
         let frame = div()
             .relative()
-            .w(px(width * scale))
-            .h(px(height * scale))
+            .w(px(geometry.fit.x))
+            .h(px(geometry.fit.y))
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .flex()
             .items_center()
             .justify_center();

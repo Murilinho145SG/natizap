@@ -33,6 +33,7 @@ mod thumbs;
 mod view;
 mod voice;
 mod voice_view;
+mod zoom;
 
 pub use log::{ForwardRequested, MessageLog, MessageSent, OpenChat};
 pub use overview::{ChatOverview, MediaTile, TileImage};
