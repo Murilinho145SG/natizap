@@ -16,6 +16,7 @@ use gpui::{
 };
 use unicode_segmentation::UnicodeSegmentation as _;
 
+use crate::copied_files::copied_paths;
 use crate::input_element::TextElement;
 
 actions!(
@@ -223,9 +224,20 @@ impl TextInput {
                 ClipboardEntry::String(_) => {}
             }
         }
+        let text = item.text();
+        if pasted.paths.is_empty() && pasted.images.is_empty() {
+            // GPUI hands over a file manager's copied files only as their
+            // locations, in text; text naming nothing but existing files
+            // is taken as the files.
+            if let Some(paths) = text.as_deref().and_then(copied_paths)
+                && paths.iter().all(|path| path.is_file())
+            {
+                pasted.paths = paths;
+            }
+        }
         if !pasted.paths.is_empty() || !pasted.images.is_empty() {
             cx.emit(pasted);
-        } else if let Some(text) = item.text() {
+        } else if let Some(text) = text {
             self.replace_text_in_range(None, &text.replace('\n', " "), window, cx);
         }
     }

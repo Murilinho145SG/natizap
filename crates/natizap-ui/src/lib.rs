@@ -11,6 +11,7 @@
 mod assets;
 mod avatar;
 mod components;
+mod copied_files;
 mod frame;
 mod gallery;
 mod input;
