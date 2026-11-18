@@ -50,6 +50,8 @@ ffmpeg-next = { version = "9.1", default-features = false, features = [
     "software-scaling",
 ] }
 futures = "0.3"
+# The tray icon on Linux: a StatusNotifierItem over D-Bus, in pure Rust.
+ksni = { version = "0.3", default-features = false, features = ["tokio"] }
 # Must match the version GPUI uses for RenderImage frames.
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 phonenumber = "0.3"
@@ -65,6 +67,8 @@ qrcode = { version = "0.14", default-features = false }
 thiserror = "2"
 tokio = { version = "1", default-features = false, features = ["fs"] }
 tracing = "0.1"
+# The tray icon on Windows: a Win32 notification-area icon and its menu.
+tray-icon = { version = "0.26", default-features = false }
 unicode-segmentation = "1"
 # Already in the tree through whatsapp-rust; fetches releases over rustls.
 ureq = { version = "3", default-features = false, features = ["rustls"] }

@@ -148,6 +148,7 @@ organizing rule of the codebase.
 | `natizap-player`   | feature | The video player the media carousel plays videos on.     |
 | `natizap-profiles` | shared  | Profile pictures: fetched on sight, cached on disk.        |
 | `natizap-ui`       | shared  | Theme, fonts, icons, window frame and the component library. |
+| `natizap-tray`     | feature | The tray icon that reopens or quits natizap.             |
 | `natizap-update`   | feature | Finds, downloads and installs new releases from GitHub.   |
 
 Keep this table current when a crate is added, renamed or removed.

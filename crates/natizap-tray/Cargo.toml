@@ -1,0 +1,25 @@
+[package]
+name = "natizap-tray"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+async-channel.workspace = true
+gpui.workspace = true
+image.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+gpui_tokio.workspace = true
+ksni.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+tray-icon.workspace = true
+
+[lints]
+workspace = true
