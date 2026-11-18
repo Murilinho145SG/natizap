@@ -13,7 +13,7 @@ use natizap_ui::{
 use std::path::PathBuf;
 
 use natizap_profiles::ProfilePictures;
-use natizap_protocol::ChatId;
+use natizap_protocol::{ChatId, ContentKind};
 
 use crate::filters::{Filter, chips, narrowed, search_field};
 use crate::list::{ChatList, ChatRow};
@@ -455,6 +455,7 @@ fn chat_row(row: &ChatRow, picture: Option<PathBuf>, now: DateTime<Local>) -> St
                         .text_size(px(13.5))
                         .line_height(relative(1.3))
                         .text_color(rgb(MUTED))
+                        .children(row.preview_kind.and_then(kind_icon).map(status_icon))
                         .child(
                             div()
                                 .flex_1()
@@ -491,6 +492,23 @@ fn time_label(sent_at: i64, now: DateTime<Local>) -> String {
         _ if sent.year() == now.year() => sent.format("%d/%m").to_string(),
         _ => sent.format("%d/%m/%Y").to_string(),
     }
+}
+
+/// The icon a preview of `kind` shows before its text, as the phone does.
+fn kind_icon(kind: ContentKind) -> Option<Icon> {
+    Some(match kind {
+        ContentKind::Text => return None,
+        ContentKind::Photo => Icon::Camera,
+        ContentKind::Video => Icon::Video,
+        ContentKind::VoiceMessage => Icon::Mic,
+        ContentKind::Audio => Icon::Waveform,
+        ContentKind::Document => Icon::File,
+        ContentKind::Sticker => Icon::Sticker,
+        ContentKind::Location => Icon::Location,
+        ContentKind::Contact => Icon::Contact,
+        ContentKind::Poll => Icon::Poll,
+        ContentKind::MissedVoiceCall | ContentKind::MissedVideoCall => Icon::CallMissed,
+    })
 }
 
 #[cfg(test)]

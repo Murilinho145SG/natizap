@@ -7,7 +7,7 @@ use gpui::{App, AppContext as _, Context, Entity, SharedString, Task};
 use natizap_protocol::Protocol;
 use natizap_protocol::whatsapp_rust::prelude::Event;
 
-use natizap_protocol::{ChatId, Disappearing, Marked, PersonName};
+use natizap_protocol::{ChatId, ContentKind, Disappearing, Marked, PersonName};
 
 use crate::book::{Chat, ChatBook, ChatChange, Mute, Preview};
 use crate::store::ChatStore;
@@ -33,6 +33,8 @@ pub struct ChatRow {
     pub title: SharedString,
     /// The latest message, prefixed with its author in groups.
     pub preview: Option<SharedString>,
+    /// What the latest message was, when not text: a photo, a sticker…
+    pub preview_kind: Option<ContentKind>,
     /// When the latest message was sent, in Unix seconds.
     pub sent_at: Option<i64>,
     /// Unread messages.
@@ -76,10 +78,16 @@ impl ChatRow {
 
     fn new(book: &ChatBook, chat: &Chat, aliases: &[&ChatId], now: i64) -> Self {
         let preview = chat.preview.as_ref().map(|preview| {
+            // Media without a caption reads as what it is.
+            let said = if preview.text.is_empty() {
+                preview.kind.label()
+            } else {
+                &preview.text
+            };
             let text = match (&preview.author, preview.from_me) {
-                (_, true) => format!("You: {}", preview.text),
-                (Some(author), false) => format!("{author}: {}", preview.text),
-                (None, false) => preview.text.clone(),
+                (_, true) => format!("You: {said}"),
+                (Some(author), false) => format!("{author}: {said}"),
+                (None, false) => said.to_owned(),
             };
             let text = Marked::parse(&text).text;
             SharedString::from(first_line(&text).to_owned())
@@ -92,6 +100,11 @@ impl ChatRow {
                 .collect(),
             title: book.title(chat, aliases).into(),
             preview,
+            preview_kind: chat
+                .preview
+                .as_ref()
+                .map(|preview| preview.kind)
+                .filter(|kind| *kind != ContentKind::Text),
             sent_at: chat.preview.as_ref().map(|preview| preview.sent_at),
             unread: chat.unread,
             marked_unread: chat.marked_unread,
@@ -209,9 +222,11 @@ impl ChatList {
     }
 
     /// Reflects a message this computer sent in `chat`, before WhatsApp
-    /// echoes it back.
-    pub fn record_sent(&self, chat: ChatId, text: String, sent_at: i64) {
+    /// echoes it back: what it was, and its text or caption (empty for
+    /// none).
+    pub fn record_sent(&self, chat: ChatId, kind: ContentKind, text: String, sent_at: i64) {
         let preview = Preview {
+            kind,
             text,
             sent_at,
             from_me: true,

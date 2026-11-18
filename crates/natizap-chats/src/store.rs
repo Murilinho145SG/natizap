@@ -2,7 +2,7 @@ use std::path::Path;
 
 use rusqlite::{Connection, Row, params};
 
-use natizap_protocol::ChatId;
+use natizap_protocol::{ChatId, ContentKind};
 
 use crate::book::{Chat, ChatBook, Dirty, Mute, Person, Preview};
 
@@ -45,6 +45,9 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE people ADD COLUMN business_name TEXT;
     ALTER TABLE people ADD COLUMN verified INTEGER NOT NULL DEFAULT 0;",
     "ALTER TABLE chats ADD COLUMN disappearing INTEGER;",
+    // What the last message was. Older previews leave it empty and spell
+    // it in their text instead ("Photo: caption"), read by `legacy_preview`.
+    "ALTER TABLE chats ADD COLUMN preview_kind TEXT;",
 ];
 
 /// `muted_until` value for [`Mute::Forever`].
@@ -121,8 +124,8 @@ impl ChatStore {
             let mut upsert = tx.prepare_cached(
                 "INSERT OR REPLACE INTO chats (id, subject, preview_text, preview_sent_at,
                  preview_from_me, preview_author, active_at, unread, marked_unread, pinned_at,
-                 muted_until, archived, disappearing)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                 muted_until, archived, disappearing, preview_kind)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             )?;
             let mut delete = tx.prepare_cached("DELETE FROM chats WHERE id = ?1")?;
             for id in &dirty.chats {
@@ -146,6 +149,7 @@ impl ChatStore {
                             }),
                             chat.archived,
                             chat.disappearing,
+                            preview.map(|p| p.kind.label()),
                         ])?;
                     }
                     None => {
@@ -194,14 +198,45 @@ fn migrate(connection: &Connection) -> rusqlite::Result<()> {
     Ok(())
 }
 
+/// What an older preview, saved before the kind had a column, was: its
+/// text is the kind's label alone, or the label and a caption
+/// ("Photo: caption"), or plain text.
+fn legacy_preview(text: String) -> (ContentKind, String) {
+    ContentKind::ALL
+        .into_iter()
+        .filter(|kind| *kind != ContentKind::Text)
+        .find_map(|kind| {
+            let label = kind.label();
+            if text == label {
+                Some((kind, String::new()))
+            } else {
+                text.strip_prefix(label)
+                    .and_then(|rest| rest.strip_prefix(": "))
+                    .map(|caption| (kind, caption.to_owned()))
+            }
+        })
+        .unwrap_or((ContentKind::Text, text))
+}
+
 fn chat_from_row(row: &Row<'_>) -> rusqlite::Result<Chat> {
     let preview = match row.get::<_, Option<String>>("preview_text")? {
-        Some(text) => Some(Preview {
-            text,
-            sent_at: row.get("preview_sent_at")?,
-            from_me: row.get("preview_from_me")?,
-            author: row.get("preview_author")?,
-        }),
+        Some(text) => {
+            let kind = row
+                .get::<_, Option<String>>("preview_kind")?
+                .as_deref()
+                .and_then(ContentKind::from_label);
+            let (kind, text) = match kind {
+                Some(kind) => (kind, text),
+                None => legacy_preview(text),
+            };
+            Some(Preview {
+                kind,
+                text,
+                sent_at: row.get("preview_sent_at")?,
+                from_me: row.get("preview_from_me")?,
+                author: row.get("preview_author")?,
+            })
+        }
         None => None,
     };
     Ok(Chat {
@@ -255,12 +290,29 @@ mod tests {
     }
 
     #[test]
+    fn reads_what_older_previews_spelled_in_their_text() {
+        assert_eq!(
+            legacy_preview("Sticker".into()),
+            (ContentKind::Sticker, String::new())
+        );
+        assert_eq!(
+            legacy_preview("Photo: beach day".into()),
+            (ContentKind::Photo, "beach day".into())
+        );
+        assert_eq!(
+            legacy_preview("Photographs are nice".into()),
+            (ContentKind::Text, "Photographs are nice".into())
+        );
+    }
+
+    #[test]
     fn round_trips_chats_aliases_and_deletions() -> rusqlite::Result<()> {
         let mut store = ChatStore::in_memory()?;
         let mut book = ChatBook::default();
         let lid = ChatId::new("1@lid");
         let phone = ChatId::new("1@s.whatsapp.net");
         let preview = Preview {
+            kind: ContentKind::Text,
             text: "hi".into(),
             sent_at: 7,
             from_me: false,

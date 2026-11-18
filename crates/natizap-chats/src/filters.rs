@@ -125,6 +125,7 @@ mod tests {
             addresses: Arc::from([ChatId::new(id)]),
             title: title.to_owned().into(),
             preview: None,
+            preview_kind: None,
             sent_at: None,
             unread,
             marked_unread: false,

@@ -86,6 +86,8 @@ icons! {
     Emoji => "emoji.svg",
     /// Change something written, e.g. your name.
     Edit => "edit.svg",
+    /// A shared or live location.
+    Location => "location.svg",
     /// A document.
     File => "file.svg",
     /// Forward a message to another chat.

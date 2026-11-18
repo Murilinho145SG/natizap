@@ -138,10 +138,8 @@ impl MessageLog {
         self.send_input(Input::from(MessageChange::Sending(message)));
         cx.emit(MessageSent {
             chat: chat.clone(),
-            text: outgoing
-                .caption
-                .clone()
-                .unwrap_or_else(|| outgoing.kind.label().to_owned()),
+            kind: outgoing.kind,
+            text: outgoing.caption.clone().unwrap_or_default(),
             sent_at,
         });
 

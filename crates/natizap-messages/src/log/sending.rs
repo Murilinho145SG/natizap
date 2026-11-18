@@ -11,7 +11,6 @@ use natizap_protocol::{
 };
 
 use super::{ForwardRequested, Input, MessageLog, MessageSent};
-use crate::items::summary;
 use crate::message::{Delivery, Message, MessageChange};
 
 impl MessageLog {
@@ -26,6 +25,7 @@ impl MessageLog {
         self.send_input(Input::from(MessageChange::Sending(message)));
         cx.emit(MessageSent {
             chat: chat.clone(),
+            kind: ContentKind::Text,
             text: text.clone(),
             sent_at,
         });
@@ -48,7 +48,8 @@ impl MessageLog {
         message.extra = Some(extra.clone());
         cx.emit(MessageSent {
             chat: chat.clone(),
-            text: summary(&message),
+            kind: message.kind,
+            text: message.text.clone().unwrap_or_default(),
             sent_at,
         });
         self.send_input(Input::from(MessageChange::Sending(message)));
@@ -128,11 +129,8 @@ impl MessageLog {
             self.send_input(Input::from(MessageChange::Sending(message)));
             cx.emit(MessageSent {
                 chat: chat.clone(),
-                text: request
-                    .forward
-                    .text
-                    .clone()
-                    .unwrap_or_else(|| request.forward.kind.label().to_owned()),
+                kind: request.forward.kind,
+                text: request.forward.text.clone().unwrap_or_default(),
                 sent_at,
             });
             let sending = self
@@ -179,7 +177,8 @@ impl MessageLog {
         self.send_input(Input::from(MessageChange::Sending(message)));
         cx.emit(MessageSent {
             chat: chat.clone(),
-            text: ContentKind::Sticker.label().to_owned(),
+            kind: ContentKind::Sticker,
+            text: String::new(),
             sent_at,
         });
         let sending = self

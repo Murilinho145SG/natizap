@@ -1,11 +1,13 @@
 use std::collections::{HashMap, HashSet};
 
-use natizap_protocol::{ChatId, PersonName};
+use natizap_protocol::{ChatId, ContentKind, PersonName};
 
 /// The latest message of a chat, as shown under its name.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Preview {
-    /// Text or a short description of the content, e.g. "Photo".
+    /// What it is: text, a photo, a sticker…
+    pub(crate) kind: ContentKind,
+    /// Its text, a caption or a file's name; empty when it has none.
     pub(crate) text: String,
     /// When it was sent, in Unix seconds.
     pub(crate) sent_at: i64,
@@ -453,6 +455,7 @@ mod tests {
 
     fn message(text: &str, sent_at: i64, from_me: bool) -> Preview {
         Preview {
+            kind: ContentKind::Text,
             text: text.into(),
             sent_at,
             from_me,

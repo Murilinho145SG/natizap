@@ -2,7 +2,7 @@
 
 use natizap_protocol::whatsapp_rust::prelude::{Event, EventKind, MessageExt as _, wa};
 use natizap_protocol::whatsapp_rust::types::events::{InboundMessage, LazyHistorySync};
-use natizap_protocol::{ChatId, Content};
+use natizap_protocol::{ChatId, Content, ContentKind};
 
 use crate::book::{ChatChange, HistoryChat, Mute, Preview};
 
@@ -139,13 +139,14 @@ fn message_changes(inbound: &InboundMessage) -> Vec<ChatChange> {
         }
     }
 
-    if let Some(text) = Content::of(&inbound.message).map(|content| content.summary()) {
+    if let Some((kind, text)) = Content::of(&inbound.message).map(|content| preview_of(&content)) {
         let author = (source.is_group && !source.is_from_me)
             .then(|| inbound.info.push_name.clone())
             .filter(|name| !name.is_empty());
         changes.push(ChatChange::Message(
             chat,
             Preview {
+                kind,
                 text,
                 sent_at: inbound.info.timestamp.timestamp(),
                 from_me: source.is_from_me,
@@ -205,13 +206,29 @@ fn history_changes(history: &LazyHistorySync) -> Vec<ChatChange> {
     changes
 }
 
+/// What a message shows as its chat's preview: its kind, and its text,
+/// caption or file name.
+fn preview_of(content: &Content) -> (ContentKind, String) {
+    let text = content
+        .text
+        .clone()
+        .or_else(|| {
+            content
+                .media
+                .as_ref()
+                .and_then(|media| media.file_name.clone())
+        })
+        .unwrap_or_default();
+    (content.kind, text)
+}
+
 fn history_chat(conversation: &wa::Conversation, is_group: bool) -> HistoryChat {
     let preview = conversation
         .messages
         .iter()
         .filter_map(|entry| entry.message.as_option())
         .filter_map(|info| {
-            let text = Content::of(info.message.as_option()?)?.summary();
+            let (kind, text) = preview_of(&Content::of(info.message.as_option()?)?);
             let from_me = info
                 .key
                 .as_option()
@@ -221,6 +238,7 @@ fn history_chat(conversation: &wa::Conversation, is_group: bool) -> HistoryChat 
                 .then(|| info.push_name.clone())
                 .flatten();
             Some(Preview {
+                kind,
                 text,
                 sent_at: timestamp(info.message_timestamp),
                 from_me,

@@ -6,7 +6,9 @@ use chrono::Local;
 use gpui::{App, AppContext as _, Context, Entity, EventEmitter, SharedString, Task};
 use natizap_protocol::whatsapp_rust::prelude::Event;
 use natizap_protocol::whatsapp_rust::types::events::EventKind;
-use natizap_protocol::{Anchor, ChatId, Forward, GroupInfo, PersonName, Protocol, Unread};
+use natizap_protocol::{
+    Anchor, ChatId, ContentKind, Forward, GroupInfo, PersonName, Protocol, Unread,
+};
 
 use crate::items::{Item, Members};
 use crate::library::Library;
@@ -53,7 +55,9 @@ pub struct OpenChat {
 pub struct MessageSent {
     /// The chat it went to.
     pub chat: ChatId,
-    /// What was sent.
+    /// What it was: text, a photo, a sticker…
+    pub kind: ContentKind,
+    /// Its text or caption; empty when it has none.
     pub text: String,
     /// When, in Unix seconds.
     pub sent_at: i64,

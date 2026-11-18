@@ -120,9 +120,12 @@ impl Root {
         .detach();
         let sent_chats = chats.clone();
         cx.subscribe(messages, move |_, _, sent: &MessageSent, cx| {
-            sent_chats
-                .read(cx)
-                .record_sent(sent.chat.clone(), sent.text.clone(), sent.sent_at);
+            sent_chats.read(cx).record_sent(
+                sent.chat.clone(),
+                sent.kind,
+                sent.text.clone(),
+                sent.sent_at,
+            );
         })
         .detach();
         cx.subscribe_in(
