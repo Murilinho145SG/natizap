@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, Context, Div, Entity, FontWeight, MouseButton, NavigationDirection, Window, div,
-    px, rgb,
+    AnyElement, Context, Div, Entity, FontWeight, MouseButton, NavigationDirection, SharedString,
+    Window, div, px, rgb,
 };
 use natizap_chats::{
     ChatList, ChatListView, ChatPicker, ChatRow, ChatSelected, ChatsPicked, PickerDismissed,
@@ -19,6 +19,7 @@ use natizap_player::{PlayerClosed, PlayerView};
 use natizap_profiles::ProfilePictures;
 use natizap_protocol::{Card, ChatId, Extra, PersonName, Protocol};
 use natizap_session::{PairingView, Session, SessionState};
+use natizap_ui::motion::slide_in;
 use natizap_ui::theme::{ACCENT, ALERT, DISPLAY_FONT, LINE, MINT, MUTED, TEXT, base_font};
 use natizap_ui::{Alert, AlertTone, window_frame};
 
@@ -401,11 +402,15 @@ impl Root {
                     .child(self.chat_list.clone()),
             )
             .child(div().flex_1().h_full().child(self.conversation.clone()))
-            .children(
-                self.profile
-                    .clone()
-                    .map(|profile| div().w(px(380.0)).h_full().flex_none().child(profile)),
-            )
+            .children(self.profile.clone().map(|profile| {
+                // Each profile slides in from the side it opens on.
+                let id = SharedString::from(format!("profile-{}", profile.entity_id()));
+                slide_in(
+                    id,
+                    div().w(px(380.0)).h_full().flex_none().child(profile),
+                    24.0,
+                )
+            }))
             .children(self.picker.clone())
             .children(self.settings.clone())
             // Chats stay readable offline, so the news floats over them
