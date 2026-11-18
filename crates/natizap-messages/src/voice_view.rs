@@ -51,6 +51,7 @@ pub(crate) fn render_voice(
 
     div()
         .w(px(340.0))
+        .max_w_full()
         .flex()
         .items_center()
         .gap_2p5()

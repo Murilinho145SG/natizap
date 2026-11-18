@@ -93,6 +93,7 @@ pub(crate) fn render_media(media: &MediaView, view: &WeakEntity<ConversationView
             div()
                 .id("media")
                 .w(px(DOCUMENT_WIDTH))
+                .max_w_full()
                 .flex()
                 .flex_col()
                 .rounded(px(10.0))
@@ -131,9 +132,12 @@ fn picture(media: &MediaView) -> Div {
         (_, Some(preview)) => Some(preview.clone().into()),
         _ => None,
     };
+    // Its own size when the chat has room, narrower in a narrow window,
+    // keeping its shape either way.
     div()
         .w(px(width))
-        .h(px(height))
+        .max_w_full()
+        .aspect_ratio(width / height)
         .rounded(px(11.0))
         .overflow_hidden()
         .when(media.fetch.kind != ContentKind::Sticker, |frame| {
@@ -147,7 +151,13 @@ fn picture(media: &MediaView) -> Div {
             };
             // Rounded on the image itself: the frame's overflow clips to
             // its rectangle, not its rounded corners.
-            img(source).size_full().rounded(px(11.0)).object_fit(fit)
+            // The frame's shape, given outright: left to itself, an image
+            // sized in relative units takes the picture's own shape.
+            img(source)
+                .size_full()
+                .aspect_ratio(width / height)
+                .rounded(px(11.0))
+                .object_fit(fit)
         }))
 }
 

@@ -294,6 +294,9 @@ fn shape(
 
 /// A photo or video filling its bubble but for a thin rim, as on the
 /// phone: the time sits on the picture, or beside the caption if any.
+/// The bubble's padding around a picture.
+const PICTURE_PADDING: f32 = 3.0;
+
 fn picture_bubble(
     bubble: &Bubble,
     media: &MediaView,
@@ -311,10 +314,10 @@ fn picture_bubble(
     let (picture, caption) = match caption {
         Some(text) => {
             let (shown, hits) = rich_text(&bubble.id, text, view, focus);
-            // As wide as the picture, so long captions wrap under it
-            // instead of spilling past the bubble.
+            // As wide as the bubble, which is as wide as the picture, so
+            // long captions wrap under it instead of spilling past it.
             let caption = div()
-                .w(px(media.size.0))
+                .w_full()
                 .px(px(7.0))
                 .pb(px(3.0))
                 .flex()
@@ -343,8 +346,13 @@ fn picture_bubble(
             None,
         ),
     };
+    // A width of its own, the picture's and its padding, narrowing with
+    // the window: a caption measured against anything wider wraps into
+    // more lines than were laid out and spills out of the bubble.
     frame(bubble)
-        .p(px(3.0))
+        .w(px(media.size.0 + 2.0 * PICTURE_PADDING))
+        .max_w_full()
+        .p(px(PICTURE_PADDING))
         .gap_1()
         .children(author(bubble, view).map(|name| name.px(px(7.0)).pt(px(2.0))))
         .children(forwarded(bubble).map(|line| line.px(px(7.0))))
