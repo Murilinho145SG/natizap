@@ -1,10 +1,10 @@
 use gpui::prelude::*;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use gpui::{
     ClipboardItem, Context, Div, Entity, EventEmitter, ExternalPaths, FocusHandle, Focusable as _,
-    FontWeight, KeyDownEvent, ListAlignment, ListState, MouseButton, Pixels, Point, SharedString,
-    Window, anchored, deferred, div, list, px, rgb, svg,
+    FontWeight, KeyDownEvent, ListAlignment, ListState, Pixels, Point, SharedString, Window,
+    anchored, deferred, div, px, rgb, svg,
 };
 use natizap_playback::{Recorder, Speed};
 use natizap_profiles::ProfilePictures;
@@ -12,24 +12,26 @@ use natizap_protocol::{ChatId, Reply};
 use natizap_ui::theme::{ACCENT, LINE, MUTED, PANE};
 use natizap_ui::{FilesPasted, Icon, Submitted, TextInput, name_color};
 
-use crate::bubble::render_item;
 use crate::emoji::{EmojiPicked, EmojiPicker};
 use crate::items::{Bubble, Item, MediaView};
 use crate::log::{MessageLog, SoundReady};
 use crate::media_browser::MediaBrowser;
 use crate::poll_composer::PollComposer;
-use crate::rich_text::{HoveredLink, Selection, TextFocus};
+use crate::rich_text::{HoveredLink, Selection};
 use crate::send_preview::SendPreview;
 use crate::voice::Voices;
 
+mod arrivals;
 mod attach;
 mod composer;
 mod drop;
 mod header;
+mod list;
 mod message_menu;
 mod recorder;
 mod viewer;
 
+use arrivals::Arrivals;
 pub use attach::ContactsRequested;
 use drop::drop_zone;
 use header::header;
@@ -38,6 +40,9 @@ use message_menu::MessagePopup;
 
 /// Width of the column a community's announcements read in.
 const CENTERED_WIDTH: f32 = 720.0;
+
+/// How far a message that just arrived rises into place, in pixels.
+const ARRIVAL_RISE: f32 = 14.0;
 
 /// How often a playing note's bubble is redrawn: often enough for the
 /// waveform and clock, far less than every frame.
@@ -73,6 +78,8 @@ pub struct ConversationView {
     selection: Option<Selection>,
     /// The link the pointer rests on.
     hovered_link: Option<HoveredLink>,
+    /// Messages that just arrived, to animate in.
+    arrivals: Arrivals,
     /// The photo shown large.
     viewing: Option<MediaView>,
     /// Where the header's menu is open.
@@ -199,6 +206,7 @@ impl ConversationView {
             poll_draft: None,
             selection: None,
             hovered_link: None,
+            arrivals: Arrivals::default(),
             viewing: None,
             chat_menu: None,
             recorder: None,
@@ -210,13 +218,23 @@ impl ConversationView {
     }
 
     fn follow(&mut self, log: &Entity<MessageLog>, window: &mut Window, cx: &mut Context<Self>) {
-        let (open, count) = {
+        let (open, items) = {
             let log = log.read(cx);
             let open = log
                 .open_chat()
                 .map(|chat| SharedString::from(chat.id.as_str().to_owned()));
-            (open, log.items().len())
+            (open, log.items().clone())
         };
+        let count = items.len();
+        let ids = items.iter().filter_map(|item| match item {
+            Item::Bubble(bubble) => Some(&bubble.id),
+            Item::Day(_) => None,
+        });
+        if open == self.shown_chat {
+            self.arrivals.saw(ids, Instant::now());
+        } else {
+            self.arrivals.reset(ids);
+        }
         if open != self.shown_chat {
             self.shown_chat = open;
             self.replying = None;
@@ -489,66 +507,8 @@ impl Render for ConversationView {
         let Some(chat) = log.open_chat().cloned() else {
             return placeholder().into_any_element();
         };
-        let items = log.items().clone();
         let pinned = log.pinned().cloned();
-        let pictures = self.pictures.clone();
-        // A community's announcements read as a column down the middle, as
-        // on the phone.
-        let centered = log
-            .group()
-            .is_some_and(|group| group.community_announcements);
-        let view = cx.weak_entity();
-        let reacting = self.reacting.clone();
-        let voice = self.voices.ui();
-        let focus = TextFocus {
-            selection: self.selection.clone(),
-            hovered_link: self.hovered_link.clone(),
-        };
-
-        let messages = div()
-            .flex_1()
-            .min_h_0()
-            .flex()
-            .flex_col()
-            .items_center()
-            // A press anywhere drops the selected text; one on a
-            // message's text then starts a new selection.
-            .capture_any_mouse_down(cx.listener(|this, _, _, cx| {
-                if this.selection.take().is_some() {
-                    cx.notify();
-                }
-            }))
-            // Clicking the conversation closes the emoji picker; the
-            // quick reactions close themselves.
-            .on_mouse_down(
-                MouseButton::Left,
-                cx.listener(|this, _, _, cx| {
-                    if this.picking_emoji {
-                        this.picking_emoji = false;
-                        cx.notify();
-                    }
-                }),
-            )
-            .child(
-                list(self.messages.clone(), move |index, _, cx| {
-                    let Some(item) = items.get(index) else {
-                        return div().into_any_element();
-                    };
-                    // Only a burst's first message shows its sender.
-                    let picture = match item {
-                        Item::Bubble(bubble) => bubble.author.as_ref().and_then(|author| {
-                            pictures.update(cx, |pictures, cx| pictures.picture(&author.id, cx))
-                        }),
-                        Item::Day(_) => None,
-                    };
-                    render_item(item, &view, reacting.as_ref(), &voice, &focus, picture)
-                })
-                .h_full()
-                .w_full()
-                .py_3()
-                .when(centered, |list| list.max_w(px(CENTERED_WIDTH)).px_4())
-                .when(!centered, |list| list.px(px(56.0))),
-            );
+        let messages = self.message_list(&chat.id, cx);
 
         div()
             .size_full()

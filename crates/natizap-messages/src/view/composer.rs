@@ -5,10 +5,11 @@ use std::path::PathBuf;
 
 use gpui::prelude::*;
 use gpui::{
-    ClickEvent, Context, Div, Focusable as _, MouseButton, PathPromptOptions, Stateful, Window,
-    deferred, div, px, relative, rgb, svg,
+    ClickEvent, Context, Div, Focusable as _, MouseButton, PathPromptOptions, SharedString,
+    Stateful, Window, deferred, div, px, relative, rgb, svg,
 };
 use natizap_protocol::ContentKind;
+use natizap_ui::motion::{fade_in, rise_in};
 use natizap_ui::theme::{LINE, MUTED, PANEL, RAISED, TEXT, glass};
 use natizap_ui::{Button, ButtonSize, ButtonVariant, FilesPasted, Icon};
 
@@ -225,12 +226,22 @@ impl ConversationView {
                         .left_4()
                         .mb_2()
                         .occlude()
-                        .child(self.emoji_picker.clone()),
+                        .child(rise_in(
+                            "emoji-picker-in",
+                            div().child(self.emoji_picker.clone()),
+                            8.0,
+                        )),
                 ))
             })
-            .children(self.reply_bar(cx))
+            .children(self.reply_bar(cx).map(|bar| {
+                let id = self
+                    .replying
+                    .as_ref()
+                    .map_or_default(|replying| replying.reply.id.clone());
+                rise_in(SharedString::from(format!("reply-{id}")), bar, 8.0)
+            }))
             .when(self.recording(), |composer| {
-                composer.child(self.recording_bar(cx))
+                composer.child(rise_in("recording-in", self.recording_bar(cx), 8.0))
             })
             .when(!self.recording(), |composer| {
                 composer.child(self.writing_bar(cx))
@@ -281,6 +292,15 @@ impl ConversationView {
                     .text_color(rgb(TEXT))
                     .child(self.composer.clone()),
             )
-            .child(self.send_or_record(cx))
+            // Send and record swap places as the field fills and empties;
+            // each fades in, so the swap reads as one control changing.
+            .child(fade_in(
+                if self.composer.read(cx).text().trim().is_empty() {
+                    "record-in"
+                } else {
+                    "send-in"
+                },
+                div().child(self.send_or_record(cx)),
+            ))
     }
 }
