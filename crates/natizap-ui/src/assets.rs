@@ -62,6 +62,8 @@ icons! {
     Clock => "clock.svg",
     /// A photo.
     Camera => "camera.svg",
+    /// A call nobody answered.
+    CallMissed => "call-missed.svg",
     /// A conversation.
     Chats => "chats.svg",
     /// Close the window.
