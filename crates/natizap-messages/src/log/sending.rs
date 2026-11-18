@@ -72,6 +72,7 @@ impl MessageLog {
                     local_id,
                     id: sent.id,
                     media: None,
+                    secret: sent.secret,
                 },
                 Err(error) => {
                     tracing::warn!(%error, "message not sent");
@@ -145,6 +146,7 @@ impl MessageLog {
                         local_id,
                         id: sent.id,
                         media: None,
+                        secret: sent.secret,
                     },
                     Err(error) => {
                         tracing::warn!(%error, "message not forwarded");
@@ -193,6 +195,7 @@ impl MessageLog {
                     local_id,
                     id: sent.id,
                     media: Some(sent.media),
+                    secret: None,
                 },
                 Err(error) => {
                     tracing::warn!(%error, "sticker not sent");
@@ -234,6 +237,7 @@ pub(super) fn outgoing_message(
         extra: None,
         forwarding: None,
         link: None,
+        secret: None,
         quote: reply.map(|reply| Quote {
             id: reply.id.clone(),
             sender: reply.sender.clone(),

@@ -1,7 +1,7 @@
 use super::*;
 use std::path::PathBuf;
 
-use natizap_protocol::{ContentKind, HdThumbnail, LinkPreview};
+use natizap_protocol::{ContentKind, Extra, HdThumbnail, LinkPreview, Poll};
 
 fn message(chat: &str, id: &str, sent_at: i64, text: &str) -> Message {
     Message {
@@ -25,6 +25,7 @@ fn message(chat: &str, id: &str, sent_at: i64, text: &str) -> Message {
         extra: None,
         forwarding: None,
         link: None,
+        secret: None,
     }
 }
 
@@ -205,6 +206,7 @@ fn a_sent_message_takes_its_real_id_once_accepted() -> rusqlite::Result<()> {
         local_id: "local-1".into(),
         id: "3EB0".into(),
         media: None,
+        secret: None,
     }])?;
 
     let messages = store.latest(std::slice::from_ref(&chat), 10)?;
@@ -243,6 +245,7 @@ fn a_sent_file_records_where_it_was_uploaded() -> rusqlite::Result<()> {
         local_id: "local-2".into(),
         id: "3EB1".into(),
         media: Some(uploaded),
+        secret: None,
     }])?;
 
     let stored = store.latest(std::slice::from_ref(&chat), 1)?.remove(0);
@@ -389,5 +392,51 @@ fn counts_how_far_back_a_message_lies() -> rusqlite::Result<()> {
     let chats = [ChatId::new("1@lid"), ChatId::new("1@s.whatsapp.net")];
     assert_eq!(store.count_since(&chats, 20)?, 2);
     assert_eq!(store.count_since(&chats, 0)?, 3);
+    Ok(())
+}
+
+#[test]
+fn keeps_each_voters_latest_vote_on_a_poll() -> rusqlite::Result<()> {
+    let mut store = MessageStore::in_memory()?;
+    let mut poll = message("1@g.us", "poll", 10, "");
+    poll.kind = ContentKind::Poll;
+    poll.extra = Some(Extra::Poll(Poll {
+        question: "Lunch?".into(),
+        options: vec!["Pizza".into(), "Sushi".into()],
+        multiple: false,
+    }));
+    poll.secret = Some(vec![7; 32]);
+    let vote = |voter: Option<&str>, options: &[&str], cast_at| MessageChange::Voted {
+        poll_id: "poll".into(),
+        voter: voter.map(ChatId::new),
+        options: options.iter().map(|&option| option.to_owned()).collect(),
+        cast_at,
+    };
+    store.apply(&[
+        MessageChange::Received(poll.clone()),
+        vote(Some("2@lid"), &["Pizza"], 100),
+        vote(Some("2@lid"), &["Sushi"], 200),
+        // Delivered late: older than the vote it would replace.
+        vote(Some("2@lid"), &["Pizza"], 150),
+        vote(Some("3@lid"), &["Pizza"], 100),
+        vote(Some("3@lid"), &[], 300),
+        vote(None, &["Sushi"], 100),
+    ])?;
+
+    let mut votes = store.votes(&[poll])?.remove("poll").unwrap_or_default();
+    votes.sort_by_key(|vote| vote.mine);
+    assert_eq!(
+        votes,
+        [
+            Vote {
+                options: vec!["Sushi".into()],
+                mine: false
+            },
+            Vote {
+                options: vec!["Sushi".into()],
+                mine: true
+            },
+        ]
+    );
     Ok(())
 }

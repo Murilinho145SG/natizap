@@ -18,6 +18,7 @@ mod media_view;
 mod message;
 mod outbox;
 mod overview;
+mod poll;
 mod poll_composer;
 mod presence;
 mod preview;

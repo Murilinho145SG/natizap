@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 
-use natizap_protocol::{ChatId, ContentKind, Extra, Forwarding, LinkPreview, Media, Quote};
+use natizap_protocol::{
+    ChatId, ContentKind, Extra, Forwarding, LinkPreview, Media, Quote, SealedVote,
+};
 
 /// How far a message this account sent has gone. Received messages are
 /// always [`Delivery::Sent`].
@@ -96,6 +98,8 @@ pub(crate) struct Message {
     pub(crate) forwarding: Option<Forwarding>,
     /// The preview of a link in the text, as the sender's phone made it.
     pub(crate) link: Option<LinkPreview>,
+    /// The secret votes on a poll are sealed with.
+    pub(crate) secret: Option<Vec<u8>>,
 }
 
 /// One fact learned about the messages.
@@ -122,6 +126,8 @@ pub(crate) enum MessageChange {
         local_id: String,
         id: String,
         media: Option<Media>,
+        /// A poll's secret, chosen as it was sent.
+        secret: Option<Vec<u8>>,
     },
     /// WhatsApp did not accept a message.
     Rejected { chat: ChatId, local_id: String },
@@ -158,6 +164,19 @@ pub(crate) enum MessageChange {
         reactor: Option<ChatId>,
         emoji: Option<String>,
     },
+    /// Someone voted on a poll, replacing their earlier vote; no options
+    /// take it back. `voter` is `None` for this account. Matched by poll id
+    /// alone; a vote older than the one kept is ignored.
+    Voted {
+        poll_id: String,
+        voter: Option<ChatId>,
+        options: Vec<String>,
+        /// When it was cast, in Unix milliseconds.
+        cast_at: i64,
+    },
+    /// A vote arrived still sealed; it is opened with its poll's secret
+    /// before it is kept.
+    VoteArrived(SealedVote),
 }
 
 /// One reaction on a message.
@@ -183,7 +202,9 @@ impl MessageChange {
             | Self::MediaSaved { .. }
             | Self::PosterSaved { .. }
             | Self::Starred { .. }
-            | Self::Pinned { .. } => None,
+            | Self::Pinned { .. }
+            | Self::Voted { .. }
+            | Self::VoteArrived(_) => None,
         }
     }
 }

@@ -1,5 +1,5 @@
-//! What the user does to messages already in a chat: react, delete, star
-//! and pin. Each applies locally at once and is sent on in the background.
+//! What the user does to messages already in a chat: react, vote, delete,
+//! star and pin. Each applies locally at once and is sent on in the background.
 
 use chrono::Local;
 use gpui::{AppContext as _, Context};
@@ -7,6 +7,7 @@ use natizap_protocol::{ChatId, PinFor};
 
 use super::{Input, MessageLog};
 use crate::message::MessageChange;
+use crate::poll::Ballot;
 
 impl MessageLog {
     /// Deletes this account's own message in the open chat for everyone.
@@ -139,6 +140,31 @@ impl MessageLog {
         cx.background_spawn(async move {
             if let Err(error) = reacting.await {
                 tracing::warn!(%error, "reaction not sent");
+            }
+        })
+        .detach();
+    }
+
+    /// Votes for `options` on the poll `ballot` is for, replacing this
+    /// account's earlier vote; no options take it back.
+    pub(crate) fn vote(&mut self, ballot: &Ballot, options: Vec<String>, cx: &mut Context<Self>) {
+        self.send_input(Input::from(MessageChange::Voted {
+            poll_id: ballot.poll_id.clone(),
+            voter: None,
+            options: options.clone(),
+            cast_at: Local::now().timestamp_millis(),
+        }));
+        let voting = self.protocol.read(cx).vote(
+            &ballot.chat,
+            ballot.poll_id.clone(),
+            ballot.creator.as_ref(),
+            ballot.secret.to_vec(),
+            options,
+            cx,
+        );
+        cx.background_spawn(async move {
+            if let Err(error) = voting.await {
+                tracing::warn!(%error, "vote not sent");
             }
         })
         .detach();

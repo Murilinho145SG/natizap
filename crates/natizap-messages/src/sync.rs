@@ -3,7 +3,7 @@
 use natizap_protocol::whatsapp_rust::prelude::{Event, EventKind, MessageExt as _, wa};
 use natizap_protocol::whatsapp_rust::types::events::{InboundMessage, LazyHistorySync};
 use natizap_protocol::whatsapp_rust::types::presence::ReceiptType;
-use natizap_protocol::{ChatId, Content, ContentKind, MissedCall, Ringing};
+use natizap_protocol::{ChatId, Content, ContentKind, Extra, MissedCall, Ringing, SealedVote};
 
 use crate::message::{Delivery, Message, MessageChange};
 
@@ -64,6 +64,7 @@ fn missed_call(call: MissedCall) -> MessageChange {
         extra: None,
         forwarding: None,
         link: None,
+        secret: None,
         media_file: None,
         media_poster: None,
         starred: false,
@@ -115,6 +116,10 @@ fn live_change(inbound: &InboundMessage) -> Option<MessageChange> {
             reactor: (!source.is_from_me).then(|| ChatId::new(&source.sender.to_string())),
             emoji: reaction.text.clone(),
         });
+    }
+
+    if let Some(vote) = SealedVote::of(inbound) {
+        return Some(MessageChange::VoteArrived(vote));
     }
 
     if let Some(pin) = base.pin_in_chat_message.as_option() {
@@ -174,6 +179,7 @@ fn live_change(inbound: &InboundMessage) -> Option<MessageChange> {
         extra: content.extra,
         forwarding: content.forwarding,
         link: content.link,
+        secret: content.secret,
         media_file: None,
         media_poster: None,
         starred: false,
@@ -250,9 +256,41 @@ fn history_message(chat: &ChatId, info: &wa::WebMessageInfo) -> Vec<MessageChang
             emoji: reaction.text.clone(),
         })
     });
-    history_content(chat, info)
-        .into_iter()
-        .chain(reactions)
+    let content = history_content(chat, info);
+    let votes = history_votes(chat, &id, info, content.as_ref());
+    content.into_iter().chain(reactions).chain(votes).collect()
+}
+
+/// The votes the phone kept with a poll in the history, already opened.
+fn history_votes(
+    chat: &ChatId,
+    poll_id: &str,
+    info: &wa::WebMessageInfo,
+    poll: Option<&MessageChange>,
+) -> Vec<MessageChange> {
+    let Some(MessageChange::Received(Message {
+        extra: Some(Extra::Poll(poll)),
+        ..
+    })) = poll
+    else {
+        return Vec::new();
+    };
+    info.poll_updates
+        .iter()
+        .filter_map(|update| {
+            let key = update.poll_update_message_key.as_option()?;
+            let vote = update.vote.as_option()?;
+            Some(MessageChange::Voted {
+                poll_id: poll_id.to_owned(),
+                voter: (!key.from_me.unwrap_or(false)).then(|| {
+                    key.participant
+                        .as_deref()
+                        .map_or_else(|| chat.clone(), ChatId::new)
+                }),
+                options: poll.chosen(&vote.selected_options),
+                cast_at: update.sender_timestamp_ms.unwrap_or_default(),
+            })
+        })
         .collect()
 }
 
@@ -277,6 +315,7 @@ fn missed_call_stub(info: &wa::WebMessageInfo) -> Option<Content> {
         extra: None,
         forwarding: None,
         link: None,
+        secret: None,
     })
 }
 
@@ -306,6 +345,8 @@ fn history_content(chat: &ChatId, info: &wa::WebMessageInfo) -> Option<MessageCh
         extra: content.extra,
         forwarding: content.forwarding,
         link: content.link,
+        // The history keeps it beside the message too.
+        secret: content.secret.or_else(|| info.message_secret.clone()),
         media_file: None,
         media_poster: None,
         starred: false,

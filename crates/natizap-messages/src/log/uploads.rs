@@ -157,6 +157,7 @@ impl MessageLog {
                     local_id,
                     id: sent.id,
                     media: Some(sent.media),
+                    secret: None,
                 },
                 Err(error) => {
                     tracing::warn!(%error, "file not sent");

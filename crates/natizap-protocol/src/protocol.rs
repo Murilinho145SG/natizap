@@ -51,7 +51,7 @@ pub enum StartError {
 pub struct Protocol {
     store_path: PathBuf,
     fanout: Fanout,
-    connection: Connection,
+    pub(crate) connection: Connection,
     client: Task<()>,
     /// The phone unlinked this device, so the stored keys are dead.
     unlinked: bool,
@@ -250,7 +250,7 @@ impl Protocol {
         };
         self.connection.run(cx, move |client| async move {
             let id = outgoing::forward(client, to, forward).await?;
-            Ok(Sent { id })
+            Ok(Sent { id, secret: None })
         })
     }
 

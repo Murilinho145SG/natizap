@@ -7,12 +7,13 @@ use std::sync::Arc;
 
 use chrono::Local;
 use natizap_protocol::whatsapp_rust::prelude::Event;
-use natizap_protocol::{Anchor, ChatId, ContentKind, Unread};
+use natizap_protocol::{Account, Anchor, ChatId, ContentKind, Unread};
 
 use super::{Input, OpenChat, Output, Pinned, SHOWN_MESSAGES};
 use crate::items::{Members, items, summary};
 use crate::media::{fetch_on_sight, posters_on_sight};
 use crate::message::{Message, MessageChange};
+use crate::poll::Addons;
 use crate::store::MessageStore;
 use crate::sync::Sync;
 
@@ -22,6 +23,7 @@ pub(super) async fn sync(
     store_path: PathBuf,
     inputs: async_channel::Receiver<Input>,
     outputs: async_channel::Sender<Output>,
+    account: Account,
 ) {
     let Some(mut store) = open_store(&store_path) else {
         return;
@@ -82,6 +84,7 @@ pub(super) async fn sync(
                 }
                 Input::Event(event) => {
                     let changes = translating.changes(&event);
+                    let changes = store.open_votes(changes, || account.addresses());
                     refresh |= touches(open.as_ref(), &changes);
                     arrived.extend(arrivals(open.as_ref(), &changes));
                     log_error(store.apply(&changes), "could not store messages");
@@ -154,7 +157,15 @@ fn thread(
         tracing::error!(%error, "could not read reactions");
         HashMap::new()
     });
-    let rows = items(&messages, &reactions, &chat.title, members, Local::now()).into();
+    let votes = store.votes(&messages).unwrap_or_else(|error| {
+        tracing::error!(%error, "could not read votes");
+        HashMap::new()
+    });
+    let addons = Addons {
+        reactions: &reactions,
+        votes: &votes,
+    };
+    let rows = items(&messages, &addons, &chat.title, members, Local::now()).into();
     let resend = resend(&messages);
     let fetch = fetch_on_sight(&messages);
     let posters = posters_on_sight(&messages);

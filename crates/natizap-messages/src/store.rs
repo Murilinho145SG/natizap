@@ -65,6 +65,16 @@ const MIGRATIONS: &[&str] = &[
      ALTER TABLE messages ADD COLUMN link_title TEXT;
      ALTER TABLE messages ADD COLUMN link_description TEXT;
      ALTER TABLE messages ADD COLUMN link_thumbnail BLOB;",
+    // `voter` is empty for this account's own vote; `options` holds one
+    // chosen option per line, none when the vote was taken back.
+    "ALTER TABLE messages ADD COLUMN secret BLOB;
+     CREATE TABLE votes (
+        poll_id TEXT NOT NULL,
+        voter TEXT NOT NULL,
+        options TEXT NOT NULL,
+        cast_at INTEGER NOT NULL,
+        PRIMARY KEY (poll_id, voter)
+    );",
 ];
 
 /// Every message natizap has seen, on disk.
@@ -124,18 +134,22 @@ impl MessageStore {
                         .execute(params![chat.as_str(), id])?;
                     tx.prepare_cached("DELETE FROM reactions WHERE message_id = ?1")?
                         .execute(params![id])?;
+                    tx.prepare_cached("DELETE FROM votes WHERE poll_id = ?1")?
+                        .execute(params![id])?;
                 }
                 MessageChange::Accepted {
                     chat,
                     local_id,
                     id,
                     media,
+                    secret,
                 } => {
                     tx.prepare_cached(
-                        "UPDATE messages SET id = ?3, delivery = 'sent'
+                        "UPDATE messages SET id = ?3, delivery = 'sent',
+                             secret = coalesce(?4, secret)
                          WHERE chat = ?1 AND id = ?2",
                     )?
-                    .execute(params![chat.as_str(), local_id, id])?;
+                    .execute(params![chat.as_str(), local_id, id, secret])?;
                     if let Some(media) = media {
                         record_upload(&tx, chat, id, media)?;
                     }
@@ -181,19 +195,15 @@ impl MessageStore {
                     reactor,
                     emoji,
                     ..
-                } => {
-                    let reactor = reactor.as_ref().map_or("", ChatId::as_str);
-                    match emoji.as_deref().filter(|emoji| !emoji.is_empty()) {
-                        Some(emoji) => tx
-                            .prepare_cached("INSERT OR REPLACE INTO reactions VALUES (?1, ?2, ?3)")?
-                            .execute(params![message_id, reactor, emoji])?,
-                        None => tx
-                            .prepare_cached(
-                                "DELETE FROM reactions WHERE message_id = ?1 AND reactor = ?2",
-                            )?
-                            .execute(params![message_id, reactor])?,
-                    };
-                }
+                } => react(&tx, message_id, reactor.as_ref(), emoji.as_deref())?,
+                MessageChange::Voted {
+                    poll_id,
+                    voter,
+                    options,
+                    cast_at,
+                } => votes::record(&tx, poll_id, voter.as_ref(), options, *cast_at)?,
+                // Opened into `Voted` by `open_votes` before it is kept.
+                MessageChange::VoteArrived(_) => {}
                 MessageChange::Rejected { chat, local_id } => {
                     tx.prepare_cached(
                         "UPDATE messages SET delivery = 'failed' WHERE chat = ?1 AND id = ?2",
@@ -339,8 +349,29 @@ impl MessageStore {
 
     /// Forgets every message.
     pub(crate) fn clear(&mut self) -> rusqlite::Result<()> {
-        self.connection.execute_batch("DELETE FROM messages;")
+        self.connection
+            .execute_batch("DELETE FROM messages; DELETE FROM reactions; DELETE FROM votes;")
     }
+}
+
+/// Keeps `reactor`'s reaction to `message_id` (`None` is this account), or
+/// forgets it when `emoji` is empty or `None`.
+fn react(
+    tx: &rusqlite::Transaction<'_>,
+    message_id: &str,
+    reactor: Option<&ChatId>,
+    emoji: Option<&str>,
+) -> rusqlite::Result<()> {
+    let reactor = reactor.map_or("", ChatId::as_str);
+    match emoji.filter(|emoji| !emoji.is_empty()) {
+        Some(emoji) => tx
+            .prepare_cached("INSERT OR REPLACE INTO reactions VALUES (?1, ?2, ?3)")?
+            .execute(params![message_id, reactor, emoji])?,
+        None => tx
+            .prepare_cached("DELETE FROM reactions WHERE message_id = ?1 AND reactor = ?2")?
+            .execute(params![message_id, reactor])?,
+    };
+    Ok(())
 }
 
 /// Where a sent file went: what this account's other devices, and a later
@@ -384,10 +415,10 @@ fn insert(tx: &rusqlite::Transaction<'_>, message: &Message) -> rusqlite::Result
              media_key, media_sha256, media_enc_sha256, media_file, media_waveform,
              media_hd_thumbnail_path, media_hd_thumbnail_sha256,
              media_hd_thumbnail_enc_sha256, sender_phone, extra, forwarding, media_pages,
-             link_url, link_title, link_description, link_thumbnail)
+             link_url, link_title, link_description, link_thumbnail, secret)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14,
              ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28,
-             ?29, ?30, ?31, ?32, ?33, ?34, ?35, ?36, ?37, ?38)
+             ?29, ?30, ?31, ?32, ?33, ?34, ?35, ?36, ?37, ?38, ?39)
              ON CONFLICT (chat, id) DO UPDATE SET
                  media_mime = coalesce(media_mime, excluded.media_mime),
                  media_name = coalesce(media_name, excluded.media_name),
@@ -411,7 +442,8 @@ fn insert(tx: &rusqlite::Transaction<'_>, message: &Message) -> rusqlite::Result
                  link_url = coalesce(link_url, excluded.link_url),
                  link_title = coalesce(link_title, excluded.link_title),
                  link_description = coalesce(link_description, excluded.link_description),
-                 link_thumbnail = coalesce(link_thumbnail, excluded.link_thumbnail)",
+                 link_thumbnail = coalesce(link_thumbnail, excluded.link_thumbnail),
+                 secret = coalesce(secret, excluded.secret)",
     )?
     .execute(params![
         message.chat.as_str(),
@@ -462,12 +494,16 @@ fn insert(tx: &rusqlite::Transaction<'_>, message: &Message) -> rusqlite::Result
         link.and_then(|link| link.title.as_ref()),
         link.and_then(|link| link.description.as_ref()),
         link.and_then(|link| link.thumbnail.as_ref()),
+        message.secret,
     ])?;
 
     Ok(())
 }
 
 mod extra;
+mod votes;
+
+pub(crate) use votes::Vote;
 mod library;
 mod rows;
 

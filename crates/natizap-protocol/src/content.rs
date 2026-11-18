@@ -94,6 +94,8 @@ pub struct Content {
     pub forwarding: Option<Forwarding>,
     /// The preview of a link in the text.
     pub link: Option<LinkPreview>,
+    /// The secret votes on a poll are sealed with.
+    pub secret: Option<Vec<u8>>,
 }
 
 /// How far a forwarded message has travelled.
@@ -293,6 +295,7 @@ impl Content {
     /// shown on their own (reactions, edits, protocol housekeeping).
     #[must_use]
     pub fn of(message: &wa::Message) -> Option<Self> {
+        let outer = message;
         let message = message.get_base_message();
         let text = message
             .text_content()
@@ -336,6 +339,8 @@ impl Content {
             extra: Extra::of(message),
             forwarding: Forwarding::of(message),
             link: LinkPreview::of(message),
+            // Wrapped messages may keep it on either layer.
+            secret: crate::polls::secret(outer).or_else(|| crate::polls::secret(message)),
         })
     }
 

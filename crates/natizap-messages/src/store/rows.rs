@@ -106,6 +106,7 @@ pub(super) fn message_from_row(row: &Row<'_>) -> rusqlite::Result<Message> {
             },
         ),
         link: link_from_row(row)?,
+        secret: row.get("secret")?,
     })
 }
 

@@ -189,7 +189,8 @@ impl MessageLog {
                 }
             }
         });
-        let sync = cx.background_spawn(sync(store_path.clone(), inputs, outputs_tx));
+        let account = protocol.read(cx).account();
+        let sync = cx.background_spawn(sync(store_path.clone(), inputs, outputs_tx, account));
         let presence = protocol
             .read(cx)
             .subscribe(&[EventKind::Presence, EventKind::ChatPresence]);

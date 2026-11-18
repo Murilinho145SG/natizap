@@ -213,6 +213,7 @@ mod tests {
             extra: None,
             forwarding: None,
             link: None,
+            secret: None,
         }
     }
 

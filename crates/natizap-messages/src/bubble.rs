@@ -256,7 +256,7 @@ fn shape(
             .children(
                 extra
                     .as_ref()
-                    .map(|extra| render_extra(&bubble.id, extra, view)),
+                    .map(|extra| render_extra(&bubble.id, extra, bubble.poll.as_ref(), view)),
             )
             .children(media.map(|media| {
                 div()

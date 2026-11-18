@@ -17,6 +17,7 @@ use crate::emoji::{EmojiPicked, EmojiPicker};
 use crate::items::{Bubble, Item, MediaView};
 use crate::log::{MessageLog, SoundReady};
 use crate::media_browser::MediaBrowser;
+use crate::poll::Ballot;
 use crate::poll_composer::PollComposer;
 use crate::rich_text::{HoveredLink, Selection};
 use crate::send_preview::SendPreview;
@@ -443,6 +444,11 @@ impl ConversationView {
             .update(cx, |log, cx| log.react(id, sender, emoji, cx));
         self.reacting = None;
         cx.notify();
+    }
+
+    /// Votes for `options` on the poll `ballot` is for.
+    pub(crate) fn vote(&mut self, ballot: &Ballot, options: Vec<String>, cx: &mut Context<Self>) {
+        self.log.update(cx, |log, cx| log.vote(ballot, options, cx));
     }
 }
 

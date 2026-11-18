@@ -13,6 +13,7 @@ pub(crate) use crate::authors::Members;
 use crate::authors::{Author, Senders};
 use crate::media::Fetch;
 use crate::message::{Delivery, Message, Reaction};
+use crate::poll::{Addons, PollState};
 use crate::preview::preview;
 
 /// Messages from the same side closer than this read as one burst.
@@ -61,6 +62,8 @@ pub(crate) struct Bubble {
     pub(crate) source_text: Option<String>,
     /// Starts a new burst, so it gets more space above it.
     pub(crate) starts_burst: bool,
+    /// The votes, on a poll.
+    pub(crate) poll: Option<PollState>,
 }
 
 /// What a bubble shows.
@@ -150,7 +153,7 @@ impl Text {
 /// carry no sender of their own.
 pub(crate) fn items(
     messages: &[Message],
-    reactions: &HashMap<String, Vec<Reaction>>,
+    addons: &Addons<'_>,
     contact: &str,
     members: &Members,
     now: DateTime<Local>,
@@ -178,7 +181,11 @@ pub(crate) fn items(
                     || message.sent_at - previous.sent_at > BURST_GAP_SECONDS
             });
         let mut bubble = bubble(message, sent, starts_burst, &by_id, contact, &senders);
-        if let Some(reactions) = reactions.get(&message.id) {
+        bubble.poll = PollState::of(
+            message,
+            addons.votes.get(&message.id).map_or(&[], Vec::as_slice),
+        );
+        if let Some(reactions) = addons.reactions.get(&message.id) {
             bubble.my_reaction = reactions
                 .iter()
                 .find(|reaction| reaction.mine)
@@ -233,6 +240,7 @@ fn bubble(
         quote,
         reactions: Vec::new(),
         my_reaction: None,
+        poll: None,
         sender,
         reply: Reply {
             id: message.id.clone(),
@@ -501,6 +509,7 @@ mod tests {
             extra: None,
             forwarding: None,
             link: None,
+            secret: None,
         }
     }
 
@@ -551,7 +560,10 @@ mod tests {
         };
         let names: Vec<String> = items(
             &[saved, chosen],
-            &HashMap::new(),
+            &Addons {
+                reactions: &HashMap::new(),
+                votes: &HashMap::new(),
+            },
             "",
             &members,
             Local::now(),
@@ -578,21 +590,29 @@ mod tests {
             ..Members::default()
         };
         let now = Local::now();
-        let authors: Vec<(String, Option<String>, Option<String>)> =
-            items(&[named, unnamed], &HashMap::new(), "", &members, now)
-                .into_iter()
-                .filter_map(|item| match item {
-                    Item::Bubble(bubble) => bubble.sender,
-                    Item::Day(_) => None,
-                })
-                .map(|author| {
-                    (
-                        author.name.to_string(),
-                        author.phone.map(|phone| phone.to_string()),
-                        author.role.map(|role| role.to_string()),
-                    )
-                })
-                .collect();
+        let authors: Vec<(String, Option<String>, Option<String>)> = items(
+            &[named, unnamed],
+            &Addons {
+                reactions: &HashMap::new(),
+                votes: &HashMap::new(),
+            },
+            "",
+            &members,
+            now,
+        )
+        .into_iter()
+        .filter_map(|item| match item {
+            Item::Bubble(bubble) => bubble.sender,
+            Item::Day(_) => None,
+        })
+        .map(|author| {
+            (
+                author.name.to_string(),
+                author.phone.map(|phone| phone.to_string()),
+                author.role.map(|role| role.to_string()),
+            )
+        })
+        .collect();
         let expected = (
             "~ Beatriz".to_owned(),
             Some("+55 11 97654-3210".to_owned()),
@@ -618,7 +638,10 @@ mod tests {
         assert_eq!(
             layout(&items(
                 &messages,
-                &HashMap::new(),
+                &Addons {
+                    reactions: &HashMap::new(),
+                    votes: &HashMap::new(),
+                },
                 "Ana",
                 &Members::default(),
                 now

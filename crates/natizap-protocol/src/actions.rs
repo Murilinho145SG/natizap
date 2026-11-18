@@ -82,6 +82,8 @@ pub enum ActionError {
 pub struct Sent {
     /// WhatsApp's id for the message.
     pub id: String,
+    /// The secret votes on a poll are sealed with; only polls have one.
+    pub secret: Option<Vec<u8>>,
 }
 
 /// An incoming message to acknowledge as read.
@@ -137,6 +139,7 @@ pub(crate) async fn send_text(
         .map_err(|error| ActionError::Rejected(error.to_string()))?;
     Ok(Sent {
         id: sent.message_id,
+        secret: None,
     })
 }
 
@@ -155,14 +158,14 @@ pub(crate) async fn send_extra(
             } else {
                 1
             };
-            // The returned secret opens the votes, which are not shown yet.
-            let (sent, _secret) = client
+            let (sent, secret) = client
                 .polls()
                 .create(to, &poll.question, &poll.options, selectable)
                 .await
                 .map_err(|error| rejected(&error))?;
             return Ok(Sent {
                 id: sent.message_id,
+                secret: Some(secret),
             });
         }
         Extra::Cards(cards) => {
@@ -193,6 +196,7 @@ pub(crate) async fn send_extra(
         .map_err(|error| rejected(&error))?;
     Ok(Sent {
         id: sent.message_id,
+        secret: None,
     })
 }
 
