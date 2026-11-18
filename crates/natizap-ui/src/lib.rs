@@ -29,6 +29,7 @@ pub use components::code_block::code_block;
 pub use components::dialog::dialog;
 pub use components::menu::Menu;
 pub use components::progress::progress;
+pub use components::scrollbar::{ScrollSource, scrollbar};
 pub use components::separator::separator;
 pub use components::skeleton::skeleton;
 pub use components::splash::{SPLASH_INTRO, SPLASH_OUT, splash};

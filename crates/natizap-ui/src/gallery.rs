@@ -2,7 +2,9 @@
 //! is reviewed, and where a component lives until a feature uses it.
 
 use gpui::prelude::*;
-use gpui::{AnyElement, Context, Div, FontWeight, SharedString, Window, div, px, rgb};
+use gpui::{
+    AnyElement, Context, Div, FontWeight, ScrollHandle, SharedString, Window, div, px, rgb,
+};
 
 use crate::components::alert::{Alert, AlertTone};
 use crate::components::alert_dialog::AlertDialog;
@@ -11,10 +13,11 @@ use crate::components::button::{Button, ButtonSize, ButtonVariant};
 use crate::components::code_block::code_block;
 use crate::components::menu::Menu;
 use crate::components::progress::progress;
+use crate::components::scrollbar::scrollbar;
 use crate::components::separator::separator;
 use crate::components::skeleton::skeleton;
 use crate::components::switch::Switch;
-use crate::theme::{DISPLAY_FONT, MUTED, PANE, TEXT, base_font};
+use crate::theme::{DISPLAY_FONT, MUTED, PANE, PANEL, TEXT, base_font};
 use crate::{Icon, avatar, window_frame};
 
 /// The components window's content.
@@ -22,6 +25,7 @@ use crate::{Icon, avatar, window_frame};
 pub struct Gallery {
     dialog_open: bool,
     switch_on: bool,
+    scroll: ScrollHandle,
 }
 
 impl Render for Gallery {
@@ -82,6 +86,7 @@ impl Render for Gallery {
                     .child(progress(0.35))
                     .child(progress(1.0)),
             ))
+            .child(section("Scrollbar", self.scrolled(window, cx)))
             .child(section("Alert", alerts()))
             .child(section(
                 "Menu",
@@ -123,6 +128,31 @@ impl Render for Gallery {
             .font(base_font())
             .text_color(rgb(TEXT))
             .child(window_frame(window, title, sections))
+    }
+}
+
+impl Gallery {
+    /// A short list scrolled inside a box, with its scrollbar.
+    fn scrolled(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
+        div()
+            .relative()
+            .w(px(320.0))
+            .h(px(160.0))
+            .rounded_lg()
+            .bg(rgb(PANEL))
+            .child(
+                div()
+                    .id("scrollbar-demo")
+                    .size_full()
+                    .overflow_y_scroll()
+                    .track_scroll(&self.scroll)
+                    .p_3()
+                    .flex()
+                    .flex_col()
+                    .gap_2()
+                    .children((1..=16).map(|n| div().child(format!("Row {n}")))),
+            )
+            .child(scrollbar("scrollbar-demo-bar", &self.scroll, window, cx))
     }
 }
 
