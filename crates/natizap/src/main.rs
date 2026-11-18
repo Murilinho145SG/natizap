@@ -7,14 +7,14 @@
 mod history;
 mod instance;
 mod root;
+mod shell;
 
 use std::path::{Path, PathBuf};
 
 use anyhow::Context as _;
 use gpui::{
     App, AppContext as _, Bounds, KeyBinding, Pixels, Size, TitlebarOptions,
-    WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowHandle, WindowOptions,
-    actions, px, size,
+    WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowOptions, actions, px, size,
 };
 use natizap_chats::ChatList;
 use natizap_messages::MessageLog;
@@ -28,7 +28,8 @@ use natizap_update::Updater;
 use tracing_subscriber::EnvFilter;
 
 use crate::instance::{Claim, Instance, ask_to_show};
-use crate::root::{Features, Root};
+use crate::root::Features;
+use crate::shell::Shell;
 
 actions!(
     natizap,
@@ -84,18 +85,16 @@ fn main() -> anyhow::Result<()> {
                 // System fonts still render every screen, just less consistently.
                 tracing::error!(?error, "could not load the bundled fonts");
             }
-            let main_window = match open_main_window(&data_dir, &executable, cx) {
-                Ok(window) => window,
-                Err(error) => {
-                    tracing::error!(?error, "could not open the main window");
-                    cx.quit();
-                    return;
-                }
-            };
+            let features = features(&data_dir, &executable, cx);
+            let shell = cx.new(|cx| Shell::new(features, cx));
+            shell.update(cx, |shell, cx| {
+                shell.show(None, cx);
+                Shell::start_tray(cx);
+            });
             let show_requests = show_requests.clone();
             cx.spawn(async move |cx| {
                 while show_requests.recv().await.is_ok() {
-                    let _ = main_window.update(cx, |_, window, _| window.activate_window());
+                    shell.update(cx, |shell, cx| shell.show(None, cx));
                 }
             })
             .detach();
@@ -131,54 +130,51 @@ fn open_components_window(cx: &mut App) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn open_main_window(
-    data_dir: &Path,
-    executable: &Path,
-    cx: &mut App,
-) -> anyhow::Result<WindowHandle<Root>> {
-    let options = window_options(
+/// The main window: it comes and goes, the features stay.
+fn main_window_options(cx: &App) -> WindowOptions {
+    window_options(
         "natizap",
         size(px(1100.0), px(720.0)),
         size(px(720.0), px(480.0)),
         cx,
-    );
-    cx.open_window(options, |window, cx| {
-        let protocol = cx.new(|cx| Protocol::new(data_dir.join("session.db"), cx));
-        let chats = cx.new(|cx| ChatList::new(&protocol, data_dir.join("chats.db"), cx));
-        let messages = cx.new(|cx| {
-            MessageLog::new(
-                protocol.clone(),
-                data_dir.join("messages.db"),
-                data_dir.join("media"),
-                cx,
-            )
-        });
-        let pictures =
-            cx.new(|cx| ProfilePictures::new(protocol.clone(), data_dir.join("avatars"), cx));
-        let session = cx.new(|cx| Session::new(protocol.clone(), cx));
-        let notifier =
-            cx.new(|cx| Notifier::new(&protocol, data_dir.join("notifications.conf"), cx));
-        let stickers = cx.new(|cx| {
-            StickerShelf::new(
-                &protocol,
-                data_dir.join("stickers.db"),
-                data_dir.join("media").join("stickers"),
-                cx,
-            )
-        });
-        let updater = cx.new(|cx| Updater::new(executable, data_dir.join("updates"), cx));
-        let features = Features {
-            session,
-            chats,
-            messages,
-            pictures,
-            protocol,
-            notifier,
-            stickers,
-            updater,
-        };
-        cx.new(|cx| Root::new(features, window, cx))
-    })
+    )
+}
+
+/// Every feature, built once for the whole run.
+fn features(data_dir: &Path, executable: &Path, cx: &mut App) -> Features {
+    let protocol = cx.new(|cx| Protocol::new(data_dir.join("session.db"), cx));
+    let chats = cx.new(|cx| ChatList::new(&protocol, data_dir.join("chats.db"), cx));
+    let messages = cx.new(|cx| {
+        MessageLog::new(
+            protocol.clone(),
+            data_dir.join("messages.db"),
+            data_dir.join("media"),
+            cx,
+        )
+    });
+    let pictures =
+        cx.new(|cx| ProfilePictures::new(protocol.clone(), data_dir.join("avatars"), cx));
+    let session = cx.new(|cx| Session::new(protocol.clone(), cx));
+    let notifier = cx.new(|cx| Notifier::new(&protocol, data_dir.join("notifications.conf"), cx));
+    let stickers = cx.new(|cx| {
+        StickerShelf::new(
+            &protocol,
+            data_dir.join("stickers.db"),
+            data_dir.join("media").join("stickers"),
+            cx,
+        )
+    });
+    let updater = cx.new(|cx| Updater::new(executable, data_dir.join("updates"), cx));
+    Features {
+        session,
+        chats,
+        messages,
+        pictures,
+        protocol,
+        notifier,
+        stickers,
+        updater,
+    }
 }
 
 /// Where natizap keeps its local data: the platform's per-user data

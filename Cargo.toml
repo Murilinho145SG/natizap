@@ -80,6 +80,7 @@ natizap-messages = { path = "crates/natizap-messages" }
 natizap-notifications = { path = "crates/natizap-notifications" }
 natizap-playback = { path = "crates/natizap-playback" }
 natizap-profiles = { path = "crates/natizap-profiles" }
+natizap-tray = { path = "crates/natizap-tray" }
 natizap-player = { path = "crates/natizap-player" }
 natizap-protocol = { path = "crates/natizap-protocol" }
 natizap-ui = { path = "crates/natizap-ui" }

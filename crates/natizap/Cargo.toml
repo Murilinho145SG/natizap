@@ -23,6 +23,7 @@ natizap-profiles.workspace = true
 natizap-protocol.workspace = true
 natizap-session.workspace = true
 natizap-stickers.workspace = true
+natizap-tray.workspace = true
 natizap-ui.workspace = true
 natizap-update.workspace = true
 tracing.workspace = true

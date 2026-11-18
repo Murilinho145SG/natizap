@@ -104,6 +104,14 @@ which stickers are favorites, and passes its `StickerFavoriteToggled` to
 the `StickerShelf`. The `Updater` stands alone: the binary only shows it in
 the title bar.
 
+The binary builds the features once per run and keeps them in its `Shell`,
+not in the window: closing the window leaves natizap running in the tray
+(`natizap-tray`'s `Tray`, whose `TrayAction`s reopen it or quit), still
+connected and notifying, and opening it again builds a fresh `Root` on the
+same features. Without a tray, closing quits. Only one natizap runs per
+data directory: a later launch asks the running one to show itself and
+exits.
+
 ## Architecture: one crate per feature
 
 The project is **modular**: every feature is its own crate. This is the main

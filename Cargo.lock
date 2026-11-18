@@ -3771,6 +3771,7 @@ dependencies = [
  "natizap-protocol",
  "natizap-session",
  "natizap-stickers",
+ "natizap-tray",
  "natizap-ui",
  "natizap-update",
  "tracing",

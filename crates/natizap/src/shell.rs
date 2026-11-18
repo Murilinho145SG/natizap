@@ -1,0 +1,119 @@
+//! natizap running, with or without its window: the features live here for
+//! the whole run, so closing the window to the tray keeps the connection
+//! and the notifications going, and the window opens again on the same
+//! state.
+
+use std::collections::HashSet;
+
+use gpui::{App, AppContext as _, Context, Entity, WindowHandle, WindowId};
+use natizap_notifications::NotificationOpened;
+use natizap_protocol::ChatId;
+use natizap_tray::{Tray, TrayAction};
+
+use crate::main_window_options;
+use crate::root::{Features, Root};
+
+/// The running app: its features, and its main window while it is open.
+pub(crate) struct Shell {
+    features: Features,
+    window: Option<WindowHandle<Root>>,
+    /// The tray icon, once it shows.
+    tray: Option<Entity<Tray>>,
+}
+
+impl Shell {
+    /// Keeps `features` for the whole run, and opens the chat of a
+    /// notification clicked even while the window is closed.
+    pub(crate) fn new(features: Features, cx: &mut Context<Self>) -> Self {
+        cx.subscribe(
+            &features.notifier,
+            |shell, _, NotificationOpened { chat }, cx| {
+                shell.show(chat.as_ref(), cx);
+            },
+        )
+        .detach();
+        let shell = cx.weak_entity();
+        cx.on_window_closed(move |cx, closed| {
+            let _ = shell.update(cx, |shell, cx| shell.window_closed(closed, cx));
+        })
+        .detach();
+        Self {
+            features,
+            window: None,
+            tray: None,
+        }
+    }
+
+    /// Shows the main window, opening it if it is closed, then the chat
+    /// `with`, if given.
+    pub(crate) fn show(&mut self, with: Option<&ChatId>, cx: &mut Context<Self>) {
+        let shown = self.window.and_then(|window| {
+            window
+                .update(cx, |_, window, _| window.activate_window())
+                .ok()
+                .map(|()| window)
+        });
+        let window = match shown {
+            Some(window) => window,
+            None => match self.open(cx) {
+                Ok(window) => window,
+                Err(error) => {
+                    tracing::error!(?error, "could not open the main window");
+                    return;
+                }
+            },
+        };
+        if let Some(chat) = with {
+            let _ = window.update(cx, |root, _, cx| root.open_notified(chat, cx));
+        }
+    }
+
+    fn open(&mut self, cx: &mut Context<Self>) -> anyhow::Result<WindowHandle<Root>> {
+        let features = self.features.clone();
+        let options = main_window_options(cx);
+        let window = cx.open_window(options, |window, cx| {
+            cx.new(|cx| Root::new(features, window, cx))
+        })?;
+        self.window = Some(window);
+        Ok(window)
+    }
+
+    /// Puts natizap in the tray: from then on, closing the window leaves
+    /// natizap running there. Without a tray, closing still quits, so
+    /// natizap never runs where nothing shows it.
+    pub(crate) fn start_tray(cx: &mut Context<Self>) {
+        let starting = Tray::start(cx);
+        cx.spawn(async move |shell, cx| {
+            let tray = match starting.await {
+                Ok(tray) => tray,
+                Err(error) => {
+                    tracing::warn!(%error, "no tray icon; closing the window quits");
+                    return;
+                }
+            };
+            let _ = shell.update(cx, |shell, cx| {
+                cx.subscribe(&tray, |shell, _, action: &TrayAction, cx| match action {
+                    TrayAction::Open => shell.show(None, cx),
+                    TrayAction::Quit => cx.quit(),
+                })
+                .detach();
+                cx.set_quit_mode(gpui::QuitMode::Explicit);
+                shell.tray = Some(tray);
+            });
+        })
+        .detach();
+    }
+
+    /// The window went: with it, whatever the user was looking at, so
+    /// every message notifies again.
+    fn window_closed(&mut self, closed: WindowId, cx: &mut App) {
+        if self.window.map(|window| window.window_id()) != Some(closed) {
+            return;
+        }
+        self.window = None;
+        self.features.notifier.update(cx, |notifier, _| {
+            notifier.set_focused(false);
+            notifier.set_open(HashSet::new());
+        });
+    }
+}

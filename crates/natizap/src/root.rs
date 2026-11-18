@@ -40,7 +40,9 @@ const SIDE_PANEL: f32 = 380.0;
 /// windows show the profile over it.
 const LEAST_CONVERSATION: f32 = 420.0;
 
-/// The features the main window shows, built by `main`.
+/// The features the main window shows, built by `main` once for the whole
+/// run: they outlive the window, which comes and goes.
+#[derive(Clone)]
 pub(crate) struct Features {
     pub(crate) session: Entity<Session>,
     pub(crate) chats: Entity<ChatList>,

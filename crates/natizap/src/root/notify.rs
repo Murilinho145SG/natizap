@@ -1,6 +1,6 @@
 //! Tells the notifier what the user is looking at, which chats are muted
 //! and what chats and people are called, and opens the chat a notification
-//! is about.
+//! is about once the shell has shown the window.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -8,15 +8,14 @@ use std::sync::Arc;
 use gpui::{Context, Entity, SharedString, Window};
 use natizap_chats::{ChatList, ChatRow};
 use natizap_messages::MessageLog;
-use natizap_notifications::{NotificationOpened, Notifier};
+use natizap_notifications::Notifier;
 use natizap_protocol::ChatId;
 
 use super::Root;
 
 impl Root {
     /// Keeps `notifier` told of the window's focus, the open chat, the muted
-    /// chats and everyone's names, and opens the chat of a notification
-    /// clicked.
+    /// chats and everyone's names.
     pub(super) fn feed_notifier(
         notifier: &Entity<Notifier>,
         chats: &Entity<ChatList>,
@@ -63,21 +62,14 @@ impl Root {
             });
         })
         .detach();
+    }
 
-        cx.subscribe_in(
-            notifier,
-            window,
-            |root, _, NotificationOpened { chat }, window, cx| {
-                window.activate_window();
-                if let Some(chat) = chat {
-                    let title = chat
-                        .phone_number()
-                        .unwrap_or_else(|| chat.as_str().to_owned());
-                    root.chat_with(chat, title.into(), cx);
-                }
-            },
-        )
-        .detach();
+    /// Opens the chat a clicked notification was about.
+    pub(crate) fn open_notified(&mut self, chat: &ChatId, cx: &mut Context<Self>) {
+        let title = chat
+            .phone_number()
+            .unwrap_or_else(|| chat.as_str().to_owned());
+        self.chat_with(chat, title.into(), cx);
     }
 }
 
