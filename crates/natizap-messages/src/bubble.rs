@@ -321,7 +321,11 @@ fn picture_bubble(
                 .flex_wrap()
                 .items_end()
                 .gap_x_2()
-                .child(shown)
+                // Text measures itself at its longest line; held to the
+                // caption's width, it wraps there instead of running past
+                // the bubble, and a short caption still leaves the time room
+                // beside it.
+                .child(div().max_w_full().min_w_0().child(shown))
                 .child(meta.ml_auto().pb(px(1.0)));
             (picture, Some(selectable(caption, hits, view)))
         }
