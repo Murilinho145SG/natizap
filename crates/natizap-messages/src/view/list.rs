@@ -5,9 +5,10 @@ use std::collections::HashSet;
 use std::time::Instant;
 
 use gpui::prelude::*;
-use gpui::{AnimationElement, Context, Div, MouseButton, SharedString, div, list, px};
+use gpui::{AnimationElement, Context, Div, MouseButton, SharedString, Window, div, list, px};
 use natizap_protocol::ChatId;
 use natizap_ui::motion::rise_in;
+use natizap_ui::scrollbar;
 
 use super::{ARRIVAL_RISE, CENTERED_WIDTH, ConversationView};
 use crate::bubble::{LIT_FOR, render_item};
@@ -20,6 +21,7 @@ impl ConversationView {
     pub(super) fn message_list(
         &mut self,
         chat: &ChatId,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnimationElement<Div> {
         let log = self.log.read(cx);
@@ -53,7 +55,9 @@ impl ConversationView {
             hovered_link: self.hovered_link.clone(),
         };
 
+        let scrollbar = scrollbar("messages-scrollbar", &self.messages, window, cx);
         let messages: Div = div()
+            .relative()
             .flex_1()
             .min_h_0()
             .flex()
@@ -108,7 +112,8 @@ impl ConversationView {
                 .py_3()
                 .when(centered, |list| list.max_w(px(CENTERED_WIDTH)).px_4())
                 .when(!centered, |list| list.px(px(56.0))),
-            );
+            )
+            .child(scrollbar);
         rise_in(
             SharedString::from(format!("chat-{}", chat.as_str())),
             messages,

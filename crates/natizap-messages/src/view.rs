@@ -526,7 +526,7 @@ impl Render for ConversationView {
             return placeholder().into_any_element();
         };
         let pinned = log.pinned().cloned();
-        let messages = self.message_list(&chat.id, cx);
+        let messages = self.message_list(&chat.id, window, cx);
 
         div()
             .size_full()

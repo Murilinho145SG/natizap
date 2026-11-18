@@ -1,13 +1,13 @@
 use chrono::{DateTime, Datelike as _, Local, TimeZone as _};
 use gpui::prelude::*;
 use gpui::{
-    Context, Div, Entity, EventEmitter, FontWeight, Stateful, Window, div, px, relative, rgb, svg,
-    uniform_list,
+    Context, Div, Entity, EventEmitter, FontWeight, Stateful, UniformListScrollHandle, Window, div,
+    px, relative, rgb, svg, uniform_list,
 };
 use natizap_ui::theme::{ACCENT, DISPLAY_FONT, LINE, MUTED, PANEL, RAISED, TEXT};
 use natizap_ui::{
-    BadgeTone, Button, ButtonVariant, Icon, TextInput, avatar, badge, count_label, separator,
-    skeleton, verified_seal,
+    BadgeTone, Button, ButtonVariant, Icon, TextInput, avatar, badge, count_label, scrollbar,
+    separator, skeleton, verified_seal,
 };
 
 use std::path::PathBuf;
@@ -32,6 +32,8 @@ pub struct ChatListView {
     filter: Filter,
     /// The archived chats are shown instead of the rest.
     in_archive: bool,
+    /// How far the list is scrolled, for its scrollbar.
+    scroll: UniformListScrollHandle,
 }
 
 /// The user picked a chat in the list.
@@ -67,6 +69,7 @@ impl ChatListView {
             search,
             filter: Filter::All,
             in_archive: false,
+            scroll: UniformListScrollHandle::new(),
         }
     }
 
@@ -94,7 +97,7 @@ impl ChatListView {
 }
 
 impl Render for ChatListView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let list = self.list.read(cx);
         let source = if self.in_archive {
             list.archived()
@@ -116,7 +119,15 @@ impl Render for ChatListView {
         } else if rows.is_empty() && !narrowing && !self.in_archive {
             empty_state().into_any_element()
         } else {
-            Self::chats(rows, cx).into_any_element()
+            div()
+                .relative()
+                .flex_1()
+                .min_h_0()
+                .flex()
+                .flex_col()
+                .child(Self::chats(rows, &self.scroll, cx))
+                .child(scrollbar("chats-scrollbar", &self.scroll, window, cx))
+                .into_any_element()
         };
 
         let view = cx.weak_entity();
@@ -183,7 +194,11 @@ impl Render for ChatListView {
 
 impl ChatListView {
     /// `rows` as a lazily drawn list: only rows on screen are built.
-    fn chats(rows: Vec<ChatRow>, cx: &mut Context<Self>) -> impl IntoElement {
+    fn chats(
+        rows: Vec<ChatRow>,
+        scroll: &UniformListScrollHandle,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let count = rows.len();
         uniform_list(
             "chats",
@@ -211,6 +226,7 @@ impl ChatListView {
                     .collect::<Vec<_>>()
             }),
         )
+        .track_scroll(scroll)
         .flex_1()
         .pb_2()
     }
