@@ -21,6 +21,8 @@ env:
 jobs:
   linux:
     strategy:
+      # Each build stands alone: one failing should not cancel the rest.
+      fail-fast: false
       matrix:
         include:
           # `arch` is how files are named; `package` is nfpm's (and Debian's)
@@ -118,13 +120,19 @@ jobs:
 
   windows:
     strategy:
+      # Each build stands alone: one failing should not cancel the rest.
+      fail-fast: false
       matrix:
         include:
+          # `carch` is how FFmpeg's configure names it: MSYS2 runs emulated
+          # on ARM64 and would otherwise report x86_64.
           - arch: x86_64
             msvc: x64
+            carch: x86_64
             runner: windows-2022
           - arch: arm64
             msvc: arm64
+            carch: aarch64
             runner: windows-11-arm
     runs-on: ${{ matrix.runner }}
     steps:
@@ -174,6 +182,8 @@ jobs:
 
       - name: Build
         shell: pwsh
+        env:
+          MSYSTEM_CARCH: ${{ matrix.carch }}
         run: |
           # MSYS2's sh first: Git for Windows' own sh is on PATH too, and its
           # tools shadow MSVC's linker the same way.
