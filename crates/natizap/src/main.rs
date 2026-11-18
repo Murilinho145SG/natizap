@@ -17,6 +17,7 @@ use natizap_notifications::Notifier;
 use natizap_profiles::ProfilePictures;
 use natizap_protocol::Protocol;
 use natizap_session::Session;
+use natizap_stickers::StickerShelf;
 use natizap_ui::{Assets, Gallery, bind_text_input_keys, load_fonts};
 use tracing_subscriber::EnvFilter;
 
@@ -126,6 +127,14 @@ fn open_main_window(data_dir: &Path, cx: &mut App) -> anyhow::Result<()> {
         let session = cx.new(|cx| Session::new(protocol.clone(), cx));
         let notifier =
             cx.new(|cx| Notifier::new(&protocol, data_dir.join("notifications.conf"), cx));
+        let stickers = cx.new(|cx| {
+            StickerShelf::new(
+                &protocol,
+                data_dir.join("stickers.db"),
+                data_dir.join("media").join("stickers"),
+                cx,
+            )
+        });
         let features = Features {
             session,
             chats,
@@ -133,6 +142,7 @@ fn open_main_window(data_dir: &Path, cx: &mut App) -> anyhow::Result<()> {
             pictures,
             protocol,
             notifier,
+            stickers,
         };
         cx.new(|cx| Root::new(features, window, cx))
     })?;

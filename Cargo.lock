@@ -3693,6 +3693,7 @@ dependencies = [
  "natizap-profiles",
  "natizap-protocol",
  "natizap-session",
+ "natizap-stickers",
  "natizap-ui",
  "tracing",
  "tracing-subscriber",
@@ -3809,6 +3810,17 @@ dependencies = [
  "natizap-ui",
  "qrcode",
  "thiserror 2.0.21",
+ "tracing",
+]
+
+[[package]]
+name = "natizap-stickers"
+version = "0.1.0"
+dependencies = [
+ "gpui",
+ "natizap-protocol",
+ "natizap-ui",
+ "rusqlite",
  "tracing",
 ]
 

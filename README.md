@@ -42,6 +42,8 @@ end-to-end encrypted; keys and history live only on your machine.
 - **Media**: photos with a full-size viewer, videos in a built-in player,
   voice notes with their waveform and playback speeds, documents with their
   first page, stickers, shared contacts and polls.
+- **Stickers**: favorites synced with the phone, sent from a picker, and
+  any sticker in a chat added to them with a click.
 - **Sending**: text, recorded voice notes, contacts and polls, and files,
   photos and documents dropped, pasted or picked, previewed first with a
   caption for each, up to 30 at once.

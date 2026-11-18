@@ -19,6 +19,7 @@ use natizap_player::{PlayerClosed, PlayerView};
 use natizap_profiles::ProfilePictures;
 use natizap_protocol::{Card, ChatId, Extra, PersonName, Protocol};
 use natizap_session::{PairingView, Session, SessionState};
+use natizap_stickers::StickerShelf;
 use natizap_ui::motion::slide_in;
 use natizap_ui::theme::{ACCENT, ALERT, DISPLAY_FONT, LINE, MINT, MUTED, TEXT, base_font};
 use natizap_ui::{Alert, AlertTone, window_frame};
@@ -29,6 +30,7 @@ use opening::Opening;
 mod notify;
 mod opening;
 mod profiles;
+mod stickers;
 
 /// Width of the chat list, and of a profile beside the conversation.
 const SIDE_PANEL: f32 = 380.0;
@@ -44,6 +46,7 @@ pub(crate) struct Features {
     pub(crate) pictures: Entity<ProfilePictures>,
     pub(crate) protocol: Entity<Protocol>,
     pub(crate) notifier: Entity<Notifier>,
+    pub(crate) stickers: Entity<StickerShelf>,
 }
 
 /// The main window's content: the pairing screen until this device is linked,
@@ -80,6 +83,7 @@ impl Root {
             pictures,
             protocol,
             notifier,
+            stickers,
         } = features;
         let (messages, pictures) = (&messages, &pictures);
         cx.observe(&chats, |_, _, cx| cx.notify()).detach();
@@ -133,6 +137,7 @@ impl Root {
         Self::share_contacts(&conversation, messages, &chats, pictures, window, cx);
         Self::feed_notifier(&notifier, &chats, messages, window, cx);
         Self::open_settings(&chat_list, &notifier, cx);
+        Self::share_stickers(&stickers, &conversation, messages, cx);
 
         Self {
             session,

@@ -66,8 +66,9 @@ Each feature crate owns its GPUI views, logic and local cache together
 share. Local data lives in the platform's per-user data directory, one
 file per owner (`session.db` for protocol keys, `chats.db` for the chat
 list, `messages.db` for messages, `notifications.conf` for notification
-settings, `media/` for downloaded attachments and `media/thumbs/` for the
-small copies media grids draw).
+settings, `stickers.db` for favorite stickers, `media/` for downloaded
+attachments, `media/thumbs/` for the small copies media grids draw and
+`media/stickers/` for favorite stickers' files).
 
 Local stores are migrated, never dropped and rebuilt: WhatsApp sends the
 history only once, right after linking, so lost data cannot be synced
@@ -91,7 +92,11 @@ it chimes for messages anywhere else. While the window is in the
 background it also posts system notifications; clicking one emits
 `NotificationOpened`, which the binary answers by opening that chat. The chat list's settings button emits
 `SettingsRequested`, which the binary answers with the notifications'
-`NotificationSettings` dialog.
+`NotificationSettings` dialog. The binary hands the conversation the stickers'
+`StickerPicker` to show from its composer, sends what it emits as
+`StickerPicked` through `MessageLog::send_sticker`, tells the conversation
+which stickers are favorites, and passes its `StickerFavoriteToggled` to
+the `StickerShelf`.
 
 ## Architecture: one crate per feature
 
@@ -127,6 +132,7 @@ organizing rule of the codebase.
 | ----------------- | ------- | -------------------------------------------------------- |
 | `natizap`         | binary  | Entry point; wires the feature crates together.          |
 | `natizap-session` | feature | Pairing lifecycle and the pairing screen.                 |
+| `natizap-stickers` | feature | Favorite stickers synced with the phone, and their picker. |
 | `natizap-protocol` | shared  | Owns the WhatsApp client; fans its events out to features. |
 | `natizap-chats`    | feature | Chat list synced from WhatsApp, cached in SQLite, and its view. |
 | `natizap-contacts` | feature | Profiles of people and businesses, and their panel.       |
