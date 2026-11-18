@@ -1,6 +1,9 @@
 //! Entry point of the `natizap` binary: opens the main window and wires the
 //! feature crates together.
 
+// A Windows release opens without a console window behind it.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 mod history;
 mod root;
 
@@ -19,6 +22,7 @@ use natizap_protocol::Protocol;
 use natizap_session::Session;
 use natizap_stickers::StickerShelf;
 use natizap_ui::{Assets, Gallery, bind_text_input_keys, load_fonts};
+use natizap_update::Updater;
 use tracing_subscriber::EnvFilter;
 
 use crate::root::{Features, Root};
@@ -67,7 +71,7 @@ fn main() -> anyhow::Result<()> {
                 // System fonts still render every screen, just less consistently.
                 tracing::error!(?error, "could not load the bundled fonts");
             }
-            if let Err(error) = open_main_window(&data_dir, cx) {
+            if let Err(error) = open_main_window(&data_dir, &executable, cx) {
                 tracing::error!(?error, "could not open the main window");
                 cx.quit();
                 return;
@@ -104,7 +108,7 @@ fn open_components_window(cx: &mut App) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn open_main_window(data_dir: &Path, cx: &mut App) -> anyhow::Result<()> {
+fn open_main_window(data_dir: &Path, executable: &Path, cx: &mut App) -> anyhow::Result<()> {
     let options = window_options(
         "natizap",
         size(px(1100.0), px(720.0)),
@@ -135,6 +139,7 @@ fn open_main_window(data_dir: &Path, cx: &mut App) -> anyhow::Result<()> {
                 cx,
             )
         });
+        let updater = cx.new(|cx| Updater::new(executable, data_dir.join("updates"), cx));
         let features = Features {
             session,
             chats,
@@ -143,6 +148,7 @@ fn open_main_window(data_dir: &Path, cx: &mut App) -> anyhow::Result<()> {
             protocol,
             notifier,
             stickers,
+            updater,
         };
         cx.new(|cx| Root::new(features, window, cx))
     })?;

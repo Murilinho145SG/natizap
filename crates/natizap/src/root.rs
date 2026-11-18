@@ -23,6 +23,7 @@ use natizap_stickers::StickerShelf;
 use natizap_ui::motion::slide_in;
 use natizap_ui::theme::{ACCENT, ALERT, DISPLAY_FONT, LINE, MINT, MUTED, TEXT, base_font};
 use natizap_ui::{Alert, AlertTone, window_frame};
+use natizap_update::Updater;
 
 use crate::history::History;
 use opening::Opening;
@@ -47,6 +48,7 @@ pub(crate) struct Features {
     pub(crate) protocol: Entity<Protocol>,
     pub(crate) notifier: Entity<Notifier>,
     pub(crate) stickers: Entity<StickerShelf>,
+    pub(crate) updater: Entity<Updater>,
 }
 
 /// The main window's content: the pairing screen until this device is linked,
@@ -72,6 +74,8 @@ pub(crate) struct Root {
     settings: Option<Entity<NotificationSettings>>,
     /// The splash, while natizap opens.
     opening: Option<Opening>,
+    /// Shown in the title bar once an update is out.
+    updater: Entity<Updater>,
 }
 
 impl Root {
@@ -84,6 +88,7 @@ impl Root {
             protocol,
             notifier,
             stickers,
+            updater,
         } = features;
         let (messages, pictures) = (&messages, &pictures);
         cx.observe(&chats, |_, _, cx| cx.notify()).detach();
@@ -154,6 +159,7 @@ impl Root {
             pictures: pictures.clone(),
             settings: None,
             opening: Some(Opening::start(cx)),
+            updater,
         }
     }
 
@@ -474,7 +480,8 @@ impl Root {
 
 impl Render for Root {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let title = wordmark(self.session.read(cx).state());
+        let title =
+            wordmark(self.session.read(cx).state()).child(div().ml_4().child(self.updater.clone()));
         let opening = self.opening_layer(cx);
         let content = div()
             .size_full()
