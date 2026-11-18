@@ -2,8 +2,8 @@
 
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, App, Div, FontWeight, ImageSource, ObjectFit, Stateful, WeakEntity, div, img, px,
-    rgb, rgba, svg,
+    AnyElement, App, Div, FontWeight, ImageSource, ObjectFit, SharedString, Stateful, WeakEntity,
+    div, img, px, rgb, rgba, svg,
 };
 use natizap_protocol::ContentKind;
 use natizap_ui::Icon;
@@ -167,7 +167,13 @@ fn picture(media: &MediaView) -> Div {
             // its rectangle, not its rounded corners.
             // The frame's shape, given outright: left to itself, an image
             // sized in relative units takes the picture's own shape.
+            // Named, so an animated sticker or GIF remembers which frame it
+            // is on from one draw to the next and plays.
             img(source)
+                .id(SharedString::from(format!(
+                    "picture-{}",
+                    media.fetch.message_id
+                )))
                 .size_full()
                 .aspect_ratio(width / height)
                 .rounded(px(11.0))
