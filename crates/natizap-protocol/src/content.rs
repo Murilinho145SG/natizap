@@ -1,5 +1,7 @@
 use whatsapp_rust::prelude::{MessageExt as _, wa};
 
+use crate::LinkPreview;
+
 use crate::ChatId;
 use crate::media::Media;
 
@@ -82,6 +84,8 @@ pub struct Content {
     pub extra: Option<Extra>,
     /// The message was forwarded, and how often.
     pub forwarding: Option<Forwarding>,
+    /// The preview of a link in the text.
+    pub link: Option<LinkPreview>,
 }
 
 /// How far a forwarded message has travelled.
@@ -323,6 +327,7 @@ impl Content {
             media: Media::of(message),
             extra: Extra::of(message),
             forwarding: Forwarding::of(message),
+            link: LinkPreview::of(message),
         })
     }
 
