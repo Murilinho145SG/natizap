@@ -16,6 +16,7 @@ use crate::bubble::render_item;
 use crate::emoji::{EmojiPicked, EmojiPicker};
 use crate::items::{Bubble, Item, MediaView};
 use crate::log::{MessageLog, SoundReady};
+use crate::media_browser::MediaBrowser;
 use crate::poll_composer::PollComposer;
 use crate::rich_text::Selection;
 use crate::send_preview::SendPreview;
@@ -78,6 +79,11 @@ pub struct ConversationView {
     recorder: Option<Recorder>,
     /// Files about to be sent, shown in place of the messages.
     sending: Option<Entity<SendPreview>>,
+    /// The window of a chat's media, links and docs.
+    browsing: Option<Entity<MediaBrowser>>,
+    /// The composer takes the keyboard back at the next draw, after a
+    /// window that had it closed.
+    refocus: bool,
 }
 
 /// The user clicked the conversation's header to see the chat's profile.
@@ -194,6 +200,8 @@ impl ConversationView {
             chat_menu: None,
             recorder: None,
             sending: None,
+            browsing: None,
+            refocus: false,
             reaction_emojis,
         }
     }
@@ -211,8 +219,9 @@ impl ConversationView {
             self.replying = None;
             self.reacting = None;
             self.picking_emoji = false;
-            // The files were for the chat left behind.
+            // The files and the media window were for the chat left behind.
             self.sending = None;
+            self.browsing = None;
             self.voices.stop();
             // A newly opened chat is where the user is about to type.
             let focus: FocusHandle = self.composer.focus_handle(cx);
@@ -350,7 +359,10 @@ impl ConversationView {
     /// question, popups, then the reply being composed. Returns whether
     /// anything was open; escape and the back button both use it.
     pub fn step_back(&mut self, cx: &mut Context<Self>) -> bool {
-        if self.viewing.take().is_some() || self.sending.take().is_some() {
+        if self.viewing.take().is_some()
+            || self.browsing.take().is_some()
+            || self.sending.take().is_some()
+        {
             cx.notify();
         } else if self.message_popup.is_some() {
             self.close_message_popup(cx);
@@ -434,6 +446,9 @@ impl ConversationView {
 
 impl Render for ConversationView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if std::mem::take(&mut self.refocus) {
+            window.focus(&self.composer.focus_handle(cx), cx);
+        }
         let open = self.log.read(cx).open_chat().map(|chat| chat.id.clone());
         let picture = open.and_then(|chat| {
             self.pictures
@@ -537,6 +552,7 @@ impl Render for ConversationView {
             .children(self.reaction_picker(cx))
             .children(self.attach_menu(cx))
             .children(self.poll_dialog(window, cx))
+            .children(self.browsing.clone())
             .children(self.picture_viewer(window, cx))
             .children(self.chat_menu(cx))
             .into_any_element()

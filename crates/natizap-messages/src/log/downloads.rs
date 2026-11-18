@@ -19,6 +19,18 @@ impl MessageLog {
         }
     }
 
+    /// Downloads a photo to be shown large, if it is not here yet.
+    pub(crate) fn download(&mut self, fetch: Fetch, cx: &mut Context<Self>) {
+        if self.saved_file(&fetch).is_none() {
+            self.fetch(fetch, false, cx);
+        }
+    }
+
+    /// Where `fetch`'s attachment was downloaded to, once it was.
+    pub(crate) fn saved_file(&self, fetch: &Fetch) -> Option<PathBuf> {
+        Some(fetch.path_in(&self.media_dir)).filter(|path| path.exists())
+    }
+
     /// Videos play over the window and sound in its bubble; other files open
     /// in the system's app for them.
     fn reveal(&self, kind: ContentKind, message_id: String, file: PathBuf, cx: &mut Context<Self>) {

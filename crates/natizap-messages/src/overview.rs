@@ -7,6 +7,7 @@ use std::sync::Arc;
 use gpui::{Image, ImageSource, SharedString};
 use natizap_protocol::{ChatId, ContentKind};
 
+use crate::items::{MediaView, media_view};
 use crate::message::Message;
 use crate::preview::preview;
 use crate::store::MessageStore;
@@ -32,6 +33,8 @@ pub struct MediaTile {
     pub image: Option<TileImage>,
     /// A video's length.
     pub length: Option<SharedString>,
+    /// What to open on a click, with [`crate::ConversationView::show_tile`].
+    pub(crate) media: Option<MediaView>,
 }
 
 /// Reads `chats`' overview from the store at `path`.
@@ -88,5 +91,9 @@ fn tile(message: &Message) -> MediaTile {
         .and_then(|media| media.seconds)
         .filter(|_| message.kind == ContentKind::Video)
         .map(|seconds| format!("{}:{:02}", seconds / 60, seconds % 60).into());
-    MediaTile { image, length }
+    MediaTile {
+        image,
+        length,
+        media: media_view(message),
+    }
 }

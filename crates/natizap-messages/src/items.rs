@@ -322,7 +322,7 @@ fn quote_preview(
     clippy::cast_precision_loss,
     reason = "image sides are far below f32's exact range"
 )]
-fn media_view(message: &Message) -> Option<MediaView> {
+pub(crate) fn media_view(message: &Message) -> Option<MediaView> {
     let fetch = Fetch::of(message)?;
     let media = &fetch.media;
     let size = match (message.kind, media.width, media.height) {

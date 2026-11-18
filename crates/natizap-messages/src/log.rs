@@ -9,6 +9,7 @@ use natizap_protocol::whatsapp_rust::types::events::EventKind;
 use natizap_protocol::{Anchor, ChatId, Forward, GroupInfo, PersonName, Protocol, Unread};
 
 use crate::items::{Item, Members};
+use crate::library::Library;
 use crate::media::{Fetch, PosterJob};
 use crate::message::MessageChange;
 use crate::overview::{self, ChatOverview};
@@ -300,6 +301,13 @@ impl MessageLog {
     pub fn overview(&self, addresses: Vec<ChatId>, cx: &App) -> Task<ChatOverview> {
         let path = self.store_path.clone();
         cx.background_spawn(async move { overview::read(&path, &addresses) })
+    }
+
+    /// Everything `addresses`' chat shared: media, docs and links. Read off
+    /// the UI thread.
+    pub(crate) fn library(&self, addresses: Vec<ChatId>, cx: &App) -> Task<Library> {
+        let (path, media_dir) = (self.store_path.clone(), self.media_dir.clone());
+        cx.background_spawn(async move { Library::read(&path, &media_dir, &addresses) })
     }
 
     /// Who runs the open group and who may write in it, once known.

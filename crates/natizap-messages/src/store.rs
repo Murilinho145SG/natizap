@@ -551,5 +551,6 @@ fn message_from_row(row: &Row<'_>) -> rusqlite::Result<Message> {
 }
 
 mod extra;
+mod library;
 #[cfg(test)]
 mod tests;
