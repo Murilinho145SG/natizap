@@ -5,7 +5,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use gpui::{Image, ImageFormat, SharedString};
+use gpui::{Image, ImageFormat, ImageSource, SharedString};
 use natizap_protocol::{ChatId, ContentKind, LinkKind, Mark, Marked};
 
 use crate::items::{MediaView, media_view};
@@ -68,7 +68,33 @@ pub(crate) struct SharedLink {
     pub(crate) sent_at: i64,
 }
 
+impl Shelved {
+    /// What a photo or video shows as a tile: its small copy (`made`, when
+    /// made since the library was read), else the preview that came with
+    /// the message. Never the original, which would be decoded at full
+    /// size for a tile.
+    pub(crate) fn tile_picture(&self, made: Option<&PathBuf>) -> Option<ImageSource> {
+        self.small
+            .as_ref()
+            .or(made)
+            .cloned()
+            .map(Into::into)
+            .or_else(|| self.media.preview.clone().map(Into::into))
+    }
+}
+
 impl Library {
+    /// The small copies the photos and videos lack, newest first.
+    pub(crate) fn small_copies_wanted(&self) -> Vec<thumbs::Wanted> {
+        self.media
+            .iter()
+            .enumerate()
+            .filter_map(|(index, item)| {
+                Some((index, item.original.clone()?, item.small_path.clone()))
+            })
+            .collect()
+    }
+
     /// Reads `chats`' library from the store at `path`, with the small
     /// copies already made in the media folder `media_dir`.
     ///

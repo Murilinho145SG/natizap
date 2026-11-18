@@ -25,9 +25,6 @@ mod render;
 
 /// Photos and videos in a row of the grid.
 const COLUMNS: usize = 6;
-/// Small copies made at a time, between showing them.
-const SMALL_COPY_BATCH: usize = 6;
-
 /// The user chose a photo, video, document or audio file, and what to do
 /// with it.
 #[derive(Debug, Clone)]
@@ -181,47 +178,22 @@ impl MediaBrowser {
         }
     }
 
-    /// Makes the small copies the grid lacks, newest first, a few at a time
-    /// off the UI thread, showing each batch as it is done.
+    /// Makes the small copies the grid lacks, newest first, showing each
+    /// batch as it is done.
     fn make_small_copies(&mut self, cx: &mut Context<Self>) {
         let Some(library) = self.library.clone() else {
             return;
         };
-        let wanted: Vec<(usize, PathBuf, PathBuf)> = library
-            .media
-            .iter()
-            .enumerate()
-            .filter_map(|(index, item)| {
-                Some((index, item.original.clone()?, item.small_path.clone()))
-            })
-            .collect();
+        let wanted = library.small_copies_wanted();
         self.making = cx.spawn(async move |this, cx| {
-            for batch in wanted.chunks(SMALL_COPY_BATCH) {
-                let batch = batch.to_vec();
-                let made = cx
-                    .background_spawn(async move {
-                        batch
-                            .into_iter()
-                            .filter_map(|(index, original, small)| {
-                                match thumbs::make(&original, &small) {
-                                    Ok(()) => Some((index, small)),
-                                    Err(error) => {
-                                        tracing::debug!(%error, "no small copy of a picture");
-                                        None
-                                    }
-                                }
-                            })
-                            .collect::<Vec<_>>()
-                    })
-                    .await;
-                let shown = this.update(cx, |this, cx| {
+            thumbs::make_in_batches(wanted, cx, |made, cx| {
+                this.update(cx, |this, cx| {
                     Arc::make_mut(&mut this.made).extend(made);
                     cx.notify();
-                });
-                if shown.is_err() {
-                    break;
-                }
-            }
+                })
+                .is_ok()
+            })
+            .await;
         });
     }
 

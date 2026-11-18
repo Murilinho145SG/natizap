@@ -5,7 +5,45 @@ use std::fs::File;
 use std::io::BufWriter;
 use std::path::{Path, PathBuf};
 
+use gpui::{AppContext as _, AsyncApp};
 use image::codecs::jpeg::JpegEncoder;
+
+/// Small copies made at a time, between showing them.
+const BATCH: usize = 6;
+
+/// A small copy to make: who wants it by index, the picture it is made
+/// from, and where it goes.
+pub(crate) type Wanted = (usize, PathBuf, PathBuf);
+
+/// Makes the small copies in `wanted`, a few at a time off the UI thread,
+/// handing each batch made (by index, with where it went) to `made`, which
+/// returns whether to go on.
+pub(crate) async fn make_in_batches(
+    wanted: Vec<Wanted>,
+    cx: &mut AsyncApp,
+    mut made: impl FnMut(Vec<(usize, PathBuf)>, &mut AsyncApp) -> bool,
+) {
+    for batch in wanted.chunks(BATCH) {
+        let batch = batch.to_vec();
+        let done = cx
+            .background_spawn(async move {
+                batch
+                    .into_iter()
+                    .filter_map(|(index, original, small)| match make(&original, &small) {
+                        Ok(()) => Some((index, small)),
+                        Err(error) => {
+                            tracing::debug!(%error, "no small copy of a picture");
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .await;
+        if !made(done, cx) {
+            break;
+        }
+    }
+}
 
 /// The longest side of a small copy: sharp in a grid tile at twice its
 /// size, for high-density screens.

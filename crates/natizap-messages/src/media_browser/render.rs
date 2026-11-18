@@ -8,8 +8,8 @@ use std::time::Duration;
 use chrono::{Local, TimeZone as _};
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, App, Context, Div, Focusable as _, FontWeight, ImageSource, ObjectFit,
-    SharedString, Stateful, WeakEntity, Window, div, img, list, px, rgb, rgba, svg,
+    AnyElement, App, Context, Div, Focusable as _, FontWeight, ObjectFit, SharedString, Stateful,
+    WeakEntity, Window, div, img, list, px, rgb, rgba, svg,
 };
 use natizap_protocol::ContentKind;
 use natizap_ui::motion::rise_in_after;
@@ -257,8 +257,7 @@ fn render_line(
             .pb(px(GAP))
             .children(indices.iter().filter_map(|&index| {
                 let item = library.media.get(index)?;
-                let small = item.small.as_ref().or_else(|| made.get(&index));
-                Some(tile(item, small, browser, Pick::Media(index)))
+                Some(tile(item, made.get(&index), browser, Pick::Media(index)))
             }))
             .into_any_element(),
         Line::Doc(index) => library.docs.get(*index).map_or_else(
@@ -272,16 +271,6 @@ fn render_line(
     }
 }
 
-/// What a photo or video shows in the grid: its small copy, else the
-/// preview that came with the message until the copy is made. Never the
-/// original, which would be decoded at full size for a tile.
-fn picture(media: &MediaView, small: Option<&PathBuf>) -> Option<ImageSource> {
-    small
-        .cloned()
-        .map(Into::into)
-        .or_else(|| media.preview.clone().map(Into::into))
-}
-
 fn choose(browser: &WeakEntity<MediaBrowser>, media: &MediaView, cx: &mut App) {
     let media = media.clone();
     let _ = browser.update(cx, |_, cx| cx.emit(MediaChosen(media, MediaUse::Open)));
@@ -289,7 +278,7 @@ fn choose(browser: &WeakEntity<MediaBrowser>, media: &MediaView, cx: &mut App) {
 
 fn tile(
     item: &Shelved,
-    small: Option<&PathBuf>,
+    made: Option<&PathBuf>,
     browser: &WeakEntity<MediaBrowser>,
     pick: Pick,
 ) -> AnyElement {
@@ -311,7 +300,7 @@ fn tile(
         .cursor_pointer()
         .hover(|tile| tile.opacity(0.85))
         .active(|tile| tile.opacity(0.7))
-        .child(match picture(&media, small) {
+        .child(match item.tile_picture(made) {
             Some(picture) => img(picture)
                 .size(px(TILE))
                 .flex_none()
