@@ -6,8 +6,8 @@ use gpui::{
     Context, Div, Entity, EventEmitter, FontWeight, ObjectFit, SharedString, Stateful, Window, div,
     img, px, rgb, svg,
 };
-use natizap_ui::Icon;
 use natizap_ui::theme::{DEEP, MUTED, PANEL, RAISED, TEXT, glass};
+use natizap_ui::{Icon, Tooltip};
 
 use crate::shelf::{Favorite, StickerShelf};
 
@@ -105,6 +105,7 @@ fn cell(index: usize, favorite: Favorite, cx: &mut Context<StickerPicker>) -> St
             .object_fit(ObjectFit::Contain)
             .into_any_element()
     });
+    let sendable = favorite.sendable();
     div()
         .id(("favorite-sticker", index))
         .size(px(CELL))
@@ -113,19 +114,27 @@ fn cell(index: usize, favorite: Favorite, cx: &mut Context<StickerPicker>) -> St
         .justify_center()
         .p_1()
         .rounded_lg()
-        .cursor_pointer()
-        .hover(|cell| cell.bg(rgb(RAISED)))
-        .active(|cell| cell.bg(rgb(DEEP)))
         .child(shown.unwrap_or_else(|| {
-            // Still downloading, or a Lottie sticker natizap cannot draw.
+            // Still downloading, a Lottie sticker natizap cannot draw, or
+            // one only the phone still has.
             svg()
-                .path(Icon::Emoji.path())
+                .path(Icon::Sticker.path())
                 .size(px(24.0))
                 .text_color(rgb(MUTED))
                 .into_any_element()
         }))
-        .on_click(cx.listener(move |_, _, _, cx| {
-            cx.emit(StickerPicked(favorite.clone()));
-        }))
+        .when(sendable, |cell| {
+            cell.cursor_pointer()
+                .hover(|cell| cell.bg(rgb(RAISED)))
+                .active(|cell| cell.bg(rgb(DEEP)))
+                .on_click(cx.listener(move |_, _, _, cx| {
+                    cx.emit(StickerPicked(favorite.clone()));
+                }))
+        })
+        .when(!sendable, |cell| {
+            cell.opacity(0.4).tooltip(Tooltip::text(
+                "Only your phone still has this one. Add it again from a chat to use it here.",
+            ))
+        })
         .text_color(rgb(TEXT))
 }

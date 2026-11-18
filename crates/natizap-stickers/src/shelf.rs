@@ -3,6 +3,7 @@
 
 use std::collections::{HashSet, VecDeque};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use gpui::prelude::*;
 use gpui::{Context, Entity, Task};
@@ -11,8 +12,12 @@ use natizap_protocol::{ContentKind, Protocol, Sticker};
 
 use crate::store::StickerStore;
 
-/// Favorite stickers downloaded at the same time.
-const DOWNLOADS_AT_ONCE: usize = 3;
+/// The first pause after a download fails, doubled after each failure in
+/// a row: failures make the client ask WhatsApp for a new media connection,
+/// and too many of those rate-limit the whole account.
+const FIRST_PAUSE: Duration = Duration::from_secs(5);
+/// The longest pause after failures in a row.
+const LONGEST_PAUSE: Duration = Duration::from_secs(300);
 
 /// A favorite sticker, and its file once downloaded.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -21,6 +26,15 @@ pub struct Favorite {
     pub sticker: Sticker,
     /// Where its file is, once here; Lottie stickers have none to show.
     pub file: Option<PathBuf>,
+}
+
+impl Favorite {
+    /// Whether it can be sent: from its file, or by its link while that
+    /// still works.
+    #[must_use]
+    pub fn sendable(&self) -> bool {
+        self.file.is_some() || !self.sticker.media.link_expired()
+    }
 }
 
 /// The account's favorite stickers, as its phone keeps them. Notifies
@@ -35,8 +49,10 @@ pub struct StickerShelf {
     fetching: HashSet<String>,
     /// Stickers waiting for their file to be downloaded, next first.
     queue: VecDeque<Sticker>,
-    /// Downloads under way.
-    downloading: usize,
+    /// Whether a download is under way, or the queue rests after one failed.
+    busy: bool,
+    /// How long to rest after the next failure.
+    pause: Duration,
     _tasks: [Task<()>; 2],
 }
 
@@ -84,7 +100,8 @@ impl StickerShelf {
             favorites: Vec::new(),
             fetching: HashSet::new(),
             queue: VecDeque::new(),
-            downloading: 0,
+            busy: false,
+            pause: FIRST_PAUSE,
             _tasks: [loading, refreshing],
         }
     }
@@ -175,8 +192,9 @@ impl StickerShelf {
         .detach();
     }
 
-    /// Shows `stickers` as the favorites, keeping them on disk when
-    /// `save`, and fetches the files they lack.
+    /// Shows `stickers` as the favorites. Those that come from WhatsApp or
+    /// the user (`save`) are kept on disk and get the files they lack: the
+    /// ones read from disk come before the connection, which downloads need.
     fn replace(&mut self, stickers: Vec<Sticker>, save: bool, cx: &mut Context<Self>) {
         if save {
             let (path, kept) = (self.store_path.clone(), stickers.clone());
@@ -196,18 +214,22 @@ impl StickerShelf {
                 Favorite { sticker, file }
             })
             .collect();
-        self.fetch_missing(cx);
+        if save {
+            self.fetch_missing(cx);
+        }
         cx.notify();
     }
 
     /// Queues the files of the favorites that have none yet, newest first,
-    /// as the picker shows them.
+    /// as the picker shows them. Those whose link expired are left out:
+    /// WhatsApp's servers no longer hold them, only the phone does.
     fn fetch_missing(&mut self, cx: &mut Context<Self>) {
         let missing: Vec<Sticker> = self
             .favorites
             .iter()
             .rev()
             .filter(|favorite| favorite.file.is_none() && !favorite.sticker.lottie)
+            .filter(|favorite| !favorite.sticker.media.link_expired())
             .map(|favorite| favorite.sticker.clone())
             .filter(|sticker| self.fetching.insert(sticker.hash.clone()))
             .collect();
@@ -215,44 +237,62 @@ impl StickerShelf {
         self.pump(cx);
     }
 
-    /// Starts queued downloads, a few at a time: a hundred favorites asked
-    /// for at once, just as the connection comes up, mostly time out.
+    /// Downloads the next queued file, one at a time, resting after a
+    /// failure before the next.
     fn pump(&mut self, cx: &mut Context<Self>) {
-        while self.downloading < DOWNLOADS_AT_ONCE {
-            let Some(sticker) = self.queue.pop_front() else {
-                return;
+        if self.busy {
+            return;
+        }
+        let Some(sticker) = self.queue.pop_front() else {
+            return;
+        };
+        self.busy = true;
+        let path = self.file_path(&sticker.hash);
+        let downloading =
+            self.protocol
+                .read(cx)
+                .download(ContentKind::Sticker, sticker.media.clone(), cx);
+        cx.spawn(async move |this, cx| {
+            let saved = match downloading.await {
+                Ok(bytes) => {
+                    let path = path.clone();
+                    cx.background_spawn(async move { save(&path, &bytes) })
+                        .await
+                }
+                Err(error) => Err(error.to_string()),
             };
-            self.downloading += 1;
-            let path = self.file_path(&sticker.hash);
-            let downloading =
-                self.protocol
-                    .read(cx)
-                    .download(ContentKind::Sticker, sticker.media.clone(), cx);
-            cx.spawn(async move |this, cx| {
-                let saved = match downloading.await {
-                    Ok(bytes) => {
-                        let path = path.clone();
-                        cx.background_spawn(async move { save(&path, &bytes) })
-                            .await
-                    }
-                    Err(error) => Err(error.to_string()),
-                };
-                let _ = this.update(cx, |shelf, cx| {
-                    shelf.downloading -= 1;
+            let rest = this
+                .update(cx, |shelf, cx| {
                     shelf.fetching.remove(&sticker.hash);
                     match saved {
-                        Ok(()) => shelf.found(&sticker.hash, path, cx),
-                        Err(error) => tracing::warn!(
-                            %error,
-                            sticker = sticker.hash,
-                            "could not download a favorite sticker"
-                        ),
+                        Ok(()) => {
+                            shelf.pause = FIRST_PAUSE;
+                            shelf.found(&sticker.hash, path, cx);
+                            None
+                        }
+                        Err(error) => {
+                            tracing::warn!(
+                                %error,
+                                sticker = sticker.hash,
+                                "could not download a favorite sticker"
+                            );
+                            let rest = shelf.pause;
+                            shelf.pause = (rest * 2).min(LONGEST_PAUSE);
+                            Some(rest)
+                        }
                     }
-                    shelf.pump(cx);
-                });
-            })
-            .detach();
-        }
+                })
+                .ok()
+                .flatten();
+            if let Some(rest) = rest {
+                cx.background_executor().timer(rest).await;
+            }
+            let _ = this.update(cx, |shelf, cx| {
+                shelf.busy = false;
+                shelf.pump(cx);
+            });
+        })
+        .detach();
     }
 
     /// Shows the favorite `hash` with its file, now at `file`.
