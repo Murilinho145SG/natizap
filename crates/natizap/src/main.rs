@@ -5,6 +5,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod history;
+mod instance;
 mod root;
 
 use std::path::{Path, PathBuf};
@@ -12,7 +13,8 @@ use std::path::{Path, PathBuf};
 use anyhow::Context as _;
 use gpui::{
     App, AppContext as _, Bounds, KeyBinding, Pixels, Size, TitlebarOptions,
-    WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowOptions, actions, px, size,
+    WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowHandle, WindowOptions,
+    actions, px, size,
 };
 use natizap_chats::ChatList;
 use natizap_messages::MessageLog;
@@ -25,6 +27,7 @@ use natizap_ui::{Assets, Gallery, bind_text_input_keys, load_fonts};
 use natizap_update::Updater;
 use tracing_subscriber::EnvFilter;
 
+use crate::instance::{Claim, Instance, ask_to_show};
 use crate::root::{Features, Root};
 
 actions!(
@@ -45,6 +48,16 @@ fn main() -> anyhow::Result<()> {
         .init();
 
     let data_dir = data_dir()?;
+    let instance = match Instance::claim(&data_dir).context("could not claim the data folder")? {
+        Claim::First(instance) => instance,
+        Claim::Running => {
+            if let Err(error) = ask_to_show(&data_dir) {
+                tracing::warn!(%error, "natizap runs already but did not answer");
+            }
+            return Ok(());
+        }
+    };
+    let show_requests = instance.listen();
     // Read now: a rebuild replaces the file, and the path the running
     // process reports for it afterwards no longer opens.
     let executable = std::env::current_exe().context("could not find natizap's executable")?;
@@ -71,11 +84,21 @@ fn main() -> anyhow::Result<()> {
                 // System fonts still render every screen, just less consistently.
                 tracing::error!(?error, "could not load the bundled fonts");
             }
-            if let Err(error) = open_main_window(&data_dir, &executable, cx) {
-                tracing::error!(?error, "could not open the main window");
-                cx.quit();
-                return;
-            }
+            let main_window = match open_main_window(&data_dir, &executable, cx) {
+                Ok(window) => window,
+                Err(error) => {
+                    tracing::error!(?error, "could not open the main window");
+                    cx.quit();
+                    return;
+                }
+            };
+            let show_requests = show_requests.clone();
+            cx.spawn(async move |cx| {
+                while show_requests.recv().await.is_ok() {
+                    let _ = main_window.update(cx, |_, window, _| window.activate_window());
+                }
+            })
+            .detach();
             cx.activate(true);
         });
     Ok(())
@@ -108,7 +131,11 @@ fn open_components_window(cx: &mut App) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn open_main_window(data_dir: &Path, executable: &Path, cx: &mut App) -> anyhow::Result<()> {
+fn open_main_window(
+    data_dir: &Path,
+    executable: &Path,
+    cx: &mut App,
+) -> anyhow::Result<WindowHandle<Root>> {
     let options = window_options(
         "natizap",
         size(px(1100.0), px(720.0)),
@@ -151,8 +178,7 @@ fn open_main_window(data_dir: &Path, executable: &Path, cx: &mut App) -> anyhow:
             updater,
         };
         cx.new(|cx| Root::new(features, window, cx))
-    })?;
-    Ok(())
+    })
 }
 
 /// Where natizap keeps its local data: the platform's per-user data
