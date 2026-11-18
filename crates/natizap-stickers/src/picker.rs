@@ -40,7 +40,7 @@ impl StickerPicker {
 
 impl Render for StickerPicker {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let favorites = self.shelf.read(cx).favorites().to_vec();
+        let favorites: Vec<Favorite> = self.shelf.read(cx).favorites().cloned().collect();
         #[expect(clippy::cast_precision_loss, reason = "a handful of columns")]
         let width = COLUMNS as f32 * CELL + (COLUMNS - 1) as f32 * GAP + 24.0;
         div()

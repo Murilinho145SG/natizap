@@ -1,7 +1,7 @@
 //! The favorite stickers: read from WhatsApp each time the connection comes
 //! up, kept on disk in between, with their files downloaded for showing.
 
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 
 use gpui::prelude::*;
@@ -10,6 +10,9 @@ use natizap_protocol::whatsapp_rust::prelude::EventKind;
 use natizap_protocol::{ContentKind, Protocol, Sticker};
 
 use crate::store::StickerStore;
+
+/// Favorite stickers downloaded at the same time.
+const DOWNLOADS_AT_ONCE: usize = 3;
 
 /// A favorite sticker, and its file once downloaded.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -28,8 +31,12 @@ pub struct StickerShelf {
     /// Where sticker files are kept.
     dir: PathBuf,
     favorites: Vec<Favorite>,
-    /// Stickers whose file is being downloaded, by hash.
+    /// Stickers whose file is being fetched or waits to be, by hash.
     fetching: HashSet<String>,
+    /// Stickers waiting for their file to be downloaded, next first.
+    queue: VecDeque<Sticker>,
+    /// Downloads under way.
+    downloading: usize,
     _tasks: [Task<()>; 2],
 }
 
@@ -76,14 +83,15 @@ impl StickerShelf {
             dir,
             favorites: Vec::new(),
             fetching: HashSet::new(),
+            queue: VecDeque::new(),
+            downloading: 0,
             _tasks: [loading, refreshing],
         }
     }
 
-    /// The favorites, oldest first.
-    #[must_use]
-    pub fn favorites(&self) -> &[Favorite] {
-        &self.favorites
+    /// The favorites, newest first, as the phone shows them.
+    pub fn favorites(&self) -> impl Iterator<Item = &Favorite> {
+        self.favorites.iter().rev()
     }
 
     /// The hashes of the favorites, to tell whether a sticker is one.
@@ -192,16 +200,29 @@ impl StickerShelf {
         cx.notify();
     }
 
-    /// Downloads the files of the favorites that have none yet.
+    /// Queues the files of the favorites that have none yet, newest first,
+    /// as the picker shows them.
     fn fetch_missing(&mut self, cx: &mut Context<Self>) {
         let missing: Vec<Sticker> = self
             .favorites
             .iter()
+            .rev()
             .filter(|favorite| favorite.file.is_none() && !favorite.sticker.lottie)
             .map(|favorite| favorite.sticker.clone())
             .filter(|sticker| self.fetching.insert(sticker.hash.clone()))
             .collect();
-        for sticker in missing {
+        self.queue.extend(missing);
+        self.pump(cx);
+    }
+
+    /// Starts queued downloads, a few at a time: a hundred favorites asked
+    /// for at once, just as the connection comes up, mostly time out.
+    fn pump(&mut self, cx: &mut Context<Self>) {
+        while self.downloading < DOWNLOADS_AT_ONCE {
+            let Some(sticker) = self.queue.pop_front() else {
+                return;
+            };
+            self.downloading += 1;
             let path = self.file_path(&sticker.hash);
             let downloading =
                 self.protocol
@@ -217,13 +238,17 @@ impl StickerShelf {
                     Err(error) => Err(error.to_string()),
                 };
                 let _ = this.update(cx, |shelf, cx| {
+                    shelf.downloading -= 1;
                     shelf.fetching.remove(&sticker.hash);
                     match saved {
                         Ok(()) => shelf.found(&sticker.hash, path, cx),
-                        Err(error) => {
-                            tracing::warn!(%error, "could not download a favorite sticker");
-                        }
+                        Err(error) => tracing::warn!(
+                            %error,
+                            sticker = sticker.hash,
+                            "could not download a favorite sticker"
+                        ),
                     }
+                    shelf.pump(cx);
                 });
             })
             .detach();
@@ -240,6 +265,13 @@ impl StickerShelf {
             favorite.file = Some(file);
             cx.notify();
         }
+    }
+
+    /// Where `sticker`'s file is kept, once it is here: a message sent
+    /// before it arrives shows it from there as soon as it does.
+    #[must_use]
+    pub fn file_for(&self, sticker: &Sticker) -> PathBuf {
+        self.file_path(&sticker.hash)
     }
 
     /// Where the file of the sticker `hash` is kept.
