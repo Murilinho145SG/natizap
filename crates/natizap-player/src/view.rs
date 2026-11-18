@@ -6,9 +6,8 @@ use std::time::Duration;
 
 use gpui::prelude::*;
 use gpui::{
-    Bounds, Context, Div, EventEmitter, FocusHandle, Focusable, FontWeight, KeyDownEvent,
-    MouseButton, ObjectFit, Pixels, RenderImage, SharedString, Window, canvas, div, img, px, rgb,
-    svg,
+    Bounds, Context, Corners, Div, EventEmitter, FocusHandle, Focusable, FontWeight, KeyDownEvent,
+    MouseButton, ObjectFit, Pixels, RenderImage, SharedString, Window, canvas, div, px, rgb, svg,
 };
 use image::{Frame, RgbaImage};
 use natizap_playback::Playback;
@@ -145,11 +144,7 @@ impl Render for PlayerView {
 
         let stage = match (&status.error, &self.picture, status.has_video) {
             (Some(error), ..) => notice(format!("Could not play this file: {error}")),
-            (None, Some(picture), true) => div().size_full().child(
-                img(picture.clone())
-                    .size_full()
-                    .object_fit(ObjectFit::Contain),
-            ),
+            (None, Some(picture), true) => frame(picture.clone()),
             (None, None, true) => notice("Loading…".to_owned()),
             (None, _, false) => div()
                 .size_full()
@@ -174,7 +169,13 @@ impl Render for PlayerView {
             .bg(rgb(DEEP))
             .text_color(rgb(TEXT))
             .child(self.top_bar(cx))
-            .child(div().flex_1().min_h_0().p_4().child(stage))
+            .child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .p_4()
+                    .child(div().size_full().relative().child(stage)),
+            )
             .child(self.controls(position, status.duration, status.ended, cx))
     }
 }
@@ -305,6 +306,33 @@ fn clock_label(time: Duration) -> String {
     } else {
         format!("{}:{:02}", seconds / 60, seconds % 60)
     }
+}
+
+/// The video's picture, as large as the stage allows with its shape kept.
+///
+/// Painted by hand: an image element sized to the stage in relative units
+/// is laid out by the picture's own shape, so an upright video grew far
+/// taller than the stage and showed cropped, as if zoomed in.
+fn frame(picture: Arc<RenderImage>) -> Div {
+    div().absolute().inset_0().child(
+        canvas(
+            |_, _, _| {},
+            move |bounds, (), window, _| {
+                let fitted = ObjectFit::Contain.get_bounds(bounds, picture.size(0));
+                if let Err(error) = window.paint_image(
+                    fitted,
+                    fitted,
+                    Corners::default(),
+                    Arc::clone(&picture),
+                    0,
+                    false,
+                ) {
+                    tracing::debug!(%error, "could not draw a video frame");
+                }
+            },
+        )
+        .size_full(),
+    )
 }
 
 #[cfg(test)]
