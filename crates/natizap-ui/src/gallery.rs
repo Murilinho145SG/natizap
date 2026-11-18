@@ -13,6 +13,7 @@ use crate::components::button::{Button, ButtonSize, ButtonVariant};
 use crate::components::code_block::code_block;
 use crate::components::menu::Menu;
 use crate::components::progress::progress;
+use crate::components::rail::{RAIL_AVATAR, Rail, rail_avatar};
 use crate::components::scrollbar::scrollbar;
 use crate::components::separator::separator;
 use crate::components::skeleton::skeleton;
@@ -73,6 +74,7 @@ impl Render for Gallery {
             ))
             .child(section("Code block", code_sample()))
             .child(section("Avatar", avatars()))
+            .child(section("Rail", rail_demo()))
             .child(section("Separator", div().w(px(320.0)).child(separator())))
             .child(section("Skeleton", skeleton_row()))
             .child(section(
@@ -243,6 +245,32 @@ fn avatars() -> Div {
         .child(avatar("a", "Ana", None, px(28.0)))
         .child(avatar("b", "Bruno", None, px(40.0)))
         .child(avatar("c", "Carla", None, px(56.0)))
+}
+
+fn rail_demo() -> Div {
+    div().h(px(260.0)).child(
+        Rail::new()
+            .top(
+                Button::new("rail-chats")
+                    .icon(Icon::Chats)
+                    .variant(ButtonVariant::Ghost)
+                    .round()
+                    .selected(true)
+                    .tooltip("Chats"),
+            )
+            .bottom(
+                Button::new("rail-settings")
+                    .icon(Icon::Settings)
+                    .variant(ButtonVariant::Ghost)
+                    .round()
+                    .tooltip("Settings"),
+            )
+            .bottom(rail_avatar(
+                "rail-me",
+                avatar("me", "Dani", None, px(RAIL_AVATAR)),
+                false,
+            )),
+    )
 }
 
 fn skeleton_row() -> AnyElement {

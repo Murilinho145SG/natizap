@@ -8,6 +8,7 @@ pub(crate) mod code_block;
 pub(crate) mod dialog;
 pub(crate) mod menu;
 pub(crate) mod progress;
+pub(crate) mod rail;
 pub(crate) mod scrollbar;
 pub(crate) mod separator;
 pub(crate) mod skeleton;
