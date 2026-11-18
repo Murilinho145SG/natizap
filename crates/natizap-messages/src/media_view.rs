@@ -2,8 +2,8 @@
 
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, App, Div, FontWeight, ImageSource, ObjectFit, WeakEntity, div, img, px, rgb, rgba,
-    svg,
+    AnyElement, App, Div, FontWeight, ImageSource, ObjectFit, Stateful, WeakEntity, div, img, px,
+    rgb, rgba, svg,
 };
 use natizap_protocol::ContentKind;
 use natizap_ui::Icon;
@@ -25,7 +25,7 @@ pub(crate) fn render_media(media: &MediaView, view: &WeakEntity<ConversationView
     match media.fetch.kind {
         ContentKind::Photo => picture(media)
             .id("media")
-            .cursor_pointer()
+            .map(pressable)
             .on_click({
                 let (media, view) = (media.clone(), view.clone());
                 move |_, _, cx| {
@@ -55,7 +55,7 @@ pub(crate) fn render_media(media: &MediaView, view: &WeakEntity<ConversationView
                     .child(duration)
             }))
             .id("media")
-            .cursor_pointer()
+            .map(pressable)
             .on_click(open(media, view))
             .into_any_element(),
         kind => {
@@ -98,7 +98,9 @@ pub(crate) fn render_media(media: &MediaView, view: &WeakEntity<ConversationView
                 .rounded(px(10.0))
                 .overflow_hidden()
                 .bg(rgb(DEEP))
-                .cursor_pointer()
+                .map(pressable)
+                .hover(|media| media.opacity(0.88))
+                .active(|media| media.opacity(0.75))
                 .on_click(open(media, view))
                 // A document's first page, as its sender's phone drew it.
                 .children(
@@ -177,4 +179,13 @@ fn open(
         // The view is gone only while the window closes.
         let _ = view.update(cx, |view, cx| view.open_media(&media, cx));
     }
+}
+
+/// `media` showing it can be clicked: the hand, lit on hover, dimmed while
+/// pressed.
+fn pressable(media: Stateful<Div>) -> Stateful<Div> {
+    media
+        .cursor_pointer()
+        .hover(|media| media.opacity(0.88))
+        .active(|media| media.opacity(0.75))
 }

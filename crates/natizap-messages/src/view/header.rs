@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use gpui::prelude::*;
 use gpui::{App, ClickEvent, Context, Div, FontWeight, Stateful, Window, div, px, rgb};
-use natizap_ui::theme::{LINE, MUTED, PANEL};
+use natizap_ui::theme::{LINE, MUTED, PANEL, RAISED};
 use natizap_ui::{Button, ButtonVariant, Icon, Menu, avatar, verified_seal};
 
 use super::{ConversationView, ProfileRequested};
@@ -31,6 +31,8 @@ pub(super) fn header(
     div()
         .id("chat-header")
         .cursor_pointer()
+        // The whole header opens the profile; lighting it up says so.
+        .hover(|header| header.bg(rgb(RAISED)))
         .on_click(cx.listener(|this, _, _, cx| this.request_profile(cx)))
         .h(px(60.0))
         .flex_none()

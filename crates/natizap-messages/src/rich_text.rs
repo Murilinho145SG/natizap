@@ -12,7 +12,7 @@ use gpui::{
 };
 use natizap_protocol::{ChatId, LinkKind, Mark};
 use natizap_ui::code_block;
-use natizap_ui::theme::{DEEP, LINK, MONO_FONT, MUTED, SELECTION, TEXT, base_font};
+use natizap_ui::theme::{ACCENT, DEEP, LINK, MONO_FONT, MUTED, SELECTION, TEXT, base_font};
 
 use crate::items::Text;
 use crate::view::{ChatRequested, ConversationView};
@@ -35,6 +35,30 @@ impl Selection {
     pub(crate) fn selected(&self) -> Option<&str> {
         Some(&self.text[self.range.clone()]).filter(|selected| !selected.is_empty())
     }
+}
+
+/// The link under the pointer, drawn lit up so it reads as clickable.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct HoveredLink {
+    /// Which stretch of text holds it.
+    key: SharedString,
+    /// The link, as a byte range of the stretch.
+    range: Range<usize>,
+}
+
+impl HoveredLink {
+    /// Whether the link is in the text stretch `key`.
+    pub(crate) fn is_in(&self, key: &str) -> bool {
+        self.key == key
+    }
+}
+
+/// What the pointer did to the texts on screen: the selected text and the
+/// link it rests on.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct TextFocus {
+    pub(crate) selection: Option<Selection>,
+    pub(crate) hovered_link: Option<HoveredLink>,
 }
 
 /// A stretch of text on screen that mouse drags select in.
@@ -105,13 +129,9 @@ pub(crate) fn rich_text(
     id: &str,
     text: &Text,
     view: &WeakEntity<ConversationView>,
-    selection: Option<&Selection>,
+    focus: &TextFocus,
 ) -> (AnyElement, Vec<TextHit>) {
-    let shown = Shown {
-        id,
-        view,
-        selection,
-    };
+    let shown = Shown { id, view, focus };
     let mut blocks = text
         .marks
         .iter()
@@ -149,7 +169,7 @@ pub(crate) fn rich_text(
 struct Shown<'a> {
     id: &'a str,
     view: &'a WeakEntity<ConversationView>,
-    selection: Option<&'a Selection>,
+    focus: &'a TextFocus,
 }
 
 impl Shown<'_> {
@@ -179,10 +199,18 @@ impl Shown<'_> {
             .collect();
         let key: SharedString = format!("{}-text-{index}", self.id).into();
         let selected = self
+            .focus
             .selection
+            .as_ref()
             .filter(|selection| selection.key == key)
             .map(|selection| selection.range.clone());
-        let runs = runs(shown.len(), &marks, selected);
+        let hovered = self
+            .focus
+            .hovered_link
+            .as_ref()
+            .filter(|hovered| hovered.key == key)
+            .map(|hovered| hovered.range.clone());
+        let runs = runs(shown.len(), &marks, selected, hovered);
         let links: Vec<(Range<usize>, LinkKind)> = marks
             .iter()
             .filter_map(|(range, mark)| match mark {
@@ -201,14 +229,27 @@ impl Shown<'_> {
             layout: styled.layout().clone(),
             text: shown,
         };
-        let element = InteractiveText::new(ElementId::Name(key), styled).on_click(
-            links.into_iter().map(|(range, _)| range).collect(),
-            move |clicked, _: &mut Window, cx: &mut App| {
+        let ranges: Vec<Range<usize>> = links.into_iter().map(|(range, _)| range).collect();
+        let (hover_view, hover_key, hover_ranges) = (view.clone(), key.clone(), ranges.clone());
+        let element = InteractiveText::new(ElementId::Name(key), styled)
+            .on_click(ranges, move |clicked, _: &mut Window, cx: &mut App| {
                 if let Some((kind, target)) = targets.get(clicked) {
                     open(*kind, target, &view, cx);
                 }
-            },
-        );
+            })
+            .on_hover(move |index, _, _, cx| {
+                let link = index.and_then(|index| {
+                    hover_ranges
+                        .iter()
+                        .find(|range| range.contains(&index))
+                        .map(|range| HoveredLink {
+                            key: hover_key.clone(),
+                            range: range.clone(),
+                        })
+                });
+                let key = hover_key.clone();
+                let _ = hover_view.update(cx, |view, cx| view.hover_link(&key, link, cx));
+            });
         Some((element, hit))
     }
 }
@@ -225,17 +266,20 @@ fn open(kind: LinkKind, target: &str, view: &WeakEntity<ConversationView>, cx: &
 }
 
 /// One text run per stretch of `len` bytes that `marks` style alike, with
-/// `selected` behind a highlight.
+/// `selected` behind a highlight and the `hovered` link lit up.
 fn runs(
     len: usize,
     marks: &[(Range<usize>, Mark)],
     selected: Option<Range<usize>>,
+    hovered: Option<Range<usize>>,
 ) -> Vec<TextRun> {
     let selected = selected.filter(|range| !range.is_empty());
+    let hovered = hovered.filter(|range| !range.is_empty());
     let mut edges: Vec<usize> = marks
         .iter()
         .flat_map(|(range, _)| [range.start, range.end])
         .chain(selected.iter().flat_map(|range| [range.start, range.end]))
+        .chain(hovered.iter().flat_map(|range| [range.start, range.end]))
         .chain([0, len])
         .filter(|&edge| edge <= len)
         .collect();
@@ -249,6 +293,13 @@ fn runs(
                 .filter(|(range, _)| range.start <= edge[0] && range.end >= edge[1])
                 .map(|(_, mark)| *mark);
             let mut run = run(edge[1] - edge[0], covering);
+            if hovered
+                .as_ref()
+                .is_some_and(|range| range.start <= edge[0] && range.end >= edge[1])
+            {
+                run.color = rgb(ACCENT).into();
+                run.background_color = Some(rgba((ACCENT << 8) | 0x24).into());
+            }
             if selected
                 .as_ref()
                 .is_some_and(|range| range.start <= edge[0] && range.end >= edge[1])
@@ -306,7 +357,7 @@ mod tests {
     #[test]
     fn splits_text_where_its_styles_change() {
         let marks = [(0..4, Mark::Bold), (2..8, Mark::Link(LinkKind::Web))];
-        let runs: Vec<(usize, bool, bool)> = runs(10, &marks, None)
+        let runs: Vec<(usize, bool, bool)> = runs(10, &marks, None, None)
             .iter()
             .map(|run| {
                 (
@@ -325,5 +376,18 @@ mod tests {
                 (2, false, false)
             ]
         );
+    }
+
+    #[test]
+    fn lights_up_only_the_hovered_link() {
+        let marks = [
+            (0..4, Mark::Link(LinkKind::Web)),
+            (6..10, Mark::Link(LinkKind::Web)),
+        ];
+        let lit: Vec<(usize, bool)> = runs(10, &marks, None, Some(6..10))
+            .iter()
+            .map(|run| (run.len, run.background_color.is_some()))
+            .collect();
+        assert_eq!(lit, [(4, false), (2, false), (4, true)]);
     }
 }

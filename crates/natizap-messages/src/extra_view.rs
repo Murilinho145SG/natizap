@@ -83,6 +83,7 @@ fn contact(id: &str, index: usize, card: &Card, view: &WeakEntity<ConversationVi
                     .font_weight(FontWeight::MEDIUM)
                     .text_color(rgb(LINK))
                     .cursor_pointer()
+                    .hover(Styled::underline)
                     .on_click(move |_, _, cx| {
                         let phone = phone.clone();
                         let _ = view.update(cx, |_, cx| cx.emit(ChatRequested { phone }));

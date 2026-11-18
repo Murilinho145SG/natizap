@@ -18,7 +18,7 @@ use crate::items::{Bubble, Item, MediaView};
 use crate::log::{MessageLog, SoundReady};
 use crate::media_browser::MediaBrowser;
 use crate::poll_composer::PollComposer;
-use crate::rich_text::Selection;
+use crate::rich_text::{HoveredLink, Selection, TextFocus};
 use crate::send_preview::SendPreview;
 use crate::voice::Voices;
 
@@ -71,6 +71,8 @@ pub struct ConversationView {
     poll_draft: Option<Entity<PollComposer>>,
     /// Text selected in a message.
     selection: Option<Selection>,
+    /// The link the pointer rests on.
+    hovered_link: Option<HoveredLink>,
     /// The photo shown large.
     viewing: Option<MediaView>,
     /// Where the header's menu is open.
@@ -196,6 +198,7 @@ impl ConversationView {
             attach_at: None,
             poll_draft: None,
             selection: None,
+            hovered_link: None,
             viewing: None,
             chat_menu: None,
             recorder: None,
@@ -435,6 +438,32 @@ impl ConversationView {
         }
     }
 
+    /// Lights up `link`, or nothing, as the pointer moves over the text
+    /// stretch `key`. Leaving a stretch clears only its own link, since the
+    /// pointer may already rest on another stretch's.
+    pub(crate) fn hover_link(
+        &mut self,
+        key: &SharedString,
+        link: Option<HoveredLink>,
+        cx: &mut Context<Self>,
+    ) {
+        let hovered = match link {
+            Some(link) => Some(link),
+            None if self
+                .hovered_link
+                .as_ref()
+                .is_some_and(|hovered| hovered.is_in(key)) =>
+            {
+                None
+            }
+            None => return,
+        };
+        if self.hovered_link != hovered {
+            self.hovered_link = hovered;
+            cx.notify();
+        }
+    }
+
     /// Selects text in a message, or nothing.
     pub(crate) fn select_text(&mut self, selection: Option<Selection>, cx: &mut Context<Self>) {
         if self.selection != selection {
@@ -471,7 +500,10 @@ impl Render for ConversationView {
         let view = cx.weak_entity();
         let reacting = self.reacting.clone();
         let voice = self.voices.ui();
-        let selection = self.selection.clone();
+        let focus = TextFocus {
+            selection: self.selection.clone(),
+            hovered_link: self.hovered_link.clone(),
+        };
 
         let messages = div()
             .flex_1()
@@ -509,14 +541,7 @@ impl Render for ConversationView {
                         }),
                         Item::Day(_) => None,
                     };
-                    render_item(
-                        item,
-                        &view,
-                        reacting.as_ref(),
-                        &voice,
-                        selection.as_ref(),
-                        picture,
-                    )
+                    render_item(item, &view, reacting.as_ref(), &voice, &focus, picture)
                 })
                 .h_full()
                 .w_full()

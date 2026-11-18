@@ -385,6 +385,7 @@ fn chat_row(row: &ChatRow, picture: Option<PathBuf>, now: DateTime<Local>) -> St
         .rounded_xl()
         .cursor_pointer()
         .hover(|style| style.bg(rgb(RAISED)))
+        .active(|style| style.bg(rgb(LINE)))
         .child(avatar(
             row.id.as_str(),
             &row.title,

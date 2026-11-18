@@ -16,7 +16,7 @@ use crate::items::{Body, Bubble, Item, MediaView, QuotePreview};
 use crate::media_view::render_media;
 use crate::message::Delivery;
 use crate::quote::{name_and_phone, quoted};
-use crate::rich_text::{Selection, rich_text, selectable};
+use crate::rich_text::{TextFocus, rich_text, selectable};
 use crate::view::{ConversationView, ProfileRequested};
 use crate::voice::VoiceUi;
 use crate::voice_view::render_voice;
@@ -32,7 +32,7 @@ pub(crate) fn render_item(
     view: &WeakEntity<ConversationView>,
     reacting: Option<&SharedString>,
     voice: &VoiceUi,
-    selection: Option<&Selection>,
+    focus: &TextFocus,
     picture: Option<PathBuf>,
 ) -> AnyElement {
     match item {
@@ -58,7 +58,7 @@ pub(crate) fn render_item(
             view,
             reacting.is_some_and(|id| *id == bubble.id),
             voice,
-            selection,
+            focus,
             picture,
         ),
     }
@@ -69,7 +69,7 @@ fn render_bubble(
     view: &WeakEntity<ConversationView>,
     reacting: bool,
     voice: &VoiceUi,
-    selection: Option<&Selection>,
+    focus: &TextFocus,
     picture: Option<PathBuf>,
 ) -> AnyElement {
     // In groups, others' messages make room on the left for their sender's
@@ -86,6 +86,7 @@ fn render_bubble(
                         div()
                             .id(SharedString::from(format!("sender-{}", bubble.id)))
                             .cursor_pointer()
+                            .hover(|picture| picture.opacity(0.8))
                             .on_click(open_author(sender, view))
                             .child(avatar(
                                 sender.id.as_str(),
@@ -104,7 +105,7 @@ fn render_bubble(
         .gap_0p5()
         .when(bubble.from_me, Styled::items_end)
         .when(!bubble.from_me, Styled::items_start)
-        .child(shape(bubble, view, voice, selection).max_w_full())
+        .child(shape(bubble, view, voice, focus).max_w_full())
         .when(!bubble.reactions.is_empty(), |message| {
             message.child(reaction_chips(bubble))
         });
@@ -148,7 +149,7 @@ fn shape(
     bubble: &Bubble,
     view: &WeakEntity<ConversationView>,
     voice: &VoiceUi,
-    selection: Option<&Selection>,
+    focus: &TextFocus,
 ) -> Div {
     let meta = div()
         .flex()
@@ -189,7 +190,7 @@ fn shape(
         .as_ref()
         .filter(|media| matches!(media.fetch.kind, ContentKind::Photo | ContentKind::Video));
     if let Some(media) = picture {
-        return picture_bubble(bubble, media, meta, view, selection);
+        return picture_bubble(bubble, media, meta, view, focus);
     }
 
     let body = match &bubble.body {
@@ -218,7 +219,7 @@ fn shape(
             .map(|body| {
                 let (shown, hits) = match text {
                     Some(text) => {
-                        let (shown, hits) = rich_text(&bubble.id, text, view, selection);
+                        let (shown, hits) = rich_text(&bubble.id, text, view, focus);
                         (Some(shown), hits)
                     }
                     None => (None, Vec::new()),
@@ -257,7 +258,7 @@ fn picture_bubble(
     media: &MediaView,
     meta: Div,
     view: &WeakEntity<ConversationView>,
-    selection: Option<&Selection>,
+    focus: &TextFocus,
 ) -> Div {
     let caption = match &bubble.body {
         Body::Content {
@@ -268,7 +269,7 @@ fn picture_bubble(
     let picture = div().relative().child(render_media(media, view));
     let (picture, caption) = match caption {
         Some(text) => {
-            let (shown, hits) = rich_text(&bubble.id, text, view, selection);
+            let (shown, hits) = rich_text(&bubble.id, text, view, focus);
             // As wide as the picture, so long captions wrap under it
             // instead of spilling past the bubble.
             let caption = div()
@@ -389,6 +390,8 @@ fn jump_to_quoted(quote: &QuotePreview, view: &WeakEntity<ConversationView>) -> 
     quoted(quote)
         .id(SharedString::from(format!("quote-{id}")))
         .cursor_pointer()
+        .hover(|quote| quote.opacity(0.85))
+        .active(|quote| quote.opacity(0.7))
         .on_click(move |_, _, cx| {
             cx.stop_propagation();
             let _ = view.update(cx, |view, cx| view.go_to_message(&id, cx));
@@ -407,6 +410,7 @@ fn author(bubble: &Bubble, view: &WeakEntity<ConversationView>) -> Option<Div> {
                 div()
                     .id(SharedString::from(format!("author-{}", bubble.id)))
                     .cursor_pointer()
+                    .hover(Styled::underline)
                     .on_click(open_author(author, view))
                     .child(name_and_phone(
                         author.name.clone(),

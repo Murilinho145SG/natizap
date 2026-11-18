@@ -309,6 +309,7 @@ impl ProfilePanel {
             })
             .when(self.picture.is_some(), |ring| {
                 ring.cursor_pointer()
+                    .hover(|ring| ring.opacity(0.88))
                     .on_click(cx.listener(|panel, _, _, cx| {
                         panel.enlarged = true;
                         cx.notify();
