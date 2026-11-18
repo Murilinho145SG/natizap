@@ -203,19 +203,44 @@ fn count(count: usize) -> Div {
         .child(count.to_string())
 }
 
+/// Side of a media tile.
+const TILE: f32 = 72.0;
+
+/// A photo or video, cropped to a square; one without a picture yet shows
+/// what kind it is.
 fn tile(tile: &Tile) -> Div {
     div()
         .relative()
-        .size(px(72.0))
+        .size(px(TILE))
         .flex_none()
+        .flex()
+        .items_center()
+        .justify_center()
+        .overflow_hidden()
         .rounded_lg()
         .bg(rgb(DEEP))
-        .children(tile.image.clone().map(|image| {
-            img(image)
-                .size_full()
+        .child(match tile.image.clone() {
+            // A fixed size: a relative one let GPUI size tall pictures by
+            // their shape, spilling out of the tile.
+            Some(image) => img(image)
+                .size(px(TILE))
+                .flex_none()
                 .rounded_lg()
                 .object_fit(ObjectFit::Cover)
-        }))
+                .into_any_element(),
+            None => svg()
+                .path(
+                    if tile.length.is_some() {
+                        Icon::Video
+                    } else {
+                        Icon::Camera
+                    }
+                    .path(),
+                )
+                .size(px(22.0))
+                .text_color(rgb(MUTED))
+                .into_any_element(),
+        })
         .children(tile.length.clone().map(|length| {
             div()
                 .absolute()
