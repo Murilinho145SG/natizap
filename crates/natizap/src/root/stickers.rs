@@ -23,11 +23,15 @@ impl Root {
             conversation.set_sticker_picker(picker.clone().into());
         });
 
-        let (sending, closing) = (messages.clone(), conversation.clone());
+        let (sending, closing, files) = (messages.clone(), conversation.clone(), shelf.clone());
         cx.subscribe(&picker, move |_, _, StickerPicked(favorite), cx| {
             let favorite = favorite.clone();
+            // A sticker still downloading shows from where it will land.
+            let file = favorite
+                .file
+                .unwrap_or_else(|| files.read(cx).file_for(&favorite.sticker));
             sending.update(cx, |log, cx| {
-                log.send_sticker(favorite.sticker, favorite.file, cx);
+                log.send_sticker(favorite.sticker, Some(file), cx);
             });
             closing.update(cx, ConversationView::close_sticker_picker);
         })
