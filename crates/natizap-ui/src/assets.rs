@@ -112,6 +112,8 @@ icons! {
     Send => "send.svg",
     /// Settings.
     Settings => "settings.svg",
+    /// A sticker.
+    Sticker => "sticker.svg",
     /// A starred message.
     Star => "star.svg",
     /// Where dropped files land.
