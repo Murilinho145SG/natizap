@@ -1,4 +1,7 @@
 use super::*;
+use std::path::PathBuf;
+
+use natizap_protocol::{ContentKind, HdThumbnail, LinkPreview};
 
 fn message(chat: &str, id: &str, sent_at: i64, text: &str) -> Message {
     Message {
