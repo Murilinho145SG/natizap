@@ -456,7 +456,8 @@ pub(crate) async fn react(
     Ok(())
 }
 
-fn now_ms() -> i64 {
+/// Now, in Unix milliseconds, as WhatsApp stamps actions.
+pub(crate) fn now_ms() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |elapsed| {

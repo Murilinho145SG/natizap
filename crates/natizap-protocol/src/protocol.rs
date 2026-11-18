@@ -20,6 +20,7 @@ use crate::group::{self, GroupInfo};
 use crate::media::{self, Media};
 use crate::outgoing::{self, Forward, Outgoing, SentMedia};
 use crate::profile::{self, Profile};
+use crate::stickers::{self, Sticker};
 
 /// Name shown on the phone under "Linked devices".
 const DEVICE_NAME: &str = "natizap";
@@ -249,6 +250,41 @@ impl Protocol {
         };
         self.connection.run(cx, move |client| async move {
             let id = outgoing::forward(client, to, forward).await?;
+            Ok(Sent { id })
+        })
+    }
+
+    /// The account's favorite stickers, as its other devices keep them.
+    pub fn favorite_stickers(&self, cx: &App) -> Task<Result<Vec<Sticker>, ActionError>> {
+        self.connection.run(cx, stickers::favorites)
+    }
+
+    /// Keeps `sticker` among the favorites, or takes it out, on all of
+    /// this account's devices.
+    pub fn set_favorite_sticker(
+        &self,
+        sticker: Sticker,
+        favorite: bool,
+        cx: &App,
+    ) -> Task<Result<(), ActionError>> {
+        self.connection.run(cx, move |client| {
+            stickers::set_favorite(client, sticker, favorite)
+        })
+    }
+
+    /// Sends `sticker` to `chat`.
+    pub fn send_sticker(
+        &self,
+        chat: &ChatId,
+        sticker: Sticker,
+        cx: &App,
+    ) -> Task<Result<Sent, ActionError>> {
+        let to = match actions::jid(chat) {
+            Ok(to) => to,
+            Err(error) => return Task::ready(Err(error)),
+        };
+        self.connection.run(cx, move |client| async move {
+            let id = stickers::send(client, to, sticker).await?;
             Ok(Sent { id })
         })
     }

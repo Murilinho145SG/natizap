@@ -3789,6 +3789,7 @@ name = "natizap-protocol"
 version = "0.1.0"
 dependencies = [
  "async-channel",
+ "base64 0.22.1",
  "futures",
  "gpui",
  "gpui_tokio",

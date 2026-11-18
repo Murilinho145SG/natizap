@@ -17,6 +17,7 @@ mod media;
 mod outgoing;
 mod profile;
 mod protocol;
+mod stickers;
 
 pub use actions::{ActionError, Anchor, Disappearing, PinFor, Reply, Sent, Unread};
 pub use business::{Business, DayHours, Hours};
@@ -29,4 +30,5 @@ pub use media::{HdThumbnail, Media};
 pub use outgoing::{Forward, Outgoing, SentMedia};
 pub use profile::Profile;
 pub use protocol::{Protocol, StartError};
+pub use stickers::Sticker;
 pub use whatsapp_rust;

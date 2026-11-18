@@ -29,6 +29,8 @@ whatsapp-rust = { version = "0.7", default-features = false, features = [
 ] }
 
 anyhow = "1"
+# A sticker's identity in WhatsApp's app state is its hash in base64.
+base64 = "0.22"
 # Audio output through the system sound server (ALSA/PipeWire).
 cpal = "0.18"
 async-channel = "2"
