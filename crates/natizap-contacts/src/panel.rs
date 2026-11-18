@@ -211,7 +211,14 @@ impl Render for ProfilePanel {
                             .child(self.identity())
                             .children(self.message_button(cx))
                             .child(div().w_full().py_4().child(separator()))
-                            .child(self.details())
+                            // Without details, a separator under them would
+                            // leave an empty band between two lines.
+                            .children(self.details().map(|details| {
+                                div()
+                                    .w_full()
+                                    .child(details)
+                                    .child(div().w_full().pt_4().pb_2().child(separator()))
+                            }))
                             .child(self.sections(cx))
                             .children(self.group.clone().map(|group| self.members(&group, cx))),
                     ),
@@ -406,31 +413,30 @@ impl ProfilePanel {
 }
 
 impl ProfilePanel {
-    /// The about line and a business's details, or placeholders while they
-    /// load.
-    fn details(&self) -> Div {
+    /// The about line and a business's details, or a group's description,
+    /// with placeholders while they load; `None` when there are none, such
+    /// as when someone hides their about line.
+    fn details(&self) -> Option<Div> {
         if let Some(group) = &self.group {
-            return div().w_full().flex().flex_col().gap_4().children(
-                group
-                    .description
-                    .clone()
-                    .map(|description| field("Description", description)),
-            );
+            let description = group.description.clone()?;
+            return Some(div().w_full().child(field("Description", description)));
         }
         let Some(profile) = &self.profile.as_ref().filter(|_| !self.chat.is_group()) else {
-            return div()
-                .w_full()
-                .flex()
-                .flex_col()
-                .gap_3()
-                .child(skeleton(
-                    "about-label",
-                    div().w(px(60.0)).h(px(10.0)).rounded_md(),
-                ))
-                .child(skeleton(
-                    "about-text",
-                    div().w_full().h(px(14.0)).rounded_md(),
-                ));
+            return Some(
+                div()
+                    .w_full()
+                    .flex()
+                    .flex_col()
+                    .gap_3()
+                    .child(skeleton(
+                        "about-label",
+                        div().w(px(60.0)).h(px(10.0)).rounded_md(),
+                    ))
+                    .child(skeleton(
+                        "about-text",
+                        div().w_full().h(px(14.0)).rounded_md(),
+                    )),
+            );
         };
         let business = profile.business.as_ref();
         let fields = [
@@ -464,18 +470,13 @@ impl ProfilePanel {
             })
             .filter(|websites| !websites.is_empty())
             .map(|websites| links("Website", websites));
-        div()
-            .w_full()
-            .flex()
-            .flex_col()
-            .gap_4()
-            .children(
-                fields
-                    .into_iter()
-                    .filter_map(|(label, value)| Some(field(label, value?))),
-            )
-            .children(email)
-            .children(websites)
+        let shown: Vec<Div> = fields
+            .into_iter()
+            .filter_map(|(label, value)| Some(field(label, value?)))
+            .chain(email)
+            .chain(websites)
+            .collect();
+        (!shown.is_empty()).then(|| div().w_full().flex().flex_col().gap_4().children(shown))
     }
 }
 

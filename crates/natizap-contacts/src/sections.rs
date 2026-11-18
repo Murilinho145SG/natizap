@@ -75,7 +75,6 @@ impl ProfilePanel {
         let mut sections = div().w_full().flex().flex_col();
         if let Some(summary) = &self.summary {
             sections = sections
-                .child(div().w_full().py_2().child(separator()))
                 .child(row(Icon::Camera, "Media, links and docs").child(count(summary.media)))
                 .when(!summary.tiles.is_empty(), |sections| {
                     sections.child(
