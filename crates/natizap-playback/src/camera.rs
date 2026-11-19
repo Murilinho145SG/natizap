@@ -22,8 +22,6 @@ use crate::h264::{FRAME_RATE, H264Encoder, Source};
 use crate::inset::Inset;
 use crate::remote_video::VideoError;
 
-/// The widest the user's own picture is drawn: it shows small.
-const PREVIEW_WIDTH: u32 = 320;
 /// Access units waiting for the call before new ones are dropped.
 const BACKLOG: usize = 4;
 
@@ -231,7 +229,8 @@ pub(crate) struct Scalers {
 }
 
 impl Scalers {
-    /// Scalers sending pictures at most `sent_width` wide.
+    /// Scalers sending pictures at most `sent_width` wide, and showing
+    /// them to the user as large: the user may focus their own picture.
     pub(crate) fn new(sent_width: u32, mirror: bool) -> Self {
         Self {
             sent_width,
@@ -250,7 +249,7 @@ impl Scalers {
         let shape = (picture.format(), picture.width(), picture.height());
         if self.made_for != Some(shape) {
             let (sent_width, sent_height) = fit(shape.1, shape.2, self.sent_width);
-            let (shown_width, shown_height) = fit(shape.1, shape.2, PREVIEW_WIDTH);
+            let (shown_width, shown_height) = fit(shape.1, shape.2, self.sent_width);
             self.sent = Some(scaling::Context::get(
                 shape.0,
                 shape.1,
@@ -335,7 +334,7 @@ mod tests {
         let shown = camera.preview().take();
         assert_eq!(
             shown.map(|picture| (picture.width, picture.height)),
-            Some((320, 240))
+            Some((640, 480))
         );
     }
 
