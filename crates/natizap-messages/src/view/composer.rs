@@ -26,7 +26,9 @@ impl ConversationView {
             return;
         }
         let reply = self.replying.take().map(|replying| replying.reply);
-        self.log.update(cx, |log, cx| log.send(text, reply, cx));
+        let (text, mentions) = self.take_mentions(&text);
+        self.log
+            .update(cx, |log, cx| log.send(text, reply, &mentions, cx));
         // What was just sent shows, as on the phone.
         self.messages.scroll_to_end();
         self.away_from_end = false;
@@ -238,6 +240,8 @@ impl ConversationView {
             .bg(rgb(theme.panel))
             .border_t_1()
             .border_color(rgb(theme.line))
+            .map(|composer| Self::with_mention_keys(composer, cx))
+            .children(self.mention_list(window, cx))
             .children(self.tray_popover(cx))
             .children(self.reply_bar(cx).map(|bar| {
                 let id = self

@@ -48,3 +48,9 @@ pub use frame::{titlebar_options, window_frame};
 pub use gallery::Gallery;
 pub use input::{FilesPasted, Submitted, TextInput};
 pub use input_keys::bind_text_input_keys;
+
+/// The actions a [`TextInput`] answers to, for a view that must catch one
+/// before the field does, e.g. arrows moving through a list it opened.
+pub mod text_input {
+    pub use crate::input_keys::{Down, Submit, Up};
+}

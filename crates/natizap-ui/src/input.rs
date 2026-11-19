@@ -39,6 +39,8 @@ pub struct TextInput {
     pub(crate) selection_reversed: bool,
     pub(crate) marked_range: Option<Range<usize>>,
     pub(crate) wraps: bool,
+    /// Stretches of the text shown in the link color, as byte ranges.
+    pub(crate) highlights: Vec<Range<usize>>,
     /// The text as last painted, for mapping the pointer and the IME.
     pub(crate) layout: Option<TextLayout>,
     /// How far the text is scrolled to keep the caret in view.
@@ -77,6 +79,7 @@ impl TextInput {
             selection_reversed: false,
             marked_range: None,
             wraps: false,
+            highlights: Vec::new(),
             layout: None,
             scroll: Point::default(),
             is_selecting: false,
@@ -100,6 +103,35 @@ impl TextInput {
     /// Types `text` at the cursor, replacing any selection.
     pub fn insert(&mut self, text: &str, window: &mut Window, cx: &mut Context<Self>) {
         self.replace_text_in_range(None, text, window, cx);
+    }
+
+    /// Where the caret is, as a byte offset into [`text`](Self::text).
+    #[must_use]
+    pub fn cursor(&self) -> usize {
+        self.cursor_offset()
+    }
+
+    /// Puts `text` in place of the bytes `range` of the current text,
+    /// leaving the caret after it.
+    pub fn replace(
+        &mut self,
+        range: Range<usize>,
+        text: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let range = self.range_to_utf16(&range);
+        self.replace_text_in_range(Some(range), text, window, cx);
+    }
+
+    /// Shows the byte ranges `highlights` of the text in the theme's link
+    /// color, e.g. people mentioned. The owner keeps them in step with the
+    /// text as it changes.
+    pub fn set_highlights(&mut self, highlights: Vec<Range<usize>>, cx: &mut Context<Self>) {
+        if self.highlights != highlights {
+            self.highlights = highlights;
+            cx.notify();
+        }
     }
 
     /// Empties the field.

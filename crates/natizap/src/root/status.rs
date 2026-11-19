@@ -153,7 +153,7 @@ impl Root {
         self.chat_with(&reply.poster, title, cx);
         let quoted = Some(reply.reply.clone());
         messages.update(cx, |messages, cx| match &reply.body {
-            ReplyBody::Text(text) => messages.send(text.clone(), quoted, cx),
+            ReplyBody::Text(text) => messages.send(text.clone(), quoted, &[], cx),
             ReplyBody::Voice(heard) => messages.send_voice(heard.clone(), quoted, cx),
         });
     }

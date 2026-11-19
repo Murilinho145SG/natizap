@@ -23,6 +23,7 @@ use crate::text_search::Case;
 mod actions;
 mod backlog;
 mod downloads;
+mod members;
 mod sending;
 mod typing;
 mod uploads;
@@ -30,6 +31,7 @@ mod worker;
 
 pub use backlog::StoredStatus;
 use downloads::{Background, Failed, Then};
+pub(crate) use members::Mentionable;
 pub(crate) use typing::Typer;
 pub use typing::TypingLook;
 
@@ -442,54 +444,6 @@ impl MessageLog {
         self.names = Arc::clone(&names);
         self.send_input(Input::Names(names));
         cx.notify();
-    }
-
-    /// The open group's members as its header lists them: names saved in
-    /// the address book, then names people chose after a `~`, then
-    /// numbers, each in order, and this account last.
-    pub(crate) fn members_line(&self, cx: &App) -> Option<String> {
-        let group = self.group.as_ref()?;
-        let protocol = self.protocol.read(cx);
-        let mut own = false;
-        let mut listed: Vec<(u8, String)> = Vec::new();
-        for member in &group.members {
-            let addresses = [Some(&member.address), member.phone.as_ref()];
-            if addresses
-                .iter()
-                .flatten()
-                .any(|address| protocol.is_own(address))
-            {
-                own = true;
-                continue;
-            }
-            let known = addresses
-                .iter()
-                .flatten()
-                .find_map(|address| self.names.get(*address));
-            listed.push(match known.and_then(|known| known.saved.clone()) {
-                Some(saved) => (0, saved),
-                None => match known.and_then(|known| known.chosen.clone()) {
-                    Some(chosen) => (1, format!("~ {chosen}")),
-                    None => (
-                        2,
-                        addresses
-                            .iter()
-                            .flatten()
-                            .find_map(|address| address.phone_number())
-                            .unwrap_or_else(|| member.address.as_str().to_owned()),
-                    ),
-                },
-            });
-        }
-        listed.sort_by(|a, b| {
-            a.0.cmp(&b.0)
-                .then_with(|| a.1.to_lowercase().cmp(&b.1.to_lowercase()))
-        });
-        let mut line: Vec<String> = listed.into_iter().map(|(_, name)| name).collect();
-        if own {
-            line.push("You".to_owned());
-        }
-        Some(line.join(", "))
     }
 
     fn send_input(&self, input: Input) {

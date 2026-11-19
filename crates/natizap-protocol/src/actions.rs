@@ -150,10 +150,16 @@ pub(crate) async fn send_text(
     to: Jid,
     text: String,
     reply: Option<Reply>,
+    mentions: Vec<String>,
 ) -> Result<Sent, ActionError> {
     let mut message = wa::Message::text(text);
-    if let Some(reply) = reply {
-        message.set_context_info(reply_context(&client, reply)?);
+    let context = match reply {
+        Some(reply) => Some(reply_context(&client, reply)?),
+        None => (!mentions.is_empty()).then(wa::ContextInfo::default),
+    };
+    if let Some(mut context) = context {
+        context.mentioned_jid = mentions;
+        message.set_context_info(context);
     }
     let sent = client
         .send_message(to, message)

@@ -274,29 +274,7 @@ fn shape(
         underline: None,
         strikethrough: None,
     };
-    let runs = match input.marked_range.as_ref() {
-        // IME composition in progress: underline the composing text.
-        Some(marked) => vec![
-            TextRun {
-                len: marked.start,
-                ..run.clone()
-            },
-            TextRun {
-                len: marked.end - marked.start,
-                underline: Some(UnderlineStyle {
-                    color: Some(run.color),
-                    thickness: px(1.0),
-                    wavy: false,
-                }),
-                ..run.clone()
-            },
-            TextRun {
-                len: text.len() - marked.end,
-                ..run
-            },
-        ],
-        None => vec![run],
-    };
+    let runs = runs(input, &text, &run, theme);
     let font_size = style.font_size.to_pixels(window.rem_size());
     let wrap_width = wrap_width.filter(|_| input.wraps);
     let line_height = window.line_height();
@@ -325,4 +303,57 @@ fn shape(
         })
         .collect();
     (text, paragraphs)
+}
+
+/// `text` cut where its look changes: highlighted stretches take the link
+/// color, and text being composed with the IME is underlined.
+fn runs(input: &TextInput, text: &str, run: &TextRun, theme: Theme) -> Vec<TextRun> {
+    let fits = |range: &&std::ops::Range<usize>| {
+        range.start < range.end
+            && range.end <= text.len()
+            && text.is_char_boundary(range.start)
+            && text.is_char_boundary(range.end)
+    };
+    // Highlights are set after an edit lands, so for a moment they may not
+    // fit the text; nor do they color the placeholder.
+    let highlights: Vec<&std::ops::Range<usize>> = if input.content.is_empty() {
+        Vec::new()
+    } else {
+        input.highlights.iter().filter(fits).collect()
+    };
+    let marked = input.marked_range.as_ref().filter(fits);
+    let mut cuts: Vec<usize> = std::iter::once(0)
+        .chain(std::iter::once(text.len()))
+        .chain(highlights.iter().flat_map(|range| [range.start, range.end]))
+        .chain(
+            marked
+                .into_iter()
+                .flat_map(|range| [range.start, range.end]),
+        )
+        .collect();
+    cuts.sort_unstable();
+    cuts.dedup();
+    cuts.windows(2)
+        .map(|cut| {
+            let (start, end) = (cut[0], cut[1]);
+            let within = |range: &std::ops::Range<usize>| range.start <= start && end <= range.end;
+            let color = if highlights.iter().any(|range| within(range)) {
+                rgb(theme.link).into()
+            } else {
+                run.color
+            };
+            TextRun {
+                len: end - start,
+                color,
+                underline: marked
+                    .filter(|range| within(range))
+                    .map(|_| UnderlineStyle {
+                        color: Some(color),
+                        thickness: px(1.0),
+                        wavy: false,
+                    }),
+                ..run.clone()
+            }
+        })
+        .collect()
 }

@@ -155,19 +155,26 @@ impl Protocol {
     }
 
     /// Sends a text message to `chat`, optionally replying to another.
+    /// `mentions` are the people its `@` and digits name, so their phones
+    /// show their names and tell them.
     pub fn send_text(
         &self,
         chat: &ChatId,
         text: String,
         reply: Option<Reply>,
+        mentions: &[ChatId],
         cx: &App,
     ) -> Task<Result<Sent, ActionError>> {
         let to = match actions::jid(chat) {
             Ok(to) => to,
             Err(error) => return Task::ready(Err(error)),
         };
+        let mentions = mentions
+            .iter()
+            .map(|chat| chat.as_str().to_owned())
+            .collect();
         self.connection.run(cx, move |client| {
-            actions::send_text(client, to, text, reply)
+            actions::send_text(client, to, text, reply, mentions)
         })
     }
 

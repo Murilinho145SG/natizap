@@ -386,6 +386,10 @@ fn run(len: usize, marks: impl Iterator<Item = Mark>, theme: Theme) -> TextRun {
                 run.background_color = Some(rgb(theme.deep).into());
             }
             Mark::Quote => run.color = rgb(theme.muted).into(),
+            Mark::Mention => {
+                run.color = rgb(theme.link).into();
+                font.weight = FontWeight::SEMIBOLD;
+            }
             Mark::Link(_) => {
                 run.color = rgb(theme.link).into();
                 run.underline = Some(UnderlineStyle {

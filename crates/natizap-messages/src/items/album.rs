@@ -6,7 +6,7 @@ use std::ops::Range;
 use chrono::{DateTime, Local, TimeZone as _};
 use natizap_protocol::ContentKind;
 
-use super::{Body, Bubble, Text, media_view};
+use super::{Body, Bubble, Senders, Text, media_view};
 use crate::message::Message;
 
 /// At least this many in a row make an album, as on the phone.
@@ -44,12 +44,17 @@ pub(super) fn albums(messages: &[Message]) -> Vec<Range<usize>> {
 /// Adds `message`, sent at `sent`, to the album `bubble` heads: its
 /// picture joins the grid, and the album takes its time, its ticks and,
 /// on the last picture, its caption.
-pub(super) fn fold(bubble: &mut Bubble, message: &Message, sent: DateTime<Local>) {
+pub(super) fn fold(
+    bubble: &mut Bubble,
+    message: &Message,
+    sent: DateTime<Local>,
+    senders: &Senders<'_>,
+) {
     bubble.album.extend(media_view(message));
     bubble.time = sent.format("%H:%M").to_string().into();
     bubble.delivery = message.delivery;
     if let (Some(text), Body::Content { text: caption, .. }) = (&message.text, &mut bubble.body) {
-        *caption = Some(Text::parse(text));
+        *caption = Some(Text::parse(text, senders));
         bubble.source_text = Some(text.clone());
     }
 }

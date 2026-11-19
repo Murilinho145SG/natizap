@@ -2,9 +2,11 @@
 //! `` `code` ``, ```` ```code blocks``` ````, `> quotes` and `- lists`.
 //! `**bold**` is accepted too, since bots often send Markdown. Links, email
 //! addresses and phone numbers are found too, and kept whole: markup
-//! symbols inside them are part of the address.
+//! symbols inside them are part of the address, as are mentions.
 
 use std::ops::Range;
+
+mod mentions;
 
 /// A style applied to part of a message.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -23,6 +25,9 @@ pub enum Mark {
     Quote,
     /// A web address, email address or phone number to open.
     Link(LinkKind),
+    /// Someone mentioned, `@` and their number until
+    /// [`Marked::name_mentions`] names them.
+    Mention,
 }
 
 /// What a link opens.
@@ -111,6 +116,13 @@ impl Marked {
         let mut i = 0;
         while i < chars.len() {
             let (_, c) = chars[i];
+            if let Some(end) = mentions::mention(&chars, i) {
+                let start = self.text.len();
+                self.text.extend(chars[i..end].iter().map(|&(_, c)| c));
+                self.marks.push((start..self.text.len(), Mark::Mention));
+                i = end;
+                continue;
+            }
             if let Some((end, kind)) = link(&chars, i) {
                 let start = self.text.len();
                 self.text.extend(chars[i..end].iter().map(|&(_, c)| c));

@@ -250,3 +250,37 @@ fn a_caption_or_a_pause_ends_an_album() {
         ]
     );
 }
+
+#[test]
+fn shows_whom_a_mention_names() {
+    let Some(now) = Local.with_ymd_and_hms(2026, 11, 16, 18, 0, 0).single() else {
+        panic!("test date must exist in the local zone");
+    };
+    let mut mention = message(at(16, 10, 0), false, Some("1@lid"));
+    mention.text = Some("@5511912345678 and @424242 come".into());
+    let names = HashMap::from([(
+        ChatId::new("5511912345678@s.whatsapp.net"),
+        PersonName {
+            saved: Some("Ana".into()),
+            chosen: None,
+        },
+    )]);
+    let members = Members {
+        names: Arc::new(names),
+        ..Members::default()
+    };
+    let addons = Addons {
+        reactions: &HashMap::new(),
+        votes: &HashMap::new(),
+    };
+    let shown = items(&[mention], &addons, "Group", &members, now);
+    let text = shown.iter().find_map(|item| match item {
+        Item::Bubble(bubble) => match &bubble.body {
+            Body::Content { text, .. } => text.as_ref().map(|text| text.text.to_string()),
+            _ => None,
+        },
+        Item::Day(_) => None,
+    });
+    // A LID nobody here knows keeps its digits.
+    assert_eq!(text.as_deref(), Some("@Ana and @424242 come"));
+}

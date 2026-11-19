@@ -36,6 +36,7 @@ mod find;
 mod going;
 mod header;
 mod list;
+mod mentions;
 mod message_menu;
 mod recorder;
 mod saving;
@@ -128,6 +129,8 @@ pub struct ConversationView {
     /// The composer takes the keyboard back at the next draw, after a
     /// window that had it closed.
     refocus: bool,
+    /// Mentions being written in the composer.
+    mentions: mentions::Mentions,
 }
 
 /// The user clicked the conversation's header to see the chat's profile.
@@ -204,8 +207,13 @@ impl ConversationView {
             },
         )
         .detach();
-        // The send button turns into a microphone when the field empties.
-        cx.observe(&composer, |_, _, cx| cx.notify()).detach();
+        // The send button turns into a microphone when the field empties,
+        // and an `@` offers the group's members.
+        cx.observe(&composer, |this, _, cx| {
+            this.follow_mention(cx);
+            cx.notify();
+        })
+        .detach();
         cx.subscribe_in(&composer, window, |this, _, _: &Submitted, window, cx| {
             this.send(window, cx);
         })
@@ -262,6 +270,7 @@ impl ConversationView {
             sending: None,
             browsing: None,
             refocus: false,
+            mentions: mentions::Mentions::default(),
             reaction_emojis,
         }
     }

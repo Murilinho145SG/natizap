@@ -149,8 +149,10 @@ impl Bubble {
 }
 
 impl Text {
-    fn parse(source: &str) -> Self {
-        let marked = Marked::parse(source);
+    /// `source`'s markup read, its mentions naming whom `senders` knows.
+    fn parse(source: &str, senders: &Senders<'_>) -> Self {
+        let mut marked = Marked::parse(source);
+        marked.name_mentions(|digits| senders.mentioned(digits));
         Self {
             text: marked.text.into(),
             marks: marked.marks.into(),
@@ -185,7 +187,7 @@ pub(crate) fn items(
         };
         let day = sent.date_naive();
         if folded && let Some(Item::Bubble(album)) = items.last_mut() {
-            album::fold(album, message, sent);
+            album::fold(album, message, sent, &senders);
             previous = Some((message, day));
             continue;
         }
@@ -251,7 +253,10 @@ fn bubble(
                     && message.media.is_none()
                     && message.extra.is_none())
                 .then(|| message.kind.label()),
-                text: message.text.as_deref().map(Text::parse),
+                text: message
+                    .text
+                    .as_deref()
+                    .map(|text| Text::parse(text, senders)),
                 extra: message.extra.clone(),
                 edited: message.edited,
             }

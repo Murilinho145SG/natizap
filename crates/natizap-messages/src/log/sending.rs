@@ -14,9 +14,17 @@ use super::{ForwardRequested, Input, MessageLog, MessageSent};
 use crate::message::{Delivery, Message, MessageChange};
 
 impl MessageLog {
-    /// Sends `text` to the open chat, optionally replying to a message. It
-    /// shows at once and is marked as failed if WhatsApp does not accept it.
-    pub fn send(&mut self, text: String, reply: Option<Reply>, cx: &mut Context<Self>) {
+    /// Sends `text` to the open chat, optionally replying to a message and
+    /// naming `mentions` (see [`natizap_protocol::Protocol::send_text`]).
+    /// It shows at once and is marked as failed if WhatsApp does not
+    /// accept it.
+    pub fn send(
+        &mut self,
+        text: String,
+        reply: Option<Reply>,
+        mentions: &[ChatId],
+        cx: &mut Context<Self>,
+    ) {
         let Some((chat, local_id, sent_at)) = self.next_outgoing() else {
             return;
         };
@@ -30,7 +38,10 @@ impl MessageLog {
             sent_at,
         });
 
-        let sending = self.protocol.read(cx).send_text(&chat, text, reply, cx);
+        let sending = self
+            .protocol
+            .read(cx)
+            .send_text(&chat, text, reply, mentions, cx);
         self.settle(chat, local_id, sending, cx);
     }
 
