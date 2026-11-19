@@ -3,8 +3,7 @@ use std::sync::Arc;
 
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, Context, Div, Entity, FontWeight, MouseButton, NavigationDirection, Pixels,
-    SharedString, Window, div, px, rgb,
+    Context, Div, Entity, FontWeight, MouseButton, NavigationDirection, Window, div, px, rgb,
 };
 use natizap_calls::{CallLog, CallsPane};
 use natizap_chats::{
@@ -22,15 +21,15 @@ use natizap_protocol::{Card, ChatId, Extra, PersonName, Protocol};
 use natizap_session::{PairingView, Session, SessionState};
 use natizap_status::{StatusBook, StatusComposer, StatusPane, StatusViewer};
 use natizap_stickers::StickerShelf;
-use natizap_ui::motion::slide_in;
 use natizap_ui::theme::{ACCENT, ALERT, DISPLAY_FONT, LINE, MINT, MUTED, TEXT, base_font};
-use natizap_ui::{Alert, AlertTone, RAIL_WIDTH, window_frame};
+use natizap_ui::window_frame;
 use natizap_update::Updater;
 
 use crate::history::History;
 use opening::Opening;
 
 mod calls;
+mod layout;
 mod notify;
 mod opening;
 mod profiles;
@@ -38,12 +37,6 @@ mod rail;
 mod search;
 mod status;
 mod stickers;
-
-/// Width of the chat list, and of a profile beside the conversation.
-const SIDE_PANEL: f32 = 380.0;
-/// The narrowest a conversation gets with a profile beside it; narrower
-/// windows show the profile over it.
-const LEAST_CONVERSATION: f32 = 420.0;
 
 /// The features the main window shows, built by `main` once for the whole
 /// run: they outlive the window, which comes and goes.
@@ -449,94 +442,6 @@ impl Root {
             Some(row) => self.open_chat(&row, cx),
             None => self.history.forget(chat),
         }
-    }
-
-    /// The window's content, laid out for a window `width` wide.
-    fn content(&mut self, width: Pixels, cx: &mut Context<Self>) -> AnyElement {
-        if !self.shows_chats(cx) {
-            return self.pairing.clone().into_any_element();
-        }
-        let reconnecting = matches!(self.session.read(cx).state(), SessionState::Reconnecting);
-        div()
-            .size_full()
-            .relative()
-            .flex()
-            .child(self.rail(cx))
-            .child(
-                div()
-                    .w(px(SIDE_PANEL))
-                    .h_full()
-                    .flex_none()
-                    .border_r_1()
-                    .border_color(rgb(LINE))
-                    .map(
-                        |pane| match self.own_profile.clone().filter(|_| self.own_shown) {
-                            Some(profile) => pane.child(slide_in(
-                                SharedString::from(format!("own-profile-{}", profile.entity_id())),
-                                div().size_full().child(profile),
-                                -24.0,
-                            )),
-                            None => match (self.place, &self.status_pane, &self.calls_pane) {
-                                (Place::Status, Some(status), _) => pane.child(status.clone()),
-                                (Place::Calls, _, Some(calls)) => pane.child(calls.clone()),
-                                _ => pane.child(self.chat_list.clone()),
-                            },
-                        },
-                    ),
-            )
-            .child(
-                // Free to shrink below what it holds, so a long line in it
-                // is cut or wrapped instead of pushing it past the window.
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .h_full()
-                    .child(self.conversation.clone()),
-            )
-            .children(self.profile.clone().map(|profile| {
-                // Each profile slides in from the side it opens on: beside the
-                // conversation when the window has room for both, over it
-                // otherwise, so the conversation never shrinks to nothing.
-                let id = SharedString::from(format!("profile-{}", profile.entity_id()));
-                let beside = f32::from(width) - RAIL_WIDTH - 2.0 * SIDE_PANEL >= LEAST_CONVERSATION;
-                let panel = slide_in(id, div().size_full().child(profile), 24.0);
-                if beside {
-                    div().w(px(SIDE_PANEL)).h_full().flex_none().child(panel)
-                } else {
-                    div()
-                        .absolute()
-                        .top_0()
-                        .right_0()
-                        .w(px(SIDE_PANEL))
-                        .h_full()
-                        .border_l_1()
-                        .border_color(rgb(LINE))
-                        .shadow_lg()
-                        .child(panel)
-                }
-            }))
-            .children(self.picker.clone())
-            .children(self.settings.clone())
-            .children(self.status_viewer.clone())
-            .children(self.status_composer.clone())
-            // Chats stay readable offline, so the news floats over them
-            // instead of replacing them.
-            .when(reconnecting, |content| {
-                content.child(
-                    div()
-                        .absolute()
-                        .top_3()
-                        .left_0()
-                        .right_0()
-                        .flex()
-                        .justify_center()
-                        .child(
-                            Alert::new(AlertTone::Warning, "Reconnecting…")
-                                .description("The connection dropped. natizap keeps trying."),
-                        ),
-                )
-            })
-            .into_any_element()
     }
 }
 
