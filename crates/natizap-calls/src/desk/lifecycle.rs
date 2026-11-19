@@ -11,6 +11,7 @@ use natizap_protocol::{
 };
 
 use super::{Call, CallDesk, CallVideo, ENDED_SHOWN, Going, Phase, Reached};
+use crate::quality::QualityWatch;
 
 /// A call about to start: who with, which way, since when, and what it
 /// sounds and looks like.
@@ -93,9 +94,30 @@ impl CallDesk {
             audio,
             at,
             ticking: None,
+            quality: QualityWatch::default(),
+            judged: None,
+            voiced: 0,
+            speaking: false,
             leaving: None,
         });
         self.update_ringer(cx);
+        cx.notify();
+    }
+
+    /// Looks again at how call `serial` goes, a second after the last look:
+    /// its connection's quality and whether the other end speaks.
+    fn sample(&mut self, serial: u64, cx: &mut Context<Self>) {
+        let Some(call) = self.current(serial) else {
+            return;
+        };
+        if let Some(live) = call.going.live() {
+            call.judged = call.quality.hear(live.media_counts());
+        }
+        if let Some(audio) = &call.audio {
+            let voiced = audio.voiced_frames();
+            call.speaking = voiced > call.voiced;
+            call.voiced = voiced;
+        }
         cx.notify();
     }
 
@@ -166,7 +188,7 @@ impl CallDesk {
                 call.phase = Phase::Live {
                     since: Instant::now(),
                 };
-                call.ticking = Some(tick(cx));
+                call.ticking = Some(tick(serial, cx));
             } else {
                 call.phase = Phase::Connecting;
             }
@@ -227,12 +249,12 @@ impl CallDesk {
 }
 
 /// Redraws every second, for a live call's clock.
-fn tick(cx: &Context<CallDesk>) -> Task<()> {
+fn tick(serial: u64, cx: &Context<CallDesk>) -> Task<()> {
     let timer = cx.background_executor().clone();
     cx.spawn(async move |this, cx| {
         loop {
             timer.timer(Duration::from_secs(1)).await;
-            if this.update(cx, |_, cx| cx.notify()).is_err() {
+            if this.update(cx, |desk, cx| desk.sample(serial, cx)).is_err() {
                 return;
             }
         }

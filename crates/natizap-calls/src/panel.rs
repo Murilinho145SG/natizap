@@ -4,13 +4,15 @@
 //! its own, where the video is large.
 
 use gpui::prelude::*;
-use gpui::{Context, Entity, EventEmitter, FontWeight, Window, div, px, rgb};
+use gpui::{Context, Entity, EventEmitter, FontWeight, Window, div, px, rgb, rgba};
 use natizap_profiles::ProfilePictures;
-use natizap_ui::avatar;
 use natizap_ui::theme::{ActiveTheme as _, Theme};
+use natizap_ui::{Button, ButtonSize, ButtonVariant, Icon, avatar};
 
-use crate::bar::CallPoppedOut;
+use crate::bar::{CallPoppedOut, camera_button, mute_button};
 use crate::desk::{CallDesk, CallShown, CameraState, Phase, VideoShown};
+use crate::keys::HANG_UP;
+use crate::look::ringed;
 use crate::screen::Painted;
 
 const WIDTH: f32 = 340.0;
@@ -69,6 +71,7 @@ impl Render for VideoPanel {
         let preview = self.preview.paint(video.preview.clone(), px(8.0), window);
         div()
             .id("call-video-panel")
+            .group("call-video-panel")
             .absolute()
             .bottom_4()
             .right_4()
@@ -94,13 +97,60 @@ impl Render for VideoPanel {
                         theme,
                         px(96.0),
                         px(72.0),
-                    ))),
+                    )))
+                    .child(Self::controls(&call, cx)),
             )
             .into_any_element()
     }
 }
 
 impl VideoPanel {
+    /// The call's controls along the panel's foot, shown while the pointer
+    /// is over it. Their clicks stay theirs: a click elsewhere on the panel
+    /// moves the call to its own window.
+    fn controls(call: &CallShown, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        div()
+            .absolute()
+            .bottom_2()
+            .left_2()
+            .flex()
+            .items_center()
+            .gap_1()
+            .p_1()
+            .rounded_full()
+            .bg(rgba(cx.theme().scrim))
+            .opacity(0.0)
+            .group_hover("call-video-panel", |controls| controls.opacity(1.0))
+            .child(mute_button(
+                call,
+                ButtonSize::Small,
+                cx.listener(|panel, _, _, cx| {
+                    cx.stop_propagation();
+                    panel.desk.update(cx, CallDesk::toggle_muted);
+                }),
+            ))
+            .child(camera_button(
+                call,
+                ButtonSize::Small,
+                cx.listener(|panel, _, _, cx| {
+                    cx.stop_propagation();
+                    panel.desk.update(cx, CallDesk::toggle_camera);
+                }),
+            ))
+            .child(
+                Button::new("call-panel-hang-up")
+                    .icon(Icon::CallEnd)
+                    .variant(ButtonVariant::Danger)
+                    .size(ButtonSize::Small)
+                    .round()
+                    .tooltip(HANG_UP.tip("Hang up"))
+                    .on_click(cx.listener(|panel, _, _, cx| {
+                        cx.stop_propagation();
+                        panel.desk.update(cx, CallDesk::hang_up);
+                    })),
+            )
+    }
+
     /// Who the call is with, while their camera shows nothing.
     fn camera_off(
         &self,
@@ -119,7 +169,13 @@ impl VideoPanel {
             .items_center()
             .justify_center()
             .gap_2()
-            .child(avatar(call.peer.as_str(), &call.title, picture, px(64.0)))
+            .child(ringed(
+                "call-panel-speaking",
+                avatar(call.peer.as_str(), &call.title, picture, px(64.0)),
+                64.0,
+                call.speaking,
+                theme,
+            ))
             .child(
                 div()
                     .text_size(px(12.5))
@@ -148,7 +204,7 @@ pub(crate) fn own_picture(
                 .h(height)
                 .rounded_lg()
                 .border_1()
-                .border_color(gpui::rgba(theme.edge))
+                .border_color(rgba(theme.edge))
                 .bg(rgb(theme.panel))
                 .child(painted),
         )

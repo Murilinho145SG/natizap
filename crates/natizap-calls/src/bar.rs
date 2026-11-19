@@ -2,14 +2,17 @@
 //! call is under way, and the card over it while one rings.
 
 use gpui::prelude::*;
-use gpui::{Context, Entity, EventEmitter, FontWeight, Window, div, px, rgb};
+use gpui::{Context, Entity, EventEmitter, FontWeight, SharedString, Window, div, px, rgb};
 use natizap_profiles::ProfilePictures;
+use natizap_ui::motion::rise_in;
 use natizap_ui::theme::{ActiveTheme as _, DISPLAY_FONT, Theme};
 use natizap_ui::{Button, ButtonSize, ButtonVariant, Icon, avatar};
 
 use crate::desk::{CallDesk, CallShown, CameraState, Phase};
 use crate::keys::{CAMERA, HANG_UP, MUTE};
+use crate::look::{quality_bars, quality_word, ringed};
 use crate::pane::CallChatRequested;
+use crate::quality::Quality;
 
 /// The user asked for the call in a window of its own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -76,7 +79,13 @@ impl Render for CallBar {
                     .on_click(cx.listener(move |_, _, _, cx| {
                         cx.emit(CallChatRequested(peer.clone()));
                     }))
-                    .child(avatar(call.peer.as_str(), &call.title, picture, px(32.0)))
+                    .child(ringed(
+                        "call-bar-speaking",
+                        avatar(call.peer.as_str(), &call.title, picture, px(32.0)),
+                        32.0,
+                        call.speaking,
+                        theme,
+                    ))
                     .child(
                         div()
                             .min_w_0()
@@ -188,7 +197,8 @@ impl Render for RingCard {
             .right_3()
             .w(px(320.0))
             .occlude()
-            .child(
+            .child(rise_in(
+                SharedString::from(format!("ring-card-{}", ring.id)),
                 theme
                     .glass(div())
                     .p_4()
@@ -202,7 +212,13 @@ impl Render for RingCard {
                             .flex()
                             .items_center()
                             .gap_3()
-                            .child(avatar(ring.caller.as_str(), &title, picture, px(48.0)))
+                            .child(ringed(
+                                SharedString::from(format!("ring-pulse-{}", ring.id)),
+                                avatar(ring.caller.as_str(), &title, picture, px(48.0)),
+                                48.0,
+                                true,
+                                theme,
+                            ))
                             .child(
                                 div()
                                     .min_w_0()
@@ -250,7 +266,8 @@ impl Render for RingCard {
                                 ),
                             ),
                     ),
-            )
+                -12.0,
+            ))
             .into_any_element()
     }
 }
@@ -279,6 +296,21 @@ pub(crate) fn phase_line(call: &CallShown, theme: Theme) -> impl IntoElement + u
             )
         })
         .child(text)
+        .when_some(
+            call.quality
+                .filter(|_| matches!(call.phase, Phase::Live { .. })),
+            |line, quality| {
+                line.child(div().ml_1().child(quality_bars(quality, theme)))
+                    // A good line needs no words; a bad one is worth knowing.
+                    .when(quality != Quality::Good, |line| {
+                        line.child(
+                            div()
+                                .text_color(rgb(theme.muted))
+                                .child(quality_word(quality)),
+                        )
+                    })
+            },
+        )
 }
 
 /// The microphone's switch.

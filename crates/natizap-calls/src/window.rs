@@ -13,6 +13,7 @@ use natizap_ui::{Button, ButtonSize, ButtonVariant, Icon, avatar, window_frame};
 use crate::bar::{camera_button, mute_button, phase_line};
 use crate::desk::{CallDesk, CallShown, Phase};
 use crate::keys::HANG_UP;
+use crate::look::ringed;
 use crate::panel::own_picture;
 use crate::screen::Painted;
 
@@ -68,7 +69,13 @@ impl CallWindow {
             .justify_center()
             .gap_3()
             .px_6()
-            .child(avatar(call.peer.as_str(), &call.title, picture, px(112.0)))
+            .child(ringed(
+                "call-window-speaking",
+                avatar(call.peer.as_str(), &call.title, picture, px(112.0)),
+                112.0,
+                call.speaking,
+                theme,
+            ))
             .child(
                 div()
                     .pt_2()

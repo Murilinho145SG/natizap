@@ -15,6 +15,7 @@ use std::sync::Arc;
 
 use crate::choices::Choices;
 use crate::log::CallLog;
+use crate::quality::{Quality, QualityWatch};
 use crate::ringtone::{Ringing, Ringtone};
 
 mod lifecycle;
@@ -77,8 +78,6 @@ pub struct CallShown {
     pub peer: ChatId,
     /// What they are called.
     pub title: SharedString,
-    /// They called.
-    pub incoming: bool,
     pub phase: Phase,
     /// The microphone is silenced.
     pub muted: bool,
@@ -86,6 +85,10 @@ pub struct CallShown {
     pub video: Option<VideoShown>,
     /// The other end asks to turn the call into a video call.
     pub video_requested: bool,
+    /// How well the connection carries the call, once it is live.
+    pub quality: Option<Quality>,
+    /// The other end spoke in the last second.
+    pub speaking: bool,
 }
 
 /// A call's video, as views show it.
@@ -119,6 +122,13 @@ struct Call {
     at: i64,
     /// Ticks the call's clock while it is live.
     ticking: Option<Task<()>>,
+    /// Judges the connection while the call is live.
+    quality: QualityWatch,
+    judged: Option<Quality>,
+    /// The other end's voiced frames at the last look, and whether more
+    /// came since.
+    voiced: u64,
+    speaking: bool,
     /// Takes the call off the screen once it ended.
     leaving: Option<Task<()>>,
 }
@@ -280,7 +290,6 @@ impl CallDesk {
         Some(CallShown {
             peer: call.peer.clone(),
             title: self.log.read(cx).title(&call.peer),
-            incoming: call.incoming,
             phase: call.phase.clone(),
             muted: call.muted,
             video: call.video.as_ref().map(|video| VideoShown {
@@ -295,6 +304,8 @@ impl CallDesk {
                 camera: video.camera,
             }),
             video_requested: call.video_request.is_some(),
+            quality: call.judged,
+            speaking: call.speaking,
         })
     }
 
