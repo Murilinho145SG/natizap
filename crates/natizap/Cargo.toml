@@ -22,6 +22,7 @@ natizap-player.workspace = true
 natizap-profiles.workspace = true
 natizap-protocol.workspace = true
 natizap-session.workspace = true
+natizap-status.workspace = true
 natizap-stickers.workspace = true
 natizap-tray.workspace = true
 natizap-ui.workspace = true

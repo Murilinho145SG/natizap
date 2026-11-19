@@ -2,9 +2,27 @@ use std::hash::{DefaultHasher, Hash as _, Hasher as _};
 use std::path::PathBuf;
 
 use gpui::prelude::*;
-use gpui::{Div, FontWeight, ObjectFit, Pixels, div, img, rgb};
+use gpui::{Div, FontWeight, ObjectFit, Pixels, div, img, px, rgb};
 
-use crate::theme::{AVATAR_TINTS, DISPLAY_FONT, NAME_TINTS};
+use crate::theme::{ACCENT, AVATAR_TINTS, DISPLAY_FONT, LINE, NAME_TINTS};
+
+#[must_use]
+/// `picture`, an [`avatar`], ringed as the person's status says: accent
+/// while it holds something unseen, a hairline once all was seen, no ring
+/// without a status.
+pub fn status_ring(picture: Div, unseen: Option<bool>) -> Div {
+    let ring = match unseen {
+        Some(true) => rgb(ACCENT).into(),
+        Some(false) => rgb(LINE).into(),
+        None => gpui::transparent_black(),
+    };
+    div()
+        .p(px(2.0))
+        .rounded_full()
+        .border_2()
+        .border_color(ring)
+        .child(picture)
+}
 
 /// A round avatar: `picture` when there is one, else the first letter of
 /// `title` on a tint picked from `seed`, so a chat keeps its color wherever

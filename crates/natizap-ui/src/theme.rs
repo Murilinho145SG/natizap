@@ -74,6 +74,19 @@ pub const NAME_TINTS: [u32; 6] = [
     0xe0_b4_6a, 0x6f_d1_c0, 0xc7_9b_d0, 0x8f_b4_d6, 0xe3_9a_a8, 0xb4_c9_7a,
 ];
 
+/// Backgrounds a text status can be posted on, 0xAARRGGBB as WhatsApp
+/// sends them: deep enough for white text to read on each.
+pub const STATUS_BACKGROUNDS: [u32; 8] = [
+    0xff_c2_5e_1c,
+    0xff_1e_6e_4f,
+    0xff_2f_4f_8a,
+    0xff_6d_3a_7d,
+    0xff_8a_2f_45,
+    0xff_3d_4a_57,
+    0xff_7a_5c_1e,
+    0xff_1f_1f_23,
+];
+
 /// Interface text.
 pub const UI_FONT: &str = "Figtree";
 /// The wordmark and headings only.

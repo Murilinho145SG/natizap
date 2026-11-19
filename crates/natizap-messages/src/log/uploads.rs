@@ -70,12 +70,7 @@ impl MessageLog {
 
     /// Sends what the microphone heard as a voice note to the open chat,
     /// replying to `reply`. It is encoded off the UI thread.
-    pub(crate) fn send_voice(
-        &mut self,
-        heard: Heard,
-        reply: Option<Reply>,
-        cx: &mut Context<Self>,
-    ) {
+    pub fn send_voice(&mut self, heard: Heard, reply: Option<Reply>, cx: &mut Context<Self>) {
         let Some((chat, local_id, sent_at)) = self.next_outgoing() else {
             return;
         };

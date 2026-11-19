@@ -22,6 +22,7 @@ use natizap_notifications::Notifier;
 use natizap_profiles::ProfilePictures;
 use natizap_protocol::Protocol;
 use natizap_session::Session;
+use natizap_status::StatusBook;
 use natizap_stickers::StickerShelf;
 use natizap_ui::{Assets, Gallery, bind_text_input_keys, load_fonts};
 use natizap_update::Updater;
@@ -165,6 +166,14 @@ fn features(data_dir: &Path, executable: &Path, cx: &mut App) -> Features {
         )
     });
     let updater = cx.new(|cx| Updater::new(executable, data_dir.join("updates"), cx));
+    let status = cx.new(|cx| {
+        StatusBook::new(
+            &protocol,
+            data_dir.join("status.db"),
+            data_dir.join("media").join("status"),
+            cx,
+        )
+    });
     Features {
         session,
         chats,
@@ -174,6 +183,7 @@ fn features(data_dir: &Path, executable: &Path, cx: &mut App) -> Features {
         notifier,
         stickers,
         updater,
+        status,
     }
 }
 

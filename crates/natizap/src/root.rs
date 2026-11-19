@@ -19,6 +19,7 @@ use natizap_player::PlayerView;
 use natizap_profiles::ProfilePictures;
 use natizap_protocol::{Card, ChatId, Extra, PersonName, Protocol};
 use natizap_session::{PairingView, Session, SessionState};
+use natizap_status::{StatusBook, StatusComposer, StatusPane, StatusViewer};
 use natizap_stickers::StickerShelf;
 use natizap_ui::motion::slide_in;
 use natizap_ui::theme::{ACCENT, ALERT, DISPLAY_FONT, LINE, MINT, MUTED, TEXT, base_font};
@@ -33,6 +34,7 @@ mod opening;
 mod profiles;
 mod rail;
 mod search;
+mod status;
 mod stickers;
 
 /// Width of the chat list, and of a profile beside the conversation.
@@ -53,6 +55,7 @@ pub(crate) struct Features {
     pub(crate) notifier: Entity<Notifier>,
     pub(crate) stickers: Entity<StickerShelf>,
     pub(crate) updater: Entity<Updater>,
+    pub(crate) status: Entity<StatusBook>,
 }
 
 /// The main window's content: the pairing screen until this device is linked,
@@ -79,6 +82,15 @@ pub(crate) struct Root {
     own_profile: Option<Entity<OwnProfile>>,
     /// Whether your profile shows in place of the chat list.
     own_shown: bool,
+    status: Entity<StatusBook>,
+    /// The Status place, once opened.
+    status_pane: Option<Entity<StatusPane>>,
+    /// Whether the Status place shows in place of the chat list.
+    status_shown: bool,
+    /// A status playing over the window.
+    status_viewer: Option<Entity<StatusViewer>>,
+    /// Posting a status.
+    status_composer: Option<Entity<StatusComposer>>,
     notifier: Entity<Notifier>,
     /// The splash, while natizap opens.
     opening: Option<Opening>,
@@ -97,6 +109,7 @@ impl Root {
             notifier,
             stickers,
             updater,
+            status,
         } = features;
         let (messages, pictures) = (&messages, &pictures);
         cx.observe(&chats, |_, _, cx| cx.notify()).detach();
@@ -149,6 +162,7 @@ impl Root {
         Self::feed_notifier(&notifier, &chats, messages, window, cx);
         Self::share_stickers(&stickers, &conversation, messages, cx);
         Self::search_messages(&chat_list, &chats, messages, &conversation, cx);
+        Self::follow_status(&status, &chats, &chat_list, window, cx);
 
         Self {
             session,
@@ -165,6 +179,11 @@ impl Root {
             settings: None,
             own_profile: None,
             own_shown: false,
+            status,
+            status_pane: None,
+            status_shown: false,
+            status_viewer: None,
+            status_composer: None,
             notifier,
             opening: Some(Opening::start(cx)),
             updater,
@@ -372,7 +391,10 @@ impl Root {
     fn go_back(&mut self, cx: &mut Context<Self>) {
         if self.picker.take().is_some()
             || self.settings.take().is_some()
+            || self.status_viewer.take().is_some()
+            || self.status_composer.take().is_some()
             || self.close_own_profile(cx)
+            || std::mem::take(&mut self.status_shown)
             || self.profile.take().is_some()
         {
             cx.notify();
@@ -435,7 +457,10 @@ impl Root {
                                 div().size_full().child(profile),
                                 -24.0,
                             )),
-                            None => pane.child(self.chat_list.clone()),
+                            None => match self.status_pane.clone().filter(|_| self.status_shown) {
+                                Some(status) => pane.child(status),
+                                None => pane.child(self.chat_list.clone()),
+                            },
                         },
                     ),
             )
@@ -472,6 +497,8 @@ impl Root {
             }))
             .children(self.picker.clone())
             .children(self.settings.clone())
+            .children(self.status_viewer.clone())
+            .children(self.status_composer.clone())
             // Chats stay readable offline, so the news floats over them
             // instead of replacing them.
             .when(reconnecting, |content| {

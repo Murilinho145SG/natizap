@@ -86,6 +86,7 @@ natizap-player = { path = "crates/natizap-player" }
 natizap-protocol = { path = "crates/natizap-protocol" }
 natizap-ui = { path = "crates/natizap-ui" }
 natizap-session = { path = "crates/natizap-session" }
+natizap-status = { path = "crates/natizap-status" }
 natizap-stickers = { path = "crates/natizap-stickers" }
 natizap-update = { path = "crates/natizap-update" }
 

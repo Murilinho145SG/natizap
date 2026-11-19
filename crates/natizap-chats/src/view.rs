@@ -1,16 +1,16 @@
 use chrono::{DateTime, Datelike as _, Local, TimeZone as _};
 use gpui::prelude::*;
 use gpui::{
-    AnyView, Context, Div, Entity, EventEmitter, FontWeight, Stateful, UniformListScrollHandle,
-    Window, div, px, relative, rgb, svg, uniform_list,
+    AnyElement, AnyView, Context, Div, Entity, EventEmitter, FontWeight, SharedString, Stateful,
+    UniformListScrollHandle, Window, div, px, relative, rgb, svg, uniform_list,
 };
 use natizap_ui::theme::{ACCENT, DISPLAY_FONT, LINE, MUTED, PANEL, RAISED, TEXT};
 use natizap_ui::{
     BadgeTone, Button, ButtonVariant, Icon, TextInput, avatar, badge, count_label, scrollbar,
-    separator, skeleton, verified_seal,
+    separator, skeleton, status_ring, verified_seal,
 };
 
-use std::path::PathBuf;
+use std::collections::HashMap;
 
 use natizap_profiles::ProfilePictures;
 use natizap_protocol::{ChatId, ContentKind};
@@ -44,6 +44,8 @@ pub struct ChatListView {
     query: String,
     /// The messages holding what is typed, as the app hands them over.
     message_results: Option<AnyView>,
+    /// Who has a status, and whether it holds something unseen.
+    rings: HashMap<ChatId, bool>,
 }
 
 /// The user picked a chat in the list.
@@ -52,6 +54,12 @@ pub struct ChatSelected(pub ChatRow);
 
 impl EventEmitter<ChatSelected> for ChatListView {}
 impl EventEmitter<QueryChanged> for ChatListView {}
+
+/// The user clicked the ringed avatar of someone with a status.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StatusRequested(pub ChatId);
+
+impl EventEmitter<StatusRequested> for ChatListView {}
 
 impl ChatListView {
     /// Creates a view that re-renders whenever `list` changes or a chat's
@@ -82,6 +90,7 @@ impl ChatListView {
             search_scroll: UniformListScrollHandle::new(),
             query: String::new(),
             message_results: None,
+            rings: HashMap::new(),
         }
     }
 
@@ -92,6 +101,13 @@ impl ChatListView {
             self.syncing = syncing;
             cx.notify();
         }
+    }
+
+    /// Rings the avatars of people with a status, by every address they go
+    /// by: `true` while it holds something unseen.
+    pub fn set_status_rings(&mut self, rings: HashMap<ChatId, bool>, cx: &mut Context<Self>) {
+        self.rings = rings;
+        cx.notify();
     }
 
     /// Marks `chat` as the one on screen, e.g. after going back to it, or
@@ -215,8 +231,27 @@ impl ChatListView {
                         let picture = this
                             .pictures
                             .update(cx, |pictures, cx| pictures.picture(&row.id, cx));
+                        let face = avatar(row.id.as_str(), &row.title, picture, px(AVATAR_SIZE));
+                        let ring = row
+                            .addresses
+                            .iter()
+                            .find_map(|address| this.rings.get(address).copied());
+                        let face = match ring {
+                            Some(unseen) => {
+                                let poster = row.id.clone();
+                                status_ring(face, Some(unseen))
+                                    .id(SharedString::from(format!("ring-{}", row.id.as_str())))
+                                    .on_click(cx.listener(move |_, _, _, cx| {
+                                        // The row behind would open the chat.
+                                        cx.stop_propagation();
+                                        cx.emit(StatusRequested(poster.clone()));
+                                    }))
+                                    .into_any_element()
+                            }
+                            None => status_ring(face, None).into_any_element(),
+                        };
                         div().w_full().px_2().child(
-                            chat_row(row, picture, now)
+                            chat_row(row, face, now)
                                 .when(selected, |row| row.bg(rgb(RAISED)))
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     this.select(clicked.clone(), cx);
@@ -368,7 +403,7 @@ fn archive_row(count: usize) -> Stateful<Div> {
         .child(div().text_size(px(12.5)).child(count.to_string()))
 }
 
-fn chat_row(row: &ChatRow, picture: Option<PathBuf>, now: DateTime<Local>) -> Stateful<Div> {
+fn chat_row(row: &ChatRow, face: AnyElement, now: DateTime<Local>) -> Stateful<Div> {
     let has_unread = row.unread > 0 || row.marked_unread;
     let time = row
         .sent_at
@@ -391,7 +426,7 @@ fn chat_row(row: &ChatRow, picture: Option<PathBuf>, now: DateTime<Local>) -> St
     });
 
     div()
-        .id(gpui::SharedString::from(row.id.as_str().to_owned()))
+        .id(SharedString::from(row.id.as_str().to_owned()))
         .h(px(ROW_HEIGHT))
         .w_full()
         .px_3()
@@ -402,12 +437,7 @@ fn chat_row(row: &ChatRow, picture: Option<PathBuf>, now: DateTime<Local>) -> St
         .cursor_pointer()
         .hover(|style| style.bg(rgb(RAISED)))
         .active(|style| style.bg(rgb(LINE)))
-        .child(avatar(
-            row.id.as_str(),
-            &row.title,
-            picture,
-            px(AVATAR_SIZE),
-        ))
+        .child(face)
         .child(
             div()
                 .flex_1()

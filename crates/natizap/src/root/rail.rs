@@ -14,16 +14,34 @@ impl Root {
     pub(super) fn rail(&mut self, cx: &mut Context<Self>) -> Rail {
         let me = self.protocol.read(cx).me();
         let on_profile = self.own_shown;
+        let unseen_status = self.status.read(cx).rings().values().any(|unseen| *unseen);
         let mut rail = Rail::new()
             .top(
                 Button::new("rail-chats")
                     .icon(Icon::Chats)
                     .variant(ButtonVariant::Ghost)
                     .round()
-                    .selected(!on_profile)
+                    .selected(!on_profile && !self.status_shown)
                     .tooltip("Chats")
                     .on_click(cx.listener(|root, _, _, cx| {
                         root.close_own_profile(cx);
+                        root.status_shown = false;
+                        cx.notify();
+                    })),
+            )
+            .top(
+                Button::new("rail-status")
+                    .icon(Icon::Status)
+                    .variant(ButtonVariant::Ghost)
+                    .round()
+                    .selected(self.status_shown && !on_profile)
+                    .tooltip(if unseen_status {
+                        "Status · new updates"
+                    } else {
+                        "Status"
+                    })
+                    .on_click(cx.listener(|root, _, window, cx| {
+                        root.show_status_place(window, cx);
                     })),
             )
             .bottom(

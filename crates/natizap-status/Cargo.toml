@@ -1,0 +1,25 @@
+[package]
+name = "natizap-status"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+async-channel.workspace = true
+chrono.workspace = true
+gpui.workspace = true
+image.workspace = true
+natizap-outbox.workspace = true
+natizap-playback.workspace = true
+natizap-profiles.workspace = true
+natizap-protocol.workspace = true
+natizap-ui.workspace = true
+rusqlite.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true

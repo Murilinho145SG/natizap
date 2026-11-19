@@ -131,6 +131,8 @@ icons! {
     /// A sticker.
     Sticker => "sticker.svg",
     /// A starred message.
+    /// Status updates, the place that shows them.
+    Status => "status.svg",
     Star => "star.svg",
     /// Where dropped files land.
     Tray => "tray.svg",

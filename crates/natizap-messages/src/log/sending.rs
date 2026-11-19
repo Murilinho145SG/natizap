@@ -16,7 +16,7 @@ use crate::message::{Delivery, Message, MessageChange};
 impl MessageLog {
     /// Sends `text` to the open chat, optionally replying to a message. It
     /// shows at once and is marked as failed if WhatsApp does not accept it.
-    pub(crate) fn send(&mut self, text: String, reply: Option<Reply>, cx: &mut Context<Self>) {
+    pub fn send(&mut self, text: String, reply: Option<Reply>, cx: &mut Context<Self>) {
         let Some((chat, local_id, sent_at)) = self.next_outgoing() else {
             return;
         };
