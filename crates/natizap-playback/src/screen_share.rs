@@ -1,74 +1,78 @@
-//! Sharing the screen in a call: the desktop asks the user what to share,
-//! and its pictures are scaled, encoded as H.264 for the call and shown
-//! small to the user, as the camera's are.
+//! Sharing the screen in a call: its pictures are scaled, encoded as
+//! H.264 for the call and shown to the user, as the camera's are.
 //!
-//! On Linux the desktop portal asks, which on Wayland is the only way an
-//! app may see the screen, and the pictures come over `PipeWire`. Other
-//! systems have no way here yet.
+//! On Linux the desktop portal asks the user what to share, which on
+//! Wayland is the only way an app may see the screen, and the pictures
+//! come over `PipeWire`. On Windows and macOS, FFmpeg's own screen inputs
+//! capture the whole desktop (GDI) or the main screen (`AVFoundation`,
+//! which asks the user's leave to record the screen the first time).
 
-use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
-
+use crate::camera::Running;
 use crate::feed::VideoFeed;
 use crate::inset::Inset;
 use crate::remote_video::VideoError;
 
 /// The screen shared in a call, until dropped or until the user stops it
 /// from the desktop.
+#[derive(Debug)]
 pub struct ScreenShare {
-    keyframe: Arc<AtomicBool>,
-    preview: VideoFeed,
-    #[cfg(target_os = "linux")]
-    stop: pipewire::channel::Sender<()>,
-}
-
-impl std::fmt::Debug for ScreenShare {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ScreenShare").finish_non_exhaustive()
-    }
+    running: Running,
 }
 
 impl ScreenShare {
-    /// Asks the desktop what to share, and shares it, with the camera
-    /// `inset` lends in its corner. The receiver gives the call one Annex-B
-    /// access unit per picture, up to fifteen a second; it closes when the
-    /// sharing stops. Blocks while the user
-    /// chooses: run it off the UI thread.
+    /// Shares the screen, with the camera `inset` lends in its corner. The
+    /// receiver gives the call one Annex-B access unit per picture, up to
+    /// fifteen a second; it closes when the sharing stops. On Linux it
+    /// first asks the user what to share, blocking until they choose: run
+    /// it off the UI thread.
     ///
     /// # Errors
     ///
-    /// Fails when the user declines, or when the screen cannot be shared
-    /// on this system.
+    /// Fails when the user declines, or when the screen cannot be captured.
     pub fn start(inset: Inset) -> Result<(Self, async_channel::Receiver<Vec<u8>>), VideoError> {
         #[cfg(target_os = "linux")]
-        return linux::start(inset);
+        let (running, units) = linux::start(inset)?;
         #[cfg(not(target_os = "linux"))]
-        drop(inset);
-        #[cfg(not(target_os = "linux"))]
-        Err(VideoError::Screen(
-            "sharing the screen is not available on this system yet".into(),
-        ))
+        let (running, units) = desktop::start(inset)?;
+        Ok((Self { running }, units))
     }
 
     /// What is being shared, to show the user.
     #[must_use]
     pub fn preview(&self) -> VideoFeed {
-        self.preview.clone()
+        self.running.preview()
     }
 
     /// Makes the next picture sent a keyframe.
     pub fn request_keyframe(&self) {
-        self.keyframe
-            .store(true, std::sync::atomic::Ordering::Relaxed);
+        self.running.request_keyframe();
     }
 }
 
-#[cfg(target_os = "linux")]
-impl Drop for ScreenShare {
-    fn drop(&mut self) {
-        // The thread may have stopped already, when the user stopped
-        // sharing from the desktop: nothing is left to tell then.
-        let _ = self.stop.send(());
+#[cfg(not(target_os = "linux"))]
+mod desktop {
+    use crate::camera::{Role, Running, capture};
+    use crate::h264::FRAME_RATE;
+    use crate::inset::Inset;
+    use crate::remote_video::VideoError;
+
+    pub(super) fn start(
+        inset: Inset,
+    ) -> Result<(Running, async_channel::Receiver<Vec<u8>>), VideoError> {
+        let rate = ("framerate", FRAME_RATE.to_string());
+        let (input, options) = if cfg!(target_os = "macos") {
+            // AVFoundation lists screens after the cameras, by these names.
+            (
+                ("avfoundation", "Capture screen 0:none".to_owned()),
+                vec![rate, ("capture_cursor", "1".to_owned())],
+            )
+        } else {
+            (
+                ("gdigrab", "desktop".to_owned()),
+                vec![rate, ("draw_mouse", "1".to_owned())],
+            )
+        };
+        capture(input, options, Role::Screen, inset)
     }
 }
 
@@ -93,8 +97,7 @@ mod linux {
     use pw::spa::param::video::{VideoFormat, VideoInfoRaw};
     use pw::spa::pod::Pod;
 
-    use super::ScreenShare;
-    use crate::camera::Scalers;
+    use crate::camera::{Running, Scalers};
     use crate::feed::{FeedWriter, feed};
     use crate::h264::{FRAME_RATE, H264Encoder, Source};
     use crate::inset::{Corner, Inset};
@@ -105,7 +108,7 @@ mod linux {
 
     pub(super) fn start(
         inset: Inset,
-    ) -> Result<(ScreenShare, async_channel::Receiver<Vec<u8>>), VideoError> {
+    ) -> Result<(Running, async_channel::Receiver<Vec<u8>>), VideoError> {
         let (fd, node) = futures::executor::block_on(choose())
             .map_err(|error| VideoError::Screen(error.to_string()))?;
         let (units, received) = async_channel::bounded(BACKLOG);
@@ -122,14 +125,12 @@ mod linux {
                 }
             })
             .map_err(|error| VideoError::Thread(error.to_string()))?;
-        Ok((
-            ScreenShare {
-                keyframe,
-                preview,
-                stop,
-            },
-            received,
-        ))
+        let running = Running::new(keyframe, preview, move || {
+            // The thread may have stopped already, when the user stopped
+            // sharing from the desktop: nothing is left to tell then.
+            let _ = stop.send(());
+        });
+        Ok((running, received))
     }
 
     /// Asks the desktop what to share: the `PipeWire` connection to it and
