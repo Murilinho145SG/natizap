@@ -263,26 +263,31 @@ impl CallStage {
             .when(video.remote.is_none(), |stage| {
                 stage.child(self.person(call, cx))
             })
-            .when(video.remote.is_some(), |stage| {
-                stage.child(
-                    div()
-                        .absolute()
-                        .top_0()
-                        .left_0()
-                        .right_0()
-                        .p_4()
-                        .flex()
-                        .flex_col()
-                        .bg(rgba(theme.scrim))
-                        .child(
-                            div()
-                                .truncate()
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .child(call.title.clone()),
-                        )
-                        .child(phase_line(call, theme)),
-                )
-            })
+            // The main window's bar already says who and how long; the
+            // call's own window has no bar.
+            .when(
+                video.remote.is_some() && self.home == Home::Window,
+                |stage| {
+                    stage.child(
+                        div()
+                            .absolute()
+                            .top_0()
+                            .left_0()
+                            .right_0()
+                            .p_4()
+                            .flex()
+                            .flex_col()
+                            .bg(rgba(theme.scrim))
+                            .child(
+                                div()
+                                    .truncate()
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .child(call.title.clone()),
+                            )
+                            .child(phase_line(call, theme)),
+                    )
+                },
+            )
             .child(
                 div()
                     .absolute()
