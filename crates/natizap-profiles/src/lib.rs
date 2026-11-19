@@ -63,17 +63,19 @@ impl ProfilePictures {
                 cx.notify();
             });
         });
-        let changes = protocol.read(cx).subscribe(&[EventKind::PictureUpdate]);
+        let changes = protocol
+            .read(cx)
+            .subscribe(&[EventKind::PictureUpdate, EventKind::Connected]);
         let follow = cx.spawn(async move |this, cx| {
             while let Ok(event) = changes.recv().await {
-                let Event::PictureUpdate(update) = event.as_ref() else {
-                    continue;
-                };
-                let chat = ChatId::new(&update.jid.to_string());
-                if this
-                    .update(cx, |pictures, cx| pictures.changed(chat, cx))
-                    .is_err()
-                {
+                let followed = this.update(cx, |pictures, cx| match event.as_ref() {
+                    Event::PictureUpdate(update) => {
+                        pictures.changed(ChatId::new(&update.jid.to_string()), cx);
+                    }
+                    Event::Connected(_) => pictures.connected(cx),
+                    _ => {}
+                });
+                if followed.is_err() {
                     break;
                 }
             }
@@ -111,6 +113,14 @@ impl ProfilePictures {
     pub fn refresh(&mut self, chat: &ChatId, cx: &mut Context<Self>) {
         self.known.remove(chat);
         self.picture(chat, cx);
+        cx.notify();
+    }
+
+    /// Lookups made before the connection was up failed for that reason
+    /// alone, such as your own picture asked for by the first screen: what
+    /// is missing is asked for again.
+    fn connected(&mut self, cx: &mut Context<Self>) {
+        self.known.retain(|_, known| !matches!(known, Known::Missing));
         cx.notify();
     }
 
