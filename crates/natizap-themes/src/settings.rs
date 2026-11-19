@@ -4,7 +4,7 @@
 use gpui::prelude::*;
 use gpui::{Context, Entity, FontWeight, SharedString, Subscription, Window, div, px, rgb};
 use natizap_ui::theme::{ActiveTheme as _, Theme};
-use natizap_ui::{Button, ButtonVariant, Icon};
+use natizap_ui::{Button, ButtonSize, ButtonVariant, Icon};
 
 use crate::book::{Choice, ThemeBook};
 use crate::editor::{Draft, actions};
@@ -81,8 +81,12 @@ impl ThemeSettings {
     ) -> impl IntoElement + use<> {
         let shown = choice.theme;
         let name = choice.name.clone();
+        let group = SharedString::from(format!("theme-card-{}", choice.name));
+        let deleted = choice.name.clone();
         div()
             .id(SharedString::from(format!("theme-{}", choice.name)))
+            .group(group.clone())
+            .relative()
             .w(px(84.0))
             .flex()
             .flex_col()
@@ -133,6 +137,32 @@ impl ThemeSettings {
                     .text_color(rgb(if chosen { theme.text } else { theme.muted }))
                     .child(choice.name.clone()),
             )
+            // The user's own themes can go: a bin over the card's corner,
+            // under the pointer.
+            .when(choice.custom, |card| {
+                card.child(
+                    div()
+                        .absolute()
+                        .top_1()
+                        .right_1()
+                        .invisible()
+                        .group_hover(group, Styled::visible)
+                        .child(
+                            Button::new(SharedString::from(format!("delete-theme-{deleted}")))
+                                .icon(Icon::Trash)
+                                .variant(ButtonVariant::Secondary)
+                                .size(ButtonSize::Small)
+                                .round()
+                                .tooltip("Delete theme")
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    // The card behind would choose it.
+                                    cx.stop_propagation();
+                                    let deleted = deleted.clone();
+                                    this.book.update(cx, |book, cx| book.delete(&deleted, cx));
+                                })),
+                        ),
+                )
+            })
     }
 }
 
