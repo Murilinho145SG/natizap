@@ -9,6 +9,10 @@ use crate::Icon;
 use crate::components::tooltip::Tooltip;
 use crate::theme::ActiveTheme as _;
 
+/// The hover group of a button, which its icon follows; the nearest
+/// button's, so buttons inside one another still light up alone.
+const GROUP: &str = "natizap-button";
+
 /// What a button is for, which sets its colors.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum ButtonVariant {
@@ -167,6 +171,7 @@ impl RenderOnce for Button {
         let icon_only = self.label.is_none();
         div()
             .id(self.id)
+            .group(GROUP)
             .h(height)
             .flex_none()
             .flex()
@@ -209,7 +214,11 @@ impl RenderOnce for Button {
                     svg()
                         .path(icon.path())
                         .size(self.size.icon())
-                        .text_color(rgb(ink)),
+                        .text_color(rgb(ink))
+                        // The icon lights up with the button it sits in.
+                        .when(hover.is_some(), |icon| {
+                            icon.group_hover(GROUP, |icon| icon.text_color(rgb(theme.text)))
+                        }),
                 )
             })
             .when_some(self.label, ParentElement::child)

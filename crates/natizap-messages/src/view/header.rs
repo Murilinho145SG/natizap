@@ -11,8 +11,8 @@ use natizap_ui::{Button, ButtonVariant, Icon, Menu, avatar, verified_seal};
 use super::{CallRequested, ConversationView, ProfileRequested};
 use crate::log::OpenChat;
 
-/// The chat's picture, name and, for a person, their number. Clicking it
-/// asks for the chat's profile.
+/// The chat's picture, name and, for a person, their number, which ask
+/// for the chat's profile when clicked, and the chat's buttons.
 pub(super) fn header(
     chat: &OpenChat,
     picture: Option<PathBuf>,
@@ -32,47 +32,62 @@ pub(super) fn header(
     };
     div()
         .id("chat-header")
-        .cursor_pointer()
-        // The whole header opens the profile; lighting it up says so.
-        .hover(|header| header.bg(rgb(theme.raised)))
-        .on_click(cx.listener(|this, _, _, cx| this.request_profile(cx)))
         .h(px(60.0))
         .flex_none()
         .flex()
         .items_center()
-        .gap_3()
-        .px_4()
+        .gap_2()
+        .px_2()
         .bg(rgb(theme.panel))
         .border_b_1()
         .border_color(rgb(theme.line))
-        .child(avatar(chat.id.as_str(), &chat.title, picture, px(38.0)))
         .child(
+            // Who the chat is with opens their profile, and lights up so;
+            // the buttons beside it light up on their own.
             div()
+                .id("chat-header-who")
                 .flex_1()
                 .min_w_0()
+                .h_full()
                 .flex()
-                .flex_col()
+                .items_center()
+                .gap_3()
+                .px_2()
+                .my_1p5()
+                .rounded_lg()
+                .cursor_pointer()
+                .hover(|who| who.bg(rgb(theme.raised)))
+                .on_click(cx.listener(|this, _, _, cx| this.request_profile(cx)))
+                .child(avatar(chat.id.as_str(), &chat.title, picture, px(38.0)))
                 .child(
                     div()
+                        .flex_1()
+                        .min_w_0()
                         .flex()
-                        .items_center()
-                        .gap_1()
-                        .text_size(px(16.0))
-                        // Medium on purpose: at semibold, symbols such as ♥ render
-                        // monochrome even with the emoji font as fallback.
-                        .font_weight(FontWeight::MEDIUM)
-                        .child(div().min_w_0().truncate().child(chat.title.clone()))
-                        .when(chat.verified, |title| {
-                            title.child(verified_seal(16.0, theme))
-                        }),
-                )
-                .children(subtitle.map(|subtitle| {
-                    div()
-                        .truncate()
-                        .text_size(px(12.5))
-                        .text_color(rgb(theme.muted))
-                        .child(subtitle)
-                })),
+                        .flex_col()
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap_1()
+                                .text_size(px(16.0))
+                                // Medium on purpose: at semibold, symbols such
+                                // as ♥ render monochrome even with the emoji
+                                // font as fallback.
+                                .font_weight(FontWeight::MEDIUM)
+                                .child(div().min_w_0().truncate().child(chat.title.clone()))
+                                .when(chat.verified, |title| {
+                                    title.child(verified_seal(16.0, theme))
+                                }),
+                        )
+                        .children(subtitle.map(|subtitle| {
+                            div()
+                                .truncate()
+                                .text_size(px(12.5))
+                                .text_color(rgb(theme.muted))
+                                .child(subtitle)
+                        })),
+                ),
         )
         .child(
             div()
@@ -90,8 +105,6 @@ pub(super) fn header(
                         .round()
                         .tooltip("Search (Ctrl+F)")
                         .on_click(cx.listener(|this, _, window, cx| {
-                            // The header behind opens the profile.
-                            cx.stop_propagation();
                             this.open_find(window, cx);
                         })),
                 )
@@ -102,8 +115,6 @@ pub(super) fn header(
                         .round()
                         .tooltip("Menu")
                         .on_click(cx.listener(|this, event: &ClickEvent, _, cx| {
-                            // The header behind opens the profile.
-                            cx.stop_propagation();
                             this.chat_menu = Some(event.position());
                             cx.notify();
                         })),
@@ -125,8 +136,6 @@ fn call_buttons(peer: &ChatId, cx: &mut Context<ConversationView>) -> [Button; 2
         .round()
         .tooltip(if video { "Video call" } else { "Voice call" })
         .on_click(cx.listener(move |_, _, _, cx| {
-            // The header behind opens the profile.
-            cx.stop_propagation();
             cx.emit(CallRequested {
                 peer: peer.clone(),
                 video,
