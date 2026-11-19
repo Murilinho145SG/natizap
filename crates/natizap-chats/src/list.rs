@@ -305,6 +305,18 @@ impl ChatList {
         .detach();
     }
 
+    /// Files the account's own chat under its phone number and its LID
+    /// alike: WhatsApp files messages to yourself under either, and
+    /// nothing else says the two are one chat.
+    pub(crate) fn link_own(&self, cx: &App) {
+        let Some(me) = self.protocol.read(cx).me() else {
+            return;
+        };
+        if let Some(lid) = me.lid {
+            self.send(Input::Change(ChatChange::SameChat(lid, me.phone)));
+        }
+    }
+
     /// Names the account's own chat as the phone does, "+55 … (You)".
     fn mark_own(&self, mut snapshot: Snapshot, cx: &App) -> Snapshot {
         let protocol = self.protocol.read(cx);

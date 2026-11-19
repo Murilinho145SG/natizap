@@ -90,7 +90,8 @@ impl ChatList {
         .detach();
     }
 
-    /// Reads who is blocked each time the connection comes up.
+    /// Reads who is blocked, and files the account's own chat under both
+    /// its addresses, each time the connection comes up.
     pub(crate) fn follow_connections(
         protocol: &Entity<Protocol>,
         cx: &mut Context<Self>,
@@ -98,7 +99,11 @@ impl ChatList {
         let connects = protocol.read(cx).subscribe(&[EventKind::Connected]);
         cx.spawn(async move |this, cx| {
             while connects.recv().await.is_ok() {
-                if this.update(cx, Self::refresh_blocklist).is_err() {
+                let updated = this.update(cx, |list, cx| {
+                    list.link_own(cx);
+                    list.refresh_blocklist(cx);
+                });
+                if updated.is_err() {
                     break;
                 }
             }
