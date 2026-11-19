@@ -4,8 +4,8 @@ use std::time::Duration;
 
 use cpal::traits::{DeviceTrait as _, HostTrait as _, StreamTrait as _};
 use cpal::{
-    BufferSize, SampleFormat, Stream, StreamConfig, SupportedBufferSize, SupportedStreamConfig,
-    SupportedStreamConfigRange,
+    BufferSize, FromSample, SampleFormat, SizedSample, Stream, StreamConfig, SupportedBufferSize,
+    SupportedStreamConfig, SupportedStreamConfigRange,
 };
 
 use crate::PlaybackError;
@@ -134,6 +134,11 @@ pub(crate) fn closest_f32(
             .clamp(range.min_sample_rate(), range.max_sample_rate());
         range.with_sample_rate(rate)
     };
+    Some(paced(&chosen, period))
+}
+
+/// `chosen`, with the card asked to take sound `period` at a time.
+fn paced(chosen: &SupportedStreamConfig, period: Duration) -> StreamConfig {
     let mut config = chosen.config();
     if let SupportedBufferSize::Range { min, max } = *chosen.buffer_size() {
         #[expect(
@@ -144,5 +149,69 @@ pub(crate) fn closest_f32(
         let frames = (f64::from(config.sample_rate) * period.as_secs_f64()) as u32;
         config.buffer_size = BufferSize::Fixed(frames.clamp(min, max));
     }
-    Some(config)
+    config
+}
+
+/// Opens `device`'s microphone `period` at a time, handing what it hears
+/// as `f32` samples, whatever it gives them in, to what `listener` makes
+/// for the configuration chosen: some microphones give only integers
+/// (Windows' often give 16-bit ones), and refusing them would leave the
+/// user unheard.
+pub(crate) fn open_microphone<H>(
+    device: &cpal::Device,
+    period: Duration,
+    listener: impl FnOnce(&StreamConfig) -> H,
+    failed: impl FnMut(cpal::Error) + Send + 'static,
+) -> Result<(Stream, StreamConfig), String>
+where
+    H: FnMut(&[f32]) + Send + 'static,
+{
+    let preferred = device
+        .default_input_config()
+        .map_err(|error| error.to_string())?;
+    let supported = device
+        .supported_input_configs()
+        .map_err(|error| error.to_string())?;
+    let (config, format) = match closest_f32(&preferred, supported, period) {
+        Some(config) => (config, SampleFormat::F32),
+        None => (paced(&preferred, period), preferred.sample_format()),
+    };
+    let hear = listener(&config);
+    let stream = match format {
+        SampleFormat::F32 => listen::<f32>(device, &config, hear, failed),
+        SampleFormat::F64 => listen::<f64>(device, &config, hear, failed),
+        SampleFormat::I8 => listen::<i8>(device, &config, hear, failed),
+        SampleFormat::I16 => listen::<i16>(device, &config, hear, failed),
+        SampleFormat::I32 => listen::<i32>(device, &config, hear, failed),
+        SampleFormat::U8 => listen::<u8>(device, &config, hear, failed),
+        SampleFormat::U16 => listen::<u16>(device, &config, hear, failed),
+        SampleFormat::U32 => listen::<u32>(device, &config, hear, failed),
+        other => return Err(format!("the microphone gives {other} samples")),
+    }
+    .map_err(|error| error.to_string())?;
+    Ok((stream, config))
+}
+
+/// The microphone's stream in `T` samples, handed on as `f32`.
+fn listen<T>(
+    device: &cpal::Device,
+    config: &StreamConfig,
+    mut hear: impl FnMut(&[f32]) + Send + 'static,
+    failed: impl FnMut(cpal::Error) + Send + 'static,
+) -> Result<Stream, cpal::Error>
+where
+    T: SizedSample,
+    f32: FromSample<T>,
+{
+    let mut heard: Vec<f32> = Vec::new();
+    device.build_input_stream(
+        *config,
+        move |input: &[T], _| {
+            heard.clear();
+            heard.extend(input.iter().map(|sample| sample.to_sample::<f32>()));
+            hear(&heard);
+        },
+        failed,
+        None,
+    )
 }

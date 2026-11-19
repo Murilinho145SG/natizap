@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use cpal::Stream;
 use cpal::traits::{DeviceTrait as _, StreamTrait as _};
 
-use crate::audio::closest_f32;
+use crate::audio::{closest_f32, open_microphone};
 use crate::devices::{self, CallDevices};
 use crate::opus::OpusDecoder;
 use crate::resample::Resampler;
@@ -241,26 +241,21 @@ fn listen(
     voice: VoiceProcessing,
     meter: Arc<Meter>,
 ) -> Result<Stream, CallAudioError> {
-    let config = closest_f32(
-        &device.default_input_config().map_err(device_error)?,
-        device.supported_input_configs().map_err(device_error)?,
+    let (stream, config) = open_microphone(
+        device,
         CALL_PERIOD,
+        |config| {
+            let mut microphone = Microphone::new(*config, format, heard, voice, meter);
+            move |input: &[f32]| microphone.hear(input)
+        },
+        |error| tracing::warn!(%error, "microphone failed during a call"),
     )
-    .ok_or_else(|| CallAudioError::Device("the microphone gives no f32 samples".into()))?;
+    .map_err(CallAudioError::Device)?;
     tracing::info!(
         rate = config.sample_rate,
         channels = config.channels,
         "call microphone open"
     );
-    let mut microphone = Microphone::new(config, format, heard, voice, meter);
-    let stream = device
-        .build_input_stream(
-            config,
-            move |input: &[f32], _| microphone.hear(input),
-            |error| tracing::warn!(%error, "microphone failed during a call"),
-            None,
-        )
-        .map_err(device_error)?;
     stream.play().map_err(device_error)?;
     Ok(stream)
 }

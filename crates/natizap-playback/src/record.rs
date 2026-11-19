@@ -5,12 +5,16 @@ use std::path::Path;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
-use cpal::traits::{DeviceTrait as _, HostTrait as _, StreamTrait as _};
-use cpal::{SampleFormat, Stream};
+use cpal::Stream;
+use cpal::traits::{HostTrait as _, StreamTrait as _};
 use ffmpeg::util::frame;
 use ffmpeg::{ChannelLayout, Dictionary, codec, format};
 use ffmpeg_next as ffmpeg;
 
+use crate::audio::open_microphone;
+
+/// How much the microphone hands over at a time.
+const PERIOD: Duration = Duration::from_millis(40);
 /// Opus's own rate, which WhatsApp's voice notes use.
 const RATE: u32 = 48_000;
 /// [`RATE`] as FFmpeg takes it.
@@ -38,7 +42,9 @@ pub enum RecordError {
 /// A voice note being recorded. Dropping it throws the recording away.
 pub struct Recorder {
     _stream: Stream,
+    /// What was heard, the channels interleaved.
     samples: Arc<Mutex<Vec<f32>>>,
+    channels: usize,
     rate: u32,
     started: Instant,
 }
@@ -70,44 +76,27 @@ impl Recorder {
         let device = cpal::default_host()
             .default_input_device()
             .ok_or(RecordError::NoMicrophone)?;
-        let preferred = device
-            .default_input_config()
-            .map_err(|error| RecordError::Microphone(error.to_string()))?;
-        if preferred.sample_format() != SampleFormat::F32 {
-            return Err(RecordError::Microphone(
-                "the microphone does not give f32 samples".into(),
-            ));
-        }
-        let config = preferred.config();
-        let channels = usize::from(config.channels).max(1);
         let samples: Arc<Mutex<Vec<f32>>> = Arc::default();
         let heard = Arc::clone(&samples);
-        let stream = device
-            .build_input_stream(
-                config,
-                move |input: &[f32], _| {
+        let (stream, config) = open_microphone(
+            &device,
+            PERIOD,
+            |_| {
+                move |input: &[f32]| {
                     let mut heard = heard.lock().unwrap_or_else(PoisonError::into_inner);
-                    // Voice notes are mono: average the channels.
-                    #[expect(
-                        clippy::cast_precision_loss,
-                        reason = "a sound card has a handful of channels"
-                    )]
-                    heard.extend(
-                        input
-                            .chunks(channels)
-                            .map(|frame| frame.iter().sum::<f32>() / channels as f32),
-                    );
-                },
-                |error| tracing::warn!(%error, "microphone failed"),
-                None,
-            )
-            .map_err(|error| RecordError::Microphone(error.to_string()))?;
+                    heard.extend_from_slice(input);
+                }
+            },
+            |error| tracing::warn!(%error, "microphone failed"),
+        )
+        .map_err(RecordError::Microphone)?;
         stream
             .play()
             .map_err(|error| RecordError::Microphone(error.to_string()))?;
         Ok(Self {
             _stream: stream,
             samples,
+            channels: usize::from(config.channels).max(1),
             rate: config.sample_rate,
             started: Instant::now(),
         })
@@ -123,8 +112,17 @@ impl Recorder {
     /// UI thread.
     #[must_use]
     pub fn stop(self) -> Heard {
-        let samples =
+        let interleaved =
             std::mem::take(&mut *self.samples.lock().unwrap_or_else(PoisonError::into_inner));
+        // Voice notes are mono: average the channels.
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "a sound card has a handful of channels"
+        )]
+        let samples = interleaved
+            .chunks(self.channels)
+            .map(|frame| frame.iter().sum::<f32>() / self.channels as f32)
+            .collect();
         Heard {
             samples,
             rate: self.rate,
