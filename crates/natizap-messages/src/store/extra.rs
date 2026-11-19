@@ -1,11 +1,20 @@
-//! How a message's shared contacts, poll or buttons are kept in the
+//! How a message's shared contacts, poll, buttons or call are kept in the
 //! `extra` column: one line per entry, fields split by tabs.
 
-use natizap_protocol::{Answer, Button, ButtonAction, Buttons, Card, Extra, Poll};
+use natizap_protocol::{
+    Answer, Button, ButtonAction, Buttons, CallDetails, CallOutcome, Card, Extra, Poll,
+};
 
 pub(super) fn encode(extra: &Extra) -> String {
     let clean = |field: &str| field.replace(['\t', '\n', '\r'], " ");
     match extra {
+        Extra::Call(call) => format!(
+            "call\t{}\t{}\t{}",
+            u8::from(call.incoming),
+            call.outcome.key(),
+            call.seconds
+                .map_or_else(String::new, |seconds| seconds.to_string())
+        ),
         Extra::Cards(cards) => cards
             .iter()
             .map(|card| {
@@ -58,6 +67,11 @@ pub(super) fn decode(stored: &str) -> Option<Extra> {
         .map(|line| line.split('\t').collect::<Vec<_>>());
     let first = lines.next()?;
     match first.as_slice() {
+        ["call", incoming, outcome, seconds] => Some(Extra::Call(CallDetails {
+            incoming: *incoming == "1",
+            outcome: CallOutcome::from_key(outcome)?,
+            seconds: seconds.parse().ok(),
+        })),
         ["poll", multiple, question] => Some(Extra::Poll(Poll {
             question: (*question).to_owned(),
             multiple: *multiple == "1",
@@ -168,5 +182,28 @@ mod tests {
             }],
         });
         assert_eq!(decode(&encode(&bare)), Some(bare));
+    }
+
+    #[test]
+    fn keeps_how_a_call_went() {
+        for call in [
+            CallDetails {
+                incoming: true,
+                outcome: CallOutcome::Answered,
+                seconds: Some(31),
+            },
+            CallDetails {
+                incoming: true,
+                outcome: CallOutcome::AnsweredElsewhere,
+                seconds: None,
+            },
+            CallDetails {
+                incoming: false,
+                outcome: CallOutcome::Missed,
+                seconds: None,
+            },
+        ] {
+            assert_eq!(decode(&encode(&Extra::Call(call))), Some(Extra::Call(call)));
+        }
     }
 }

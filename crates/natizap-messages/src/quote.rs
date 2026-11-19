@@ -39,11 +39,12 @@ pub(crate) fn quote_block(
 ) -> Div {
     let icon = match kind {
         ContentKind::Photo | ContentKind::Sticker => Some(Icon::Camera),
-        ContentKind::Video => Some(Icon::Video),
+        ContentKind::Video | ContentKind::VideoCall => Some(Icon::Video),
         ContentKind::VoiceMessage => Some(Icon::Mic),
         ContentKind::Audio => Some(Icon::Waveform),
         ContentKind::Document => Some(Icon::File),
         ContentKind::MissedVoiceCall | ContentKind::MissedVideoCall => Some(Icon::CallMissed),
+        ContentKind::VoiceCall => Some(Icon::Call),
         ContentKind::Text | ContentKind::Location | ContentKind::Contact | ContentKind::Poll => {
             None
         }

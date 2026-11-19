@@ -1,6 +1,7 @@
 use whatsapp_rust::prelude::{MessageExt as _, wa};
 
 use crate::LinkPreview;
+use crate::call_log::CallOutcome;
 
 use crate::ChatId;
 use crate::buttons::{self, Buttons};
@@ -33,11 +34,15 @@ pub enum ContentKind {
     MissedVoiceCall,
     /// A video call nobody answered.
     MissedVideoCall,
+    /// A voice call, how it went in [`Extra::Call`].
+    VoiceCall,
+    /// A video call, how it went in [`Extra::Call`].
+    VideoCall,
 }
 
 impl ContentKind {
     /// Every kind, e.g. to read a stored [`ContentKind::label`] back.
-    pub const ALL: [Self; 12] = [
+    pub const ALL: [Self; 14] = [
         Self::Text,
         Self::Photo,
         Self::Video,
@@ -50,6 +55,8 @@ impl ContentKind {
         Self::Poll,
         Self::MissedVoiceCall,
         Self::MissedVideoCall,
+        Self::VoiceCall,
+        Self::VideoCall,
     ];
 
     /// The kind whose [`ContentKind::label`] is `label`.
@@ -74,6 +81,8 @@ impl ContentKind {
             Self::Poll => "Poll",
             Self::MissedVoiceCall => "Missed voice call",
             Self::MissedVideoCall => "Missed video call",
+            Self::VoiceCall => "Voice call",
+            Self::VideoCall => "Video call",
         }
     }
 }
@@ -133,6 +142,18 @@ pub enum Extra {
     Poll(Poll),
     /// Buttons a business put under its text.
     Buttons(Buttons),
+    /// How a call in the chat went.
+    Call(CallDetails),
+}
+
+/// How a call went, as its chat shows it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CallDetails {
+    /// It came in, rather than being made by the account.
+    pub incoming: bool,
+    pub outcome: CallOutcome,
+    /// How long it lasted, when answered here.
+    pub seconds: Option<u32>,
 }
 
 /// A shared contact.

@@ -43,7 +43,7 @@ pub use call_video::{Video, VideoRequest};
 pub use calls::{MissedCall, Ringing};
 pub use chat::{ChatId, PersonName};
 pub use chat_actions::ChatAction;
-pub use content::{Card, Content, ContentKind, Extra, Forwarding, Poll, Quote};
+pub use content::{CallDetails, Card, Content, ContentKind, Extra, Forwarding, Poll, Quote};
 pub use encryption::SecurityCode;
 pub use group::{GroupInfo, Member, Role};
 pub use link::LinkPreview;

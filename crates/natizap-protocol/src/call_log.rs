@@ -12,8 +12,11 @@ use crate::live_call::AnsweredHere;
 /// How a call ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CallOutcome {
-    /// Someone picked up.
+    /// Someone picked up, on this device or, for a call made, wherever.
     Answered,
+    /// A call that came in was picked up on another of the account's
+    /// devices.
+    AnsweredElsewhere,
     /// It rang and nobody picked up: a missed call when it came in, an
     /// unanswered one when the account made it.
     Missed,
@@ -27,6 +30,7 @@ impl CallOutcome {
     pub fn key(self) -> &'static str {
         match self {
             Self::Answered => "answered",
+            Self::AnsweredElsewhere => "answered_elsewhere",
             Self::Missed => "missed",
             Self::Declined => "declined",
         }
@@ -35,9 +39,14 @@ impl CallOutcome {
     /// The outcome spelled `key`.
     #[must_use]
     pub fn from_key(key: &str) -> Option<Self> {
-        [Self::Answered, Self::Missed, Self::Declined]
-            .into_iter()
-            .find(|outcome| outcome.key() == key)
+        [
+            Self::Answered,
+            Self::AnsweredElsewhere,
+            Self::Missed,
+            Self::Declined,
+        ]
+        .into_iter()
+        .find(|outcome| outcome.key() == key)
     }
 }
 
@@ -106,7 +115,7 @@ impl CallFollower {
             Event::CallEndedElsewhere(ended) => {
                 if let Some(ringing) = self.ringing.get_mut(&ended.call_id) {
                     ringing.outcome = match ended.outcome {
-                        ElsewhereOutcome::Accepted => Some(CallOutcome::Answered),
+                        ElsewhereOutcome::Accepted => Some(CallOutcome::AnsweredElsewhere),
                         ElsewhereOutcome::Rejected => Some(CallOutcome::Declined),
                         _ => ringing.outcome,
                     };
@@ -167,9 +176,11 @@ impl CallFollower {
                 });
                 None
             }
+            // Heard here, an incoming call's answer came from another of
+            // the account's devices: this one sends its own.
             CallAction::Accept { call_id, .. } => {
                 if let Some(ringing) = self.ringing.get_mut(call_id) {
-                    ringing.outcome = Some(CallOutcome::Answered);
+                    ringing.outcome = Some(CallOutcome::AnsweredElsewhere);
                 }
                 None
             }
@@ -196,9 +207,9 @@ impl CallFollower {
                     .answered
                     .contains(call_id)
                     .then_some(CallOutcome::Answered);
-                let outcome = match (ringing.outcome.or(answered_here), reason.as_deref()) {
+                let outcome = match (answered_here.or(ringing.outcome), reason.as_deref()) {
                     (Some(outcome), _) => outcome,
-                    (None, Some("accepted_elsewhere")) => CallOutcome::Answered,
+                    (None, Some("accepted_elsewhere")) => CallOutcome::AnsweredElsewhere,
                     (None, Some("rejected_elsewhere")) => CallOutcome::Declined,
                     (None, _) => CallOutcome::Missed,
                 };
@@ -210,7 +221,12 @@ impl CallFollower {
                     video: ringing.video,
                     outcome,
                     at: ringing.at,
-                    seconds: duration.filter(|_| outcome == CallOutcome::Answered),
+                    seconds: duration.filter(|_| {
+                        matches!(
+                            outcome,
+                            CallOutcome::Answered | CallOutcome::AnsweredElsewhere
+                        )
+                    }),
                 })
             }
             _ => None,
@@ -234,7 +250,8 @@ fn from_history(record: &wa::CallLogRecord) -> Option<CallRecord> {
     }
     .or_else(|| group.clone())?;
     let outcome = match record.call_result? {
-        CallResult::CONNECTED | CallResult::ACCEPTEDELSEWHERE => CallOutcome::Answered,
+        CallResult::CONNECTED => CallOutcome::Answered,
+        CallResult::ACCEPTEDELSEWHERE => CallOutcome::AnsweredElsewhere,
         CallResult::REJECTED => CallOutcome::Declined,
         CallResult::MISSED
         | CallResult::CANCELLED
@@ -322,7 +339,7 @@ mod tests {
                 &mut follower,
                 &terminate(Some("accepted_elsewhere"), Some(73))
             ),
-            Some((CallOutcome::Answered, Some(73)))
+            Some((CallOutcome::AnsweredElsewhere, Some(73)))
         );
     }
 

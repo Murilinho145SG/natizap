@@ -83,6 +83,8 @@ impl MessageLog {
             Extra::Cards(_) => ContentKind::Contact,
             Extra::Poll(_) => ContentKind::Poll,
             Extra::Buttons(_) => ContentKind::Text,
+            // Never sent: a call in a chat is natizap's record of it.
+            Extra::Call(_) => ContentKind::VoiceCall,
         };
         message.extra = Some(extra.clone());
         cx.emit(MessageSent {

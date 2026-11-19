@@ -194,6 +194,12 @@ pub(crate) async fn send_extra(
                 "messages with buttons come only from businesses".into(),
             ));
         }
+        // A call in a chat is natizap's record of it, not a message.
+        Extra::Call(_) => {
+            return Err(ActionError::Rejected(
+                "a call is not a message to send".into(),
+            ));
+        }
         Extra::Poll(poll) => {
             // How many answers one person may choose: all of them, or one.
             let selectable = if poll.multiple {

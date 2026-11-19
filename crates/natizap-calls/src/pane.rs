@@ -234,9 +234,10 @@ fn summary(call: &CallRecord, theme: Theme) -> impl IntoElement + use<> {
         (true, CallOutcome::Missed) => (Icon::CallMissed, "Missed"),
         (true, CallOutcome::Declined) => (Icon::CallMissed, "Declined"),
         (true, CallOutcome::Answered) => (Icon::Call, "Incoming"),
+        (true, CallOutcome::AnsweredElsewhere) => (Icon::Call, "Answered on another device"),
         (false, CallOutcome::Missed) => (Icon::Call, "Not answered"),
         (false, CallOutcome::Declined) => (Icon::Call, "Declined"),
-        (false, CallOutcome::Answered) => (Icon::Call, "Outgoing"),
+        (false, CallOutcome::Answered | CallOutcome::AnsweredElsewhere) => (Icon::Call, "Outgoing"),
     };
     let kind = if call.video { "video" } else { "voice" };
     let length = call.seconds.map(|seconds| {

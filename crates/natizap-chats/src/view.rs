@@ -583,7 +583,7 @@ fn kind_icon(kind: ContentKind) -> Option<Icon> {
     Some(match kind {
         ContentKind::Text => return None,
         ContentKind::Photo => Icon::Camera,
-        ContentKind::Video => Icon::Video,
+        ContentKind::Video | ContentKind::VideoCall => Icon::Video,
         ContentKind::VoiceMessage => Icon::Mic,
         ContentKind::Audio => Icon::Waveform,
         ContentKind::Document => Icon::File,
@@ -592,6 +592,7 @@ fn kind_icon(kind: ContentKind) -> Option<Icon> {
         ContentKind::Contact => Icon::Contact,
         ContentKind::Poll => Icon::Poll,
         ContentKind::MissedVoiceCall | ContentKind::MissedVideoCall => Icon::CallMissed,
+        ContentKind::VoiceCall => Icon::Call,
     })
 }
 

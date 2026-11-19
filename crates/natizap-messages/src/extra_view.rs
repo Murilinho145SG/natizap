@@ -40,7 +40,8 @@ pub(crate) fn render_extra(
         Extra::Poll(question) => {
             poll_view(id, question, poll, faces, view, theme).into_any_element()
         }
-        Extra::Buttons(_) => return None,
+        // Buttons sit under the text, and a call's bubble draws it whole.
+        Extra::Buttons(_) | Extra::Call(_) => return None,
     })
 }
 
