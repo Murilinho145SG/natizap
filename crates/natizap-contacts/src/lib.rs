@@ -6,6 +6,7 @@
 //! [`OwnProfile`] shows yours and changes your name, about and picture.
 
 mod business_view;
+mod encryption;
 mod hours;
 mod members;
 mod own;

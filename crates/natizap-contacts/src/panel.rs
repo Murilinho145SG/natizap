@@ -11,6 +11,7 @@ use natizap_profiles::ProfilePictures;
 use natizap_protocol::{Business, ChatId, GroupInfo, PersonName, Profile, Protocol};
 
 use crate::business_view::{business_fields, field};
+use crate::encryption::CodeShown;
 use crate::hours;
 use crate::sections::{ChatSettings, ChatSummary, DisappearingChosen, MuteToggled};
 use natizap_ui::theme::{ActiveTheme as _, Theme};
@@ -67,6 +68,8 @@ pub struct ProfilePanel {
     pub(crate) settings: Option<ChatSettings>,
     /// Where the disappearing messages choices are open.
     pub(crate) timer_menu: Option<Point<Pixels>>,
+    /// The chat's security code, while its dialog is open.
+    pub(crate) code: Option<CodeShown>,
 }
 
 impl EventEmitter<ProfileClosed> for ProfilePanel {}
@@ -138,6 +141,7 @@ impl ProfilePanel {
             picture: None,
             cover: None,
             enlarged: false,
+            code: None,
             profile: None,
             group: None,
             protocol: protocol.clone(),
@@ -252,10 +256,27 @@ impl Render for ProfilePanel {
                     )
                 }))
             })
+            .children(self.code_dialog(window, cx))
     }
 }
 
 impl ProfilePanel {
+    /// The chat the profile is of.
+    pub(crate) fn chat(&self) -> &ChatId {
+        &self.chat
+    }
+
+    /// What the chat is called.
+    pub(crate) fn title(&self) -> &SharedString {
+        &self.title
+    }
+
+    /// Whether the chat has one security code: a person's, not a group's
+    /// nor this account's own.
+    pub(crate) fn has_security_code(&self) -> bool {
+        self.group.is_none() && !self.own && !self.chat.is_group()
+    }
+
     fn title_bar(&self, cx: &mut Context<Self>) -> Div {
         let theme = *cx.theme();
         let heading = if self.chat.is_group() {

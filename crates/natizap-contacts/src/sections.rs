@@ -167,14 +167,7 @@ impl ProfilePanel {
                 );
         }
         sections
-            .child(
-                row(Icon::Lock, "Encryption", theme).child(
-                    div()
-                        .text_size(px(12.5))
-                        .text_color(rgb(theme.muted))
-                        .child("End-to-end encrypted"),
-                ),
-            )
+            .child(self.encryption_row(cx))
             .children(self.timer_menu.map(|position| timer_menu(position, cx)))
     }
 }
@@ -212,7 +205,7 @@ fn timer_menu(position: Point<Pixels>, cx: &mut Context<ProfilePanel>) -> impl I
     menu.at(position)
 }
 
-fn row(icon: Icon, label: &'static str, theme: Theme) -> Div {
+pub(crate) fn row(icon: Icon, label: &'static str, theme: Theme) -> Div {
     div()
         .w_full()
         .h(px(52.0))
