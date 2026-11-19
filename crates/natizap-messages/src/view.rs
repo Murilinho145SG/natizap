@@ -529,12 +529,8 @@ impl Render for ConversationView {
             .when(self.sending.is_none(), |pane| {
                 pane.children(pinned.map(|pinned| self.pinned_bar(pinned, cx)))
                     .child(messages)
-                    .child(
-                        div()
-                            .relative()
-                            .child(self.composer(window, cx))
-                            .children(self.typing_note(cx)),
-                    )
+                    .children(self.typing_note(cx))
+                    .child(self.composer(window, cx))
             })
             // Only while a drag is on: the zone animates, and an animation
             // redraws every frame.

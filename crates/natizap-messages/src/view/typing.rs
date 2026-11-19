@@ -1,11 +1,12 @@
-//! Who is typing or recording, floating just above the composer: their
+//! Who is typing or recording, just above the composer, below the last
+//! message rather than over it: their
 //! faces, their first names when the user likes them shown, and dots that
 //! breathe, or a microphone while someone records.
 
 use std::time::Duration;
 
 use gpui::prelude::*;
-use gpui::{Animation, AnimationExt as _, Context, Div, SharedString, div, px, relative, rgb, svg};
+use gpui::{Animation, AnimationExt as _, Context, Div, SharedString, div, px, rgb, svg};
 use natizap_ui::theme::{MUTED, PANEL, glass};
 use natizap_ui::{Icon, avatar};
 
@@ -43,10 +44,10 @@ impl ConversationView {
             .collect();
         Some(
             div()
-                .absolute()
-                .bottom(relative(1.0))
-                .left_4()
-                .mb_2()
+                .flex_none()
+                .self_start()
+                .ml_4()
+                .mb_1()
                 .px_2()
                 .py_1()
                 .flex()
