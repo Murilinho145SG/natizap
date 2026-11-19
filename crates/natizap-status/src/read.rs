@@ -64,6 +64,7 @@ fn live(inbound: &InboundMessage) -> Option<Change> {
         inbound.info.timestamp.timestamp(),
         author,
         source.is_from_me,
+        source.is_from_me,
     )
 }
 
@@ -84,7 +85,15 @@ fn from_history(info: &wa::WebMessageInfo) -> Option<Change> {
             .unwrap_or(0),
         info.push_name.clone(),
         mine,
+        // The phone says which it watched, so they arrive seen.
+        mine || seen_on_phone(info),
     )
+}
+
+fn seen_on_phone(info: &wa::WebMessageInfo) -> bool {
+    use wa::web_message_info::Status;
+    info.status_already_viewed.unwrap_or(false)
+        || matches!(info.status, Some(Status::READ | Status::PLAYED))
 }
 
 /// What `message`, posted by `poster`, changes: a new post, or the poster
@@ -96,6 +105,7 @@ fn change(
     sent_at: i64,
     author: Option<String>,
     mine: bool,
+    seen: bool,
 ) -> Option<Change> {
     let base = message.get_base_message();
     if let Some(protocol) = base.protocol_message.as_option() {
@@ -128,7 +138,7 @@ fn change(
         author,
         media: content.media,
         file: None,
-        seen: mine,
+        seen,
         mine,
     })))
 }

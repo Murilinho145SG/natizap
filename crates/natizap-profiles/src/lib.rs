@@ -120,7 +120,8 @@ impl ProfilePictures {
     /// alone, such as your own picture asked for by the first screen: what
     /// is missing is asked for again.
     fn connected(&mut self, cx: &mut Context<Self>) {
-        self.known.retain(|_, known| !matches!(known, Known::Missing));
+        self.known
+            .retain(|_, known| !matches!(known, Known::Missing));
         cx.notify();
     }
 

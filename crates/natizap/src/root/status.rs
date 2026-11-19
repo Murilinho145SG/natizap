@@ -28,7 +28,16 @@ impl Root {
         let book = status.clone();
         cx.observe(chats, move |_, chats, cx| {
             let chats = chats.read(cx);
-            let titles = chats.titles();
+            // People without a chat go by their names, so a status from a
+            // contact only known by their LID still shows who posted it.
+            let mut titles = chats.titles();
+            for (id, name) in chats.names().iter() {
+                if let Some(name) = name.saved.as_ref().or(name.chosen.as_ref()) {
+                    titles
+                        .entry(id.clone())
+                        .or_insert_with(|| name.clone().into());
+                }
+            }
             // "My contacts": the people saved in the address book, by their
             // phone numbers, which status updates are sent to.
             let audience: Vec<ChatId> = chats
