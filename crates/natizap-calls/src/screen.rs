@@ -21,7 +21,7 @@ impl Screen {
         let arrivals = feed.arrivals();
         let task = cx.spawn(async move |this, cx| {
             while arrivals.recv().await.is_ok() {
-                let Some(image) = feed.take().and_then(image) else {
+                let Some(image) = feed.take().and_then(render_image) else {
                     continue;
                 };
                 let shown = this.update(cx, |screen, cx| {
@@ -47,7 +47,7 @@ impl Screen {
 
 /// `picture` as an image GPUI paints; its BGRA bytes are what GPUI's
 /// images hold, whatever the buffer's type says.
-fn image(picture: Picture) -> Option<Arc<RenderImage>> {
+pub(crate) fn render_image(picture: Picture) -> Option<Arc<RenderImage>> {
     let buffer = RgbaImage::from_raw(picture.width, picture.height, picture.bgra)?;
     Some(Arc::new(RenderImage::new(vec![Frame::new(buffer)])))
 }

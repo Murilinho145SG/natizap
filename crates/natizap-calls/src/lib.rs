@@ -12,6 +12,7 @@ mod log;
 mod look;
 mod pane;
 mod panel;
+mod picker;
 mod pointer;
 mod quality;
 mod ringtone;
@@ -24,13 +25,15 @@ mod window;
 
 pub use bar::{CallBar, CallPoppedOut, RingCard};
 pub use desk::{
-    CallDesk, CallLayout, CallRang, CallShown, CameraState, DeviceKind, Phase, Sharing, VideoShown,
+    CallDesk, CallLayout, CallRang, CallShown, CameraState, DeviceKind, Phase, ShareChoice,
+    ShareChoices, Sharing, VideoShown,
 };
 pub use group::CallGroup;
 pub use keys::{HangUp, ToggleCamera, ToggleMute, call_keys};
 pub use log::CallLog;
 pub use pane::{CallBackRequested, CallChatRequested, CallsPane};
 pub use panel::VideoPanel;
+pub use picker::SharePicker;
 pub use quality::Quality;
 pub use ringtone::Ringtone;
 pub use settings::CallSettings;

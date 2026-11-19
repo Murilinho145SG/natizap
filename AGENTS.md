@@ -129,10 +129,11 @@ corner, and places the call as `CallDesk::layout` arranges it: the
 the chat's area, or the `VideoPanel` floating over the window; the bar's
 `CallChatRequested` opens the call's chat, and the bar's, the stage's and
 the panel's `CallPoppedOut` open a `CallWindow`, the call in a window of
-its own. While `CallDesk::full_screen` holds, the binary
-makes the window fill the screen with the stage alone; Escape gives it
-back. The binary hands the conversation the stickers'
-`StickerPicker` to show from its composer, sends what it emits as
+its own. While `CallDesk::full_screen` holds, the binary makes the
+window fill the screen with the stage alone; Escape gives it back. The
+binary also draws the desk's `SharePicker`, the dialog asking what to
+share where the desktop has none of its own. The binary hands the
+conversation the stickers' `StickerPicker` to show from its composer, sends what it emits as
 `StickerPicked` through `MessageLog::send_sticker`, tells the conversation
 which stickers are favorites, and passes its `StickerFavoriteToggled` to
 the `StickerShelf`. The `Updater` stands alone: the binary only shows it in
@@ -228,6 +229,9 @@ Keep this table current when a crate is added, renamed or removed.
   workspace; `patches/README.md` says what each changes and why. Keep the
   change minimal and marked `natizap:`, and drop the copy once a release
   carries the fix.
+- Sharing the screen goes through the desktop portal and `PipeWire` on
+  Linux, where the desktop asks what to share, and through `xcap` on
+  Windows and macOS, where natizap's own dialog asks.
 - Media plays inside natizap: FFmpeg is compiled from source and linked
   statically (`ffmpeg-next`'s `build` feature), decoding runs on a dedicated
   thread, and sound goes through `cpal`. Never hand media to system players

@@ -3,27 +3,97 @@
 //! needed; with one on, it shows in the shared screen's corner, since a
 //! call carries one picture.
 
-use gpui::{AppContext as _, Context};
-use natizap_playback::ScreenShare;
+use std::sync::Arc;
+
+use gpui::{AppContext as _, Context, RenderImage, SharedString};
+use natizap_playback::{ScreenShare, ShareSource, SourceId, natizap_asks, share_sources};
 use natizap_protocol::LiveCall;
 
 use super::lifecycle::logged;
 use super::video::CameraState;
 use super::{CallDesk, Going};
-use crate::screen::Screen;
+use crate::screen::{Screen, render_image};
 
 /// Whether the screen is shared.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Sharing {
     /// It is not.
     Off,
-    /// The desktop asks the user what to share.
+    /// The user chooses what to share: in natizap's dialog, or in the
+    /// desktop's.
     Choosing,
     /// It is, with the camera in its corner while it is on.
     On,
 }
 
+/// What natizap's dialog offers to share, while it asks.
+#[derive(Debug, Clone)]
+pub enum ShareChoices {
+    /// The screens and windows are being looked for.
+    Finding,
+    /// They were found.
+    Found(Arc<[ShareChoice]>),
+}
+
+/// A screen or window to share, as natizap's dialog shows it.
+#[derive(Debug, Clone)]
+pub struct ShareChoice {
+    /// What to hand [`CallDesk::share_from`].
+    pub source: SourceId,
+    /// Its name.
+    pub name: SharedString,
+    /// The app a window belongs to.
+    pub app: Option<SharedString>,
+    /// A small picture of it.
+    pub thumbnail: Option<Arc<RenderImage>>,
+}
+
+impl ShareChoice {
+    fn from(source: ShareSource) -> Self {
+        Self {
+            source: source.id,
+            name: source.name.into(),
+            app: source.app.map(SharedString::from),
+            thumbnail: source.thumbnail.and_then(render_image),
+        }
+    }
+}
+
 impl CallDesk {
+    /// What natizap's dialog offers to share, while it asks.
+    #[must_use]
+    pub fn share_choices(&self) -> Option<ShareChoices> {
+        self.call
+            .as_ref()
+            .and_then(|call| call.video.as_ref())
+            .and_then(|video| video.choices.clone())
+    }
+
+    /// Shares `source`, chosen in natizap's dialog.
+    pub fn share_from(&mut self, source: SourceId, cx: &mut Context<Self>) {
+        let Some(call) = self.call.as_mut() else {
+            return;
+        };
+        let (serial, Going::Live(live)) = (call.serial, &call.going) else {
+            return;
+        };
+        let live = live.clone();
+        if let Some(video) = call.video.as_mut()
+            && video.choices.take().is_some()
+        {
+            self.begin(serial, &live, Some(source), cx);
+        }
+    }
+
+    /// Closes natizap's dialog without sharing anything.
+    pub fn cancel_sharing(&mut self, cx: &mut Context<Self>) {
+        let live = match self.call.as_ref().map(|call| &call.going) {
+            Some(Going::Live(live)) => live.clone(),
+            _ => return,
+        };
+        self.stop_sharing(&live, cx);
+    }
+
     /// Starts sharing the screen, or stops.
     pub fn toggle_screen(&mut self, cx: &mut Context<Self>) {
         let Some(call) = self.call.as_mut() else {
@@ -69,18 +139,52 @@ impl CallDesk {
         }
         video.sharing = Sharing::Choosing;
         cx.notify();
-        // The desktop's dialog waits for the user: never on the UI thread.
+        if !natizap_asks() {
+            return self.begin(serial, live, None, cx);
+        }
+        video.choices = Some(ShareChoices::Finding);
+        // Each source's picture takes a while: never on the UI thread.
+        let finding = cx.background_spawn(async { share_sources() });
+        cx.spawn(async move |this, cx| {
+            let found = finding.await;
+            let _ = this.update(cx, |desk, cx| {
+                let Some(video) = desk.current(serial).and_then(|call| call.video.as_mut()) else {
+                    return;
+                };
+                // Closed while they were looked for.
+                if video.choices.is_some() {
+                    let found = found.into_iter().map(ShareChoice::from).collect();
+                    video.choices = Some(ShareChoices::Found(found));
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+    }
+
+    /// Starts capturing `source`, or what the desktop's dialog has the
+    /// user choose, off the UI thread: that dialog waits for the user.
+    fn begin(
+        &mut self,
+        serial: u64,
+        live: &LiveCall,
+        source: Option<SourceId>,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(video) = self.current(serial).and_then(|call| call.video.as_mut()) else {
+            return;
+        };
         let inset = video.inset.clone();
-        let choosing = cx.background_spawn(async move { ScreenShare::start(inset) });
+        let starting = cx.background_spawn(async move { ScreenShare::start(source, inset) });
         let live = live.clone();
         cx.spawn(async move |this, cx| {
-            let chosen = choosing.await;
+            let chosen = starting.await;
             let _ = this.update(cx, |desk, cx| desk.shared(serial, &live, chosen, cx));
         })
         .detach();
     }
 
-    /// The desktop answered what to share.
+    /// The sharing started, or could not.
     fn shared(
         &mut self,
         serial: u64,
@@ -139,6 +243,7 @@ impl CallDesk {
         };
         let was_on = video.sharing == Sharing::On;
         video.sharing = Sharing::Off;
+        video.choices = None;
         video.inset.set_lending(false);
         video.shared = None;
         video.screen_feeding = None;

@@ -6,7 +6,7 @@ use natizap_playback::{AccessUnits, Camera, Inset, ScreenShare, VideoError, deco
 use natizap_protocol::Video;
 
 use super::lifecycle::logged;
-use super::sharing::Sharing;
+use super::sharing::{ShareChoices, Sharing};
 use super::{CallDesk, Going};
 use crate::screen::Screen;
 
@@ -47,6 +47,8 @@ pub(super) struct CallVideo {
     pub(super) shared: Option<ScreenShare>,
     pub(super) screen_feeding: Option<Task<()>>,
     pub(super) shared_preview: Option<Entity<Screen>>,
+    /// What natizap's dialog offers to share, while it asks.
+    pub(super) choices: Option<ShareChoices>,
     /// Where the other end's pictures go, to hand the call again when the
     /// camera comes back on.
     screen: AccessUnits,
@@ -77,6 +79,7 @@ impl CallVideo {
                 shared: None,
                 screen_feeding: None,
                 shared_preview: None,
+                choices: None,
                 screen: screen.clone(),
                 sending: true,
                 peer_on: true,

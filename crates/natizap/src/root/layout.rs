@@ -48,6 +48,7 @@ impl Root {
             .child(self.places(width, cx))
             .child(self.call_views.panel.clone())
             .child(self.call_views.card.clone())
+            .child(self.call_views.picker.clone())
             // Chats stay readable offline, so the news floats over them
             // instead of replacing them.
             .when(reconnecting, |content| {

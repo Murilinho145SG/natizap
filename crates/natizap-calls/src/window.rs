@@ -8,11 +8,13 @@ use natizap_ui::theme::{ActiveTheme as _, DISPLAY_FONT, base_font};
 use natizap_ui::window_frame;
 
 use crate::desk::CallDesk;
+use crate::picker::SharePicker;
 use crate::stage::{CallStage, Home};
 
 /// The call under way, filling a window.
 pub struct CallWindow {
     stage: Entity<CallStage>,
+    picker: Entity<SharePicker>,
 }
 
 impl std::fmt::Debug for CallWindow {
@@ -35,8 +37,9 @@ impl CallWindow {
             }
         })
         .detach();
+        let picker = cx.new(|cx| SharePicker::new(desk.clone(), cx));
         let stage = cx.new(|cx| CallStage::at(Home::Window, desk, pictures, cx));
-        Self { stage }
+        Self { stage, picker }
     }
 }
 
@@ -53,5 +56,6 @@ impl Render for CallWindow {
             .font(base_font())
             .text_color(rgb(theme.text))
             .child(window_frame(window, title, self.stage.clone(), theme))
+            .child(self.picker.clone())
     }
 }

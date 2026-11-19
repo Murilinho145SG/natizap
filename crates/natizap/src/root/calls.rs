@@ -6,7 +6,7 @@ use gpui::prelude::*;
 use gpui::{AnyElement, Context, Entity, Window, div, px, rgb, size};
 use natizap_calls::{
     CallBackRequested, CallBar, CallChatRequested, CallDesk, CallLog, CallPoppedOut, CallStage,
-    CallWindow, CallsPane, RingCard, VideoPanel,
+    CallWindow, CallsPane, RingCard, SharePicker, VideoPanel,
 };
 use natizap_chats::ChatList;
 use natizap_messages::{CallRequested, ConversationView};
@@ -25,6 +25,8 @@ pub(super) struct CallViews {
     pub(super) panel: Entity<VideoPanel>,
     /// The call shown large over the chat, while arranged so.
     pub(super) stage: Entity<CallStage>,
+    /// What to share in the call, while natizap asks.
+    pub(super) picker: Entity<SharePicker>,
 }
 
 impl Root {
@@ -41,6 +43,7 @@ impl Root {
         let card = cx.new(|cx| RingCard::new(desk.clone(), pictures.clone(), cx));
         let panel = cx.new(|cx| VideoPanel::new(desk.clone(), pictures.clone(), cx));
         let stage = cx.new(|cx| CallStage::new(desk.clone(), pictures.clone(), cx));
+        let picker = cx.new(|cx| SharePicker::new(desk.clone(), cx));
         cx.subscribe(&stage, |root, _, _: &CallPoppedOut, cx| {
             root.pop_out_call(cx);
         })
@@ -80,6 +83,7 @@ impl Root {
             card,
             panel,
             stage,
+            picker,
         }
     }
 
@@ -105,6 +109,7 @@ impl Root {
                 .text_color(rgb(cx.theme().text))
                 .child(self.call_views.stage.clone())
                 .child(self.call_views.card.clone())
+                .child(self.call_views.picker.clone())
                 .into_any_element()
         })
     }

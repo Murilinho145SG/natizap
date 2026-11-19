@@ -26,7 +26,7 @@ mod video;
 
 use layout::Arrangement;
 pub use layout::CallLayout;
-pub use sharing::Sharing;
+pub use sharing::{ShareChoice, ShareChoices, Sharing};
 use video::CallVideo;
 pub use video::CameraState;
 
