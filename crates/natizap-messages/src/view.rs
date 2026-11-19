@@ -118,6 +118,8 @@ pub struct ConversationView {
     chat_menu: Option<Point<Pixels>>,
     /// A voice note being recorded.
     recorder: Option<Recorder>,
+    /// Why the microphone would not record, shown for a while.
+    mic_problem: Option<SharedString>,
     /// The favorite stickers to pick from, as the app hands them over.
     sticker_picker: Option<AnyView>,
     /// The hashes of the favorite stickers.
@@ -276,6 +278,7 @@ impl ConversationView {
             away_from_end: false,
             chat_menu: None,
             recorder: None,
+            mic_problem: None,
             sticker_picker: None,
             favorite_stickers: HashSet::new(),
             sending: None,

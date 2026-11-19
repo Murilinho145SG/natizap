@@ -250,6 +250,7 @@ impl ConversationView {
                     .map_or_default(|replying| replying.reply.id.clone());
                 rise_in(SharedString::from(format!("reply-{id}")), bar, 8.0)
             }))
+            .children(self.mic_problem(cx))
             .when(self.recording(), |composer| {
                 composer.child(rise_in("recording-in", self.recording_bar(cx), 8.0))
             })

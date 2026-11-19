@@ -4,8 +4,8 @@
 use std::time::Duration;
 
 use gpui::prelude::*;
-use gpui::{Context, Div, div, px, rgb};
-use natizap_playback::Recorder;
+use gpui::{Context, Div, SharedString, div, px, rgb, svg};
+use natizap_playback::{RecordError, Recorder};
 use natizap_ui::theme::ActiveTheme as _;
 use natizap_ui::{Button, ButtonSize, ButtonVariant, Icon};
 
@@ -13,6 +13,8 @@ use super::ConversationView;
 
 /// How often the recording's clock is redrawn.
 const TICK: Duration = Duration::from_millis(250);
+/// How long the reason the microphone would not record stays shown.
+const PROBLEM_SHOWN: Duration = Duration::from_secs(8);
 
 impl ConversationView {
     /// Send while there is text, else a microphone that starts recording.
@@ -57,9 +59,52 @@ impl ConversationView {
                 })
                 .detach();
             }
-            Err(error) => tracing::warn!(%error, "could not record"),
+            Err(error) => {
+                tracing::warn!(%error, "could not record");
+                let problem: SharedString = match error {
+                    RecordError::NoMicrophone => "No microphone was found.".into(),
+                    // The usual cause on Windows and macOS: the system
+                    // keeps apps from the microphone until allowed.
+                    _ => "The microphone could not be opened. Check that natizap may use it \
+                          in your system's privacy settings."
+                        .into(),
+                };
+                self.mic_problem = Some(problem.clone());
+                cx.spawn(async move |this, cx| {
+                    cx.background_executor().timer(PROBLEM_SHOWN).await;
+                    let _ = this.update(cx, |this, cx| {
+                        if this.mic_problem.as_ref() == Some(&problem) {
+                            this.mic_problem = None;
+                            cx.notify();
+                        }
+                    });
+                })
+                .detach();
+            }
         }
         cx.notify();
+    }
+
+    /// Why the microphone would not record, while it is shown.
+    pub(super) fn mic_problem(&self, cx: &mut Context<Self>) -> Option<Div> {
+        let theme = *cx.theme();
+        let problem = self.mic_problem.clone()?;
+        Some(
+            div()
+                .flex()
+                .items_center()
+                .gap_2()
+                .text_size(px(13.0))
+                .text_color(rgb(theme.alert))
+                .child(
+                    svg()
+                        .path(Icon::MicOff.path())
+                        .size(px(14.0))
+                        .flex_none()
+                        .text_color(rgb(theme.alert)),
+                )
+                .child(problem),
+        )
     }
 
     fn finish_recording(&mut self, send: bool, cx: &mut Context<Self>) {
