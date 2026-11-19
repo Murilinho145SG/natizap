@@ -62,10 +62,15 @@ end-to-end encrypted; keys and history live only on your machine.
 - **Status**: everyone's updates of the last day, played in a viewer,
   replied to, and your own posted, text or media.
 - **Voice and video calls**: one-to-one calls placed from a chat and
-  answered or declined from a card that rings, under way in a bar across
-  the window while you keep chatting, a video call's pictures floating in
-  its corner, or in a window of their own. The camera turns a voice call
-  into a video call at any time, and three ringtones are drawn in code.
+  answered or declined from a card that rings, kept in a bar across the
+  window while you keep chatting, docked over the chat, filling its area,
+  floating as a small picture, in a window of their own or full screen.
+  A video call's pictures are tiles: focus any of them, drag the others
+  to any corner, or see them side by side. The camera turns a voice call
+  into a video call at any time, echo is cancelled, and three ringtones
+  are drawn in code.
+- **Screen sharing** in any call, with or without a camera (WhatsApp
+  needs one), the camera shown in the shared screen's corner.
 - **Calls history**: missed and answered calls, each a way to its chat.
 - **Themes**: natizap's own Graphite and ports of well-known palettes
   (Catppuccin, Dracula, GitHub, Nord, …), plus themes of your own made in
