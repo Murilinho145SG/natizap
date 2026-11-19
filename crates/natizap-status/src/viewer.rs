@@ -7,14 +7,13 @@ use std::time::{Duration, Instant};
 
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, AnyView, Context, Entity, EventEmitter, FocusHandle, Focusable, FontWeight,
-    ImageSource, KeyDownEvent, MouseButton, MouseDownEvent, MouseUpEvent, ObjectFit, SharedString,
-    Window, anchored, deferred, div, img, point, px, relative, rgb, rgba, svg,
+    AnyView, Context, Entity, EventEmitter, FocusHandle, Focusable, FontWeight, KeyDownEvent,
+    SharedString, Window, anchored, deferred, div, point, px, relative, rgb, rgba,
 };
 use natizap_playback::{Heard, Recorder};
 use natizap_profiles::ProfilePictures;
 use natizap_protocol::{ChatId, ContentKind, Reply};
-use natizap_ui::theme::{DEEP, MUTED, STATUS_BACKGROUNDS, TEXT};
+use natizap_ui::theme::{DEEP, MUTED, TEXT};
 use natizap_ui::{Button, ButtonVariant, Icon, Submitted, TextInput, avatar};
 
 use crate::book::StatusBook;
@@ -22,6 +21,7 @@ use crate::pane::when;
 use crate::post::{Post, Poster};
 
 mod reply;
+mod stage;
 
 /// How long a text or photo shows.
 const STILL: Duration = Duration::from_secs(5);
@@ -423,141 +423,4 @@ impl StatusViewer {
                     ),
             )
     }
-
-    /// The post itself; a press holds it, a tap on the left third steps
-    /// back and anywhere else on.
-    fn stage(&self, post: &Post, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let content: AnyElement = match (post.kind, &self.player, &post.file) {
-            // The player's own controls take its clicks; taps beside the
-            // video still step through the statuses.
-            (ContentKind::Video, Some((id, player)), _) if *id == post.id => div()
-                .size_full()
-                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                .on_mouse_up(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                .child(player.clone())
-                .into_any_element(),
-            (ContentKind::Text, ..) => text_post(post).into_any_element(),
-            (_, _, file) => {
-                let source: Option<ImageSource> = match (post.kind, file) {
-                    (ContentKind::Photo, Some(file)) => Some(file.clone().into()),
-                    _ => post
-                        .media
-                        .as_ref()
-                        .and_then(|media| media.thumbnail.clone())
-                        .map(|bytes| {
-                            std::sync::Arc::new(gpui::Image::from_bytes(
-                                gpui::ImageFormat::Jpeg,
-                                bytes,
-                            ))
-                            .into()
-                        }),
-                };
-                match source {
-                    Some(source) => img(source)
-                        .size_full()
-                        .object_fit(ObjectFit::Contain)
-                        .into_any_element(),
-                    None => svg()
-                        .path(Icon::Camera.path())
-                        .size(px(48.0))
-                        .text_color(rgb(MUTED))
-                        .into_any_element(),
-                }
-            }
-        };
-        div()
-            .id("status-stage")
-            .flex_1()
-            .min_h_0()
-            .p_4()
-            .flex()
-            .flex_col()
-            .items_center()
-            .justify_center()
-            .on_mouse_down(
-                MouseButton::Left,
-                cx.listener(|this, _: &MouseDownEvent, _, cx| {
-                    this.pressed = Some(Instant::now());
-                    this.hold(true);
-                    cx.notify();
-                }),
-            )
-            .on_mouse_up(
-                MouseButton::Left,
-                cx.listener(|this, event: &MouseUpEvent, window, cx| {
-                    this.hold(false);
-                    let tapped = this.pressed.take().is_some_and(|at| at.elapsed() < TAP);
-                    if tapped {
-                        let third = window.viewport_size().width / 3.0;
-                        if event.position.x < third {
-                            this.back(cx);
-                        } else {
-                            this.forward(cx);
-                        }
-                    }
-                    cx.notify();
-                }),
-            )
-            .child(
-                div()
-                    .size_full()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .child(content),
-            )
-            .children(
-                post.text
-                    .clone()
-                    .filter(|_| post.kind != ContentKind::Text)
-                    .map(|caption| {
-                        div()
-                            .pt_3()
-                            .max_w(px(640.0))
-                            .text_center()
-                            .text_size(px(15.0))
-                            .child(caption)
-                    }),
-            )
-    }
-}
-
-/// A text post: its words large on its background colour.
-fn text_post(post: &Post) -> impl IntoElement {
-    let background = argb_to_rgba(post.background.unwrap_or(STATUS_BACKGROUNDS[7]));
-    div()
-        .size_full()
-        .max_w(px(720.0))
-        .rounded_lg()
-        .bg(rgba(background))
-        .p_8()
-        .flex()
-        .items_center()
-        .justify_center()
-        .overflow_hidden()
-        .child(
-            // Its own width, so long words and links wrap instead of
-            // running past the colour.
-            div()
-                .w_full()
-                .text_center()
-                .text_size(px(text_size(post.text.as_deref().unwrap_or_default())))
-                .font_weight(FontWeight::MEDIUM)
-                .child(post.text.clone().unwrap_or_default()),
-        )
-}
-
-/// Smaller type for longer text, as the phone sets it, so it fits.
-fn text_size(text: &str) -> f32 {
-    match text.chars().count() {
-        0..=60 => 30.0,
-        61..=160 => 24.0,
-        161..=320 => 19.0,
-        _ => 16.0,
-    }
-}
-
-/// WhatsApp's 0xAARRGGBB as GPUI's 0xRRGGBBAA.
-fn argb_to_rgba(argb: u32) -> u32 {
-    argb.rotate_left(8)
 }
