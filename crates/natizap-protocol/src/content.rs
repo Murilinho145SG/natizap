@@ -310,29 +310,32 @@ impl Content {
             .map(str::to_owned)
             .or_else(|| buttons::of(message).and_then(|(text, _)| text))
             .or_else(|| buttons::reply_text(message));
-        let kind = if message.image_message.is_set() {
+        // A message with buttons may carry its picture in its header.
+        let header = buttons::header(message);
+        let attached = header.as_ref().unwrap_or(message);
+        let kind = if attached.image_message.is_set() {
             ContentKind::Photo
-        } else if message.video_message.is_set() {
+        } else if attached.video_message.is_set() {
             ContentKind::Video
-        } else if let Some(audio) = message.audio_message.as_option() {
+        } else if let Some(audio) = attached.audio_message.as_option() {
             if audio.ptt.unwrap_or(false) {
                 ContentKind::VoiceMessage
             } else {
                 ContentKind::Audio
             }
-        } else if message.document_message.is_set()
-            || message.document_with_caption_message.is_set()
+        } else if attached.document_message.is_set()
+            || attached.document_with_caption_message.is_set()
         {
             ContentKind::Document
-        } else if message.sticker_message.is_set() {
+        } else if attached.sticker_message.is_set() {
             ContentKind::Sticker
-        } else if message.location_message.is_set() || message.live_location_message.is_set() {
+        } else if attached.location_message.is_set() || attached.live_location_message.is_set() {
             ContentKind::Location
-        } else if message.contact_message.is_set() || message.contacts_array_message.is_set() {
+        } else if attached.contact_message.is_set() || attached.contacts_array_message.is_set() {
             ContentKind::Contact
-        } else if message.poll_creation_message.is_set()
-            || message.poll_creation_message_v2.is_set()
-            || message.poll_creation_message_v3.is_set()
+        } else if attached.poll_creation_message.is_set()
+            || attached.poll_creation_message_v2.is_set()
+            || attached.poll_creation_message_v3.is_set()
         {
             ContentKind::Poll
         } else if text.is_some() {
@@ -344,7 +347,7 @@ impl Content {
             kind,
             text,
             quote: Quote::of(message),
-            media: Media::of(message),
+            media: Media::of(attached),
             extra: Extra::of(message),
             forwarding: Forwarding::of(message),
             link: LinkPreview::of(message),
@@ -397,6 +400,64 @@ mod tests {
         let photo = Content::of(&photo);
         assert_eq!(photo.as_ref().map(|c| c.kind), Some(ContentKind::Photo));
         assert_eq!(photo.map(|c| c.summary()).as_deref(), Some("Photo: beach"));
+    }
+
+    #[test]
+    fn reads_the_picture_in_a_templates_header_with_its_text_and_buttons() {
+        use wa::__buffa::oneof::hydrated_template_button::HydratedButton;
+        use wa::__buffa::oneof::message::template_message::Format;
+        use wa::__buffa::oneof::message::template_message::hydrated_four_row_template::Title;
+        use wa::message::template_message::HydratedFourRowTemplate;
+
+        let picture = wa::message::ImageMessage {
+            direct_path: Some("/v/picture".into()),
+            media_key: Some(vec![1]),
+            file_sha256: Some(vec![2]),
+            file_enc_sha256: Some(vec![3]),
+            ..Default::default()
+        };
+        let button = wa::HydratedTemplateButton {
+            hydrated_button: Some(HydratedButton::UrlButton(Box::new(
+                wa::hydrated_template_button::HydratedURLButton {
+                    display_text: Some("Verify".into()),
+                    url: Some("https://example.com".into()),
+                    ..Default::default()
+                },
+            ))),
+            ..Default::default()
+        };
+        let template = wa::Message {
+            template_message: MessageField::some(wa::message::TemplateMessage {
+                format: Some(Format::HydratedFourRowTemplate(Box::new(
+                    HydratedFourRowTemplate {
+                        hydrated_content_text: Some("Your wallet was updated".into()),
+                        title: Some(Title::ImageMessage(Box::new(picture))),
+                        hydrated_buttons: vec![button],
+                        ..Default::default()
+                    },
+                ))),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let content = Content::of(&template);
+        assert_eq!(content.as_ref().map(|c| c.kind), Some(ContentKind::Photo));
+        assert_eq!(
+            content.as_ref().and_then(|c| c.text.as_deref()),
+            Some("Your wallet was updated")
+        );
+        assert_eq!(
+            content
+                .as_ref()
+                .and_then(|c| c.media.as_ref())
+                .map(|m| m.direct_path.as_str()),
+            Some("/v/picture")
+        );
+        assert!(matches!(
+            content.and_then(|c| c.extra),
+            Some(Extra::Buttons(buttons)) if buttons.buttons.len() == 1
+        ));
     }
 
     #[test]

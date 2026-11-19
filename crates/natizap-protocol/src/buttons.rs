@@ -65,6 +65,59 @@ pub(crate) fn of(message: &wa::Message) -> Option<(Option<String>, Buttons)> {
     ))
 }
 
+/// The picture, video, document or place a message with buttons shows
+/// above its text, as a message of its own, so it reads like any other
+/// attachment.
+pub(crate) fn header(message: &wa::Message) -> Option<wa::Message> {
+    use wa::__buffa::oneof::message::buttons_message::Header;
+    use wa::__buffa::oneof::message::interactive_message::header::Media;
+    use wa::__buffa::oneof::message::template_message::Format;
+    use wa::__buffa::oneof::message::template_message::hydrated_four_row_template::Title;
+
+    let mut shown = wa::Message::default();
+    if let Some(buttons) = message.buttons_message.as_option() {
+        match buttons.header.as_ref()? {
+            Header::DocumentMessage(m) => shown.document_message = (**m).clone().into(),
+            Header::ImageMessage(m) => shown.image_message = (**m).clone().into(),
+            Header::VideoMessage(m) => shown.video_message = (**m).clone().into(),
+            Header::LocationMessage(m) => shown.location_message = (**m).clone().into(),
+            Header::Text(_) => return None,
+        }
+        return Some(shown);
+    }
+    let interactive = |message: &wa::message::InteractiveMessage, shown: &mut wa::Message| {
+        match message.header.as_option()?.media.as_ref()? {
+            Media::DocumentMessage(m) => shown.document_message = (**m).clone().into(),
+            Media::ImageMessage(m) => shown.image_message = (**m).clone().into(),
+            Media::VideoMessage(m) => shown.video_message = (**m).clone().into(),
+            Media::LocationMessage(m) => shown.location_message = (**m).clone().into(),
+            _ => return None,
+        }
+        Some(())
+    };
+    if let Some(message) = message.interactive_message.as_option() {
+        interactive(message, &mut shown)?;
+        return Some(shown);
+    }
+    let template = message.template_message.as_option()?;
+    let hydrated = match &template.format {
+        Some(Format::HydratedFourRowTemplate(hydrated)) => hydrated,
+        Some(Format::InteractiveMessageTemplate(message)) => {
+            interactive(message, &mut shown)?;
+            return Some(shown);
+        }
+        Some(Format::FourRowTemplate(_)) | None => template.hydrated_template.as_option()?,
+    };
+    match hydrated.title.as_ref()? {
+        Title::DocumentMessage(m) => shown.document_message = (**m).clone().into(),
+        Title::ImageMessage(m) => shown.image_message = (**m).clone().into(),
+        Title::VideoMessage(m) => shown.video_message = (**m).clone().into(),
+        Title::LocationMessage(m) => shown.location_message = (**m).clone().into(),
+        Title::HydratedTitleText(_) => return None,
+    }
+    Some(shown)
+}
+
 /// The text of a reply someone sent by tapping a button or choosing from
 /// a list: the label they chose.
 pub(crate) fn reply_text(message: &wa::Message) -> Option<String> {
