@@ -25,6 +25,7 @@ use natizap_protocol::Protocol;
 use natizap_session::Session;
 use natizap_status::StatusBook;
 use natizap_stickers::StickerShelf;
+use natizap_themes::ThemeBook;
 use natizap_ui::{Assets, Gallery, bind_text_input_keys, load_fonts};
 use natizap_update::Updater;
 use tracing_subscriber::EnvFilter;
@@ -144,6 +145,8 @@ fn main_window_options(cx: &App) -> WindowOptions {
 
 /// Every feature, built once for the whole run.
 fn features(data_dir: &Path, executable: &Path, cx: &mut App) -> Features {
+    // First, so everything draws in the chosen theme from the start.
+    let themes = cx.new(|cx| ThemeBook::new(data_dir, cx));
     let protocol = cx.new(|cx| Protocol::new(data_dir.join("session.db"), cx));
     let chats = cx.new(|cx| ChatList::new(&protocol, data_dir.join("chats.db"), cx));
     let messages = cx.new(|cx| {
@@ -188,6 +191,7 @@ fn features(data_dir: &Path, executable: &Path, cx: &mut App) -> Features {
         updater,
         status,
         calls,
+        themes,
     }
 }
 

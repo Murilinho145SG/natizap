@@ -239,6 +239,9 @@ impl Render for NotificationSettings {
         let panel = div()
             .id("notification-settings")
             .w(px(420.0))
+            // Every feature's settings may not fit a small window.
+            .max_h(window.viewport_size().height * 0.85)
+            .overflow_y_scroll()
             .flex()
             .flex_col()
             .pb_3()

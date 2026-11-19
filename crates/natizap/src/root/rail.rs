@@ -6,6 +6,7 @@ use gpui::{Context, px};
 use natizap_contacts::{OwnProfile, OwnProfileClosed};
 use natizap_messages::ChatSettings;
 use natizap_notifications::{NotificationSettings, SettingsClosed};
+use natizap_themes::ThemeSettings;
 use natizap_ui::theme::ActiveTheme as _;
 use natizap_ui::{Button, ButtonVariant, Icon, RAIL_AVATAR, Rail, avatar, rail_avatar};
 
@@ -92,7 +93,10 @@ impl Root {
         let settings = cx.new(|cx| NotificationSettings::new(notifier, cx));
         let messages = self.messages.clone();
         let chat_settings = cx.new(|cx| ChatSettings::new(messages, cx));
+        let themes = self.themes.clone();
+        let appearance = cx.new(|cx| ThemeSettings::new(themes, cx));
         settings.update(cx, |settings, cx| {
+            settings.add_section(appearance.into(), cx);
             settings.add_section(chat_settings.into(), cx);
         });
         cx.subscribe(&settings, |root, _, _: &SettingsClosed, cx| {

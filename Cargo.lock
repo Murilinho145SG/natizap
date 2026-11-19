@@ -3773,6 +3773,7 @@ dependencies = [
  "natizap-session",
  "natizap-status",
  "natizap-stickers",
+ "natizap-themes",
  "natizap-tray",
  "natizap-ui",
  "natizap-update",
@@ -3948,6 +3949,15 @@ dependencies = [
  "natizap-protocol",
  "natizap-ui",
  "rusqlite",
+ "tracing",
+]
+
+[[package]]
+name = "natizap-themes"
+version = "0.1.0"
+dependencies = [
+ "gpui",
+ "natizap-ui",
  "tracing",
 ]
 

@@ -66,7 +66,7 @@ Each feature crate owns its GPUI views, logic and local cache together
 share. Local data lives in the platform's per-user data directory, one
 file per owner (`session.db` for protocol keys, `chats.db` for the chat
 list, `messages.db` for messages, `notifications.conf` for notification
-settings, `conversation.conf` for chat settings, `stickers.db` for favorite stickers, `status.db` for the last
+settings, `conversation.conf` for chat settings, `themes.conf` for the chosen theme and `themes/` for the user's own, `stickers.db` for favorite stickers, `status.db` for the last
 day's status updates and `media/status/` for their files, `calls.db` for
 the call history, `media/` for downloaded
 attachments, `media/thumbs/` for the small copies media grids draw,
@@ -103,7 +103,8 @@ hands it the messages' `MessageSearch` through
 `SearchHitOpened` with `ConversationView::go_to`. The
 binary draws the navigation rail (`natizap-ui`'s `Rail`) itself: its
 Settings button opens the notifications' `NotificationSettings` dialog,
-with the messages' `ChatSettings` added to it (`add_section`), and
+with the themes' `ThemeSettings` and the messages' `ChatSettings` added to
+it (`add_section`), and
 your avatar opens the contacts' `OwnProfile` in place of the chat list,
 which emits `OwnProfileClosed` to go back. Its Status button shows the
 status' `StatusPane` there instead; the pane's `StatusOpened` and the chat
@@ -175,6 +176,7 @@ organizing rule of the codebase.
 | `natizap-player`   | feature | The video player the media carousel plays videos on.     |
 | `natizap-profiles` | shared  | Profile pictures: fetched on sight, cached on disk.        |
 | `natizap-ui`       | shared  | Theme, fonts, icons, window frame and the component library. |
+| `natizap-themes`   | feature | Native and user-made themes, the one in use, and their editor. |
 | `natizap-tray`     | feature | The tray icon that reopens or quits natizap.             |
 | `natizap-update`   | feature | Finds, downloads and installs new releases from GitHub.   |
 

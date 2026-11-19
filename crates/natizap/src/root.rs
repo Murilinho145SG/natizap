@@ -21,6 +21,7 @@ use natizap_protocol::{Card, ChatId, Extra, PersonName, Protocol};
 use natizap_session::{PairingView, Session, SessionState};
 use natizap_status::{StatusBook, StatusComposer, StatusPane, StatusViewer};
 use natizap_stickers::StickerShelf;
+use natizap_themes::ThemeBook;
 use natizap_ui::theme::{ActiveTheme as _, DISPLAY_FONT, Theme, base_font};
 use natizap_ui::window_frame;
 use natizap_update::Updater;
@@ -52,6 +53,7 @@ pub(crate) struct Features {
     pub(crate) updater: Entity<Updater>,
     pub(crate) status: Entity<StatusBook>,
     pub(crate) calls: Entity<CallLog>,
+    pub(crate) themes: Entity<ThemeBook>,
 }
 
 /// What the side column shows.
@@ -92,6 +94,7 @@ pub(crate) struct Root {
     /// What the side column shows, under your profile when it is open.
     place: Place,
     calls: Entity<CallLog>,
+    themes: Entity<ThemeBook>,
     /// The Calls place, once opened.
     calls_pane: Option<Entity<CallsPane>>,
     /// A status playing over the window.
@@ -118,6 +121,7 @@ impl Root {
             updater,
             status,
             calls,
+            themes,
         } = features;
         let (messages, pictures) = (&messages, &pictures);
         cx.observe(&chats, |_, _, cx| cx.notify()).detach();
@@ -193,6 +197,7 @@ impl Root {
             status_pane: None,
             place: Place::Chats,
             calls,
+            themes,
             calls_pane: None,
             status_viewer: None,
             status_composer: None,
