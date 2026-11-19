@@ -8,5 +8,5 @@ mod file;
 mod settings;
 mod tokens;
 
-pub use book::{Choice, ThemeBook};
+pub use book::{Choice, ThemeBook, ThemeChosen};
 pub use settings::ThemeSettings;

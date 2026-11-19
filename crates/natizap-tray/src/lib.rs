@@ -6,6 +6,8 @@
 //! Ubuntu ships on); on Windows it is a notification-area icon.
 
 use gpui::{App, AppContext as _, Context, Entity, EventEmitter, Task};
+use natizap_ui::app_icon;
+use natizap_ui::theme::Theme;
 
 #[cfg(target_os = "linux")]
 #[path = "linux.rs"]
@@ -36,7 +38,7 @@ pub enum TrayError {
 
 /// The tray icon. Emits [`TrayAction`]s; the icon goes when it is dropped.
 pub struct Tray {
-    _icon: platform::Icon,
+    icon: platform::Icon,
     _hearing: Task<()>,
 }
 
@@ -49,18 +51,18 @@ impl std::fmt::Debug for Tray {
 impl EventEmitter<TrayAction> for Tray {}
 
 impl Tray {
-    /// Puts natizap's icon in the tray.
+    /// Puts natizap's icon, drawn in `theme`, in the tray.
     ///
     /// # Errors
     ///
     /// The task fails when the desktop has no tray to show it in.
-    pub fn start(cx: &mut App) -> Task<Result<Entity<Self>, TrayError>> {
+    pub fn start(theme: Theme, cx: &mut App) -> Task<Result<Entity<Self>, TrayError>> {
         let (actions, heard) = async_channel::unbounded();
-        let showing = platform::show(icon_rgba(), actions, cx);
+        let showing = platform::show(app_icon(theme, SIDE), actions, cx);
         cx.spawn(async move |cx| {
             let icon = showing.await?;
             Ok(cx.new(|cx: &mut Context<Self>| Self {
-                _icon: icon,
+                icon,
                 _hearing: cx.spawn(async move |this, cx| {
                     while let Ok(action) = heard.recv().await {
                         if this.update(cx, |_, cx| cx.emit(action)).is_err() {
@@ -71,35 +73,9 @@ impl Tray {
             }))
         })
     }
-}
 
-/// The app icon as `SIDE`×`SIDE` RGBA pixels.
-fn icon_rgba() -> Vec<u8> {
-    match image::load_from_memory_with_format(
-        include_bytes!("../../../brand/natizap-icon.png"),
-        image::ImageFormat::Png,
-    ) {
-        Ok(icon) => icon
-            .resize_exact(SIDE, SIDE, image::imageops::FilterType::Lanczos3)
-            .into_rgba8()
-            .into_raw(),
-        Err(error) => {
-            // Bundled at build time, so this cannot happen with a sound
-            // build; a blank icon still offers the menu.
-            tracing::error!(%error, "could not read the bundled app icon");
-            vec![0; (SIDE * SIDE * 4) as usize]
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{SIDE, icon_rgba};
-
-    #[test]
-    fn draws_the_app_icon_at_tray_size() {
-        let pixels = icon_rgba();
-        assert_eq!(pixels.len(), (SIDE * SIDE * 4) as usize);
-        assert!(pixels.as_chunks::<4>().0.iter().any(|pixel| pixel[3] > 0));
+    /// Draws the icon in `theme` from now on.
+    pub fn set_theme(&mut self, theme: Theme, cx: &mut Context<Self>) {
+        platform::set_icon(&self.icon, app_icon(theme, SIDE), cx);
     }
 }

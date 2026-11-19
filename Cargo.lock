@@ -3765,6 +3765,7 @@ dependencies = [
  "natizap-calls",
  "natizap-chats",
  "natizap-contacts",
+ "natizap-launcher",
  "natizap-messages",
  "natizap-notifications",
  "natizap-player",
@@ -3819,6 +3820,18 @@ dependencies = [
  "natizap-profiles",
  "natizap-protocol",
  "natizap-ui",
+ "tracing",
+]
+
+[[package]]
+name = "natizap-launcher"
+version = "0.1.0"
+dependencies = [
+ "dirs",
+ "gpui",
+ "image",
+ "natizap-ui",
+ "thiserror 2.0.21",
  "tracing",
 ]
 
@@ -3968,8 +3981,8 @@ dependencies = [
  "async-channel",
  "gpui",
  "gpui_tokio",
- "image",
  "ksni",
+ "natizap-ui",
  "thiserror 2.0.21",
  "tracing",
  "tray-icon",
@@ -3981,6 +3994,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "gpui",
+ "image",
  "tracing",
  "unicode-segmentation",
 ]

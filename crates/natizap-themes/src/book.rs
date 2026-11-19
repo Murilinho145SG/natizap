@@ -3,7 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
-use gpui::{AppContext as _, Context, SharedString};
+use gpui::{AppContext as _, Context, EventEmitter, SharedString};
 use natizap_ui::theme::{GRAPHITE, NATIVE, Theme};
 
 use crate::file::ThemeFile;
@@ -17,6 +17,11 @@ pub struct Choice {
     pub custom: bool,
 }
 
+/// The user chose a theme, or changed the one in use: what natizap shows
+/// outside its window, such as its icon, follows it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ThemeChosen(pub Theme);
+
 /// Every theme, and the one in use, applied as the app's theme.
 #[derive(Debug)]
 pub struct ThemeBook {
@@ -28,6 +33,8 @@ pub struct ThemeBook {
     /// Where the user's themes are kept, one file each.
     dir: PathBuf,
 }
+
+impl EventEmitter<ThemeChosen> for ThemeBook {}
 
 impl ThemeBook {
     /// Reads the themes kept in `data_dir` and draws with the chosen one.
@@ -50,7 +57,7 @@ impl ThemeBook {
             chosen_path,
             dir,
         };
-        cx.set_global(book.theme_of(&book.chosen).unwrap_or(GRAPHITE));
+        cx.set_global(book.theme());
         book
     }
 
@@ -76,6 +83,12 @@ impl ThemeBook {
     #[must_use]
     pub fn chosen(&self) -> &SharedString {
         &self.chosen
+    }
+
+    /// The theme in use, never a preview.
+    #[must_use]
+    pub fn theme(&self) -> Theme {
+        self.theme_of(&self.chosen).unwrap_or(GRAPHITE)
     }
 
     /// The native theme a user's theme starts from, or the theme itself
@@ -104,6 +117,7 @@ impl ThemeBook {
         };
         self.chosen = name.clone();
         Self::apply(theme, cx);
+        cx.emit(ThemeChosen(theme));
         let (path, text) = (self.chosen_path.clone(), format!("theme={name}\n"));
         cx.background_spawn(async move {
             if let Err(error) = std::fs::write(&path, text) {
@@ -122,7 +136,7 @@ impl ThemeBook {
 
     /// Draws with the chosen theme again, after a preview.
     pub(crate) fn restore(&self, cx: &mut Context<Self>) {
-        Self::apply(self.theme_of(&self.chosen).unwrap_or(GRAPHITE), cx);
+        Self::apply(self.theme(), cx);
     }
 
     /// Keeps `theme`, starting from the native `base`, as the user's theme

@@ -10,7 +10,7 @@ repository.workspace = true
 [dependencies]
 async-channel.workspace = true
 gpui.workspace = true
-image.workspace = true
+natizap-ui.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 

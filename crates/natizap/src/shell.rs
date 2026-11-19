@@ -10,6 +10,7 @@ use natizap_messages::StoredStatus;
 use natizap_notifications::NotificationOpened;
 use natizap_protocol::ChatId;
 use natizap_status::Post;
+use natizap_themes::ThemeChosen;
 use natizap_tray::{Tray, TrayAction};
 
 use crate::main_window_options;
@@ -106,8 +107,9 @@ impl Shell {
     /// Puts natizap in the tray: from then on, closing the window leaves
     /// natizap running there. Without a tray, closing still quits, so
     /// natizap never runs where nothing shows it.
-    pub(crate) fn start_tray(cx: &mut Context<Self>) {
-        let starting = Tray::start(cx);
+    pub(crate) fn start_tray(&self, cx: &mut Context<Self>) {
+        let themes = self.features.themes.clone();
+        let starting = Tray::start(themes.read(cx).theme(), cx);
         cx.spawn(async move |shell, cx| {
             let tray = match starting.await {
                 Ok(tray) => tray,
@@ -122,9 +124,30 @@ impl Shell {
                     TrayAction::Quit => cx.quit(),
                 })
                 .detach();
+                let drawn = tray.clone();
+                cx.subscribe(&themes, move |_, _, ThemeChosen(theme), cx| {
+                    drawn.update(cx, |tray, cx| tray.set_theme(*theme, cx));
+                })
+                .detach();
                 cx.set_quit_mode(gpui::QuitMode::Explicit);
                 shell.tray = Some(tray);
             });
+        })
+        .detach();
+    }
+
+    /// Keeps natizap's icon in the desktop's launcher, and so in the dock,
+    /// drawn in the theme in use.
+    #[cfg(target_os = "linux")]
+    pub(crate) fn start_launcher(
+        &self,
+        launcher: natizap_launcher::Launcher,
+        cx: &mut Context<Self>,
+    ) {
+        let themes = self.features.themes.clone();
+        launcher.show(themes.read(cx).theme(), cx);
+        cx.subscribe(&themes, move |_, _, ThemeChosen(theme), cx| {
+            launcher.show(*theme, cx);
         })
         .detach();
     }

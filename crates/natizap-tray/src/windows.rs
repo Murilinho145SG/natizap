@@ -18,6 +18,18 @@ pub(crate) fn show(
     Task::ready(build(rgba, actions))
 }
 
+pub(crate) fn set_icon(icon: &Icon, rgba: Vec<u8>, _cx: &mut App) {
+    let set = tray_icon::Icon::from_rgba(rgba, SIDE, SIDE)
+        .map_err(|error| error.to_string())
+        .and_then(|image| {
+            icon.set_icon(Some(image))
+                .map_err(|error| error.to_string())
+        });
+    if let Err(error) = set {
+        tracing::warn!(%error, "could not redraw the tray icon");
+    }
+}
+
 fn build(rgba: Vec<u8>, actions: async_channel::Sender<TrayAction>) -> Result<Icon, TrayError> {
     let unavailable = |error: &dyn std::fmt::Display| TrayError::Unavailable(error.to_string());
     let open = MenuItem::new("Open natizap", true, None);

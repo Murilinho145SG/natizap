@@ -32,5 +32,8 @@ natizap-update.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 
+[target.'cfg(target_os = "linux")'.dependencies]
+natizap-launcher.workspace = true
+
 [lints]
 workspace = true

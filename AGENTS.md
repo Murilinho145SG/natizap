@@ -70,8 +70,8 @@ settings, `conversation.conf` for chat settings, `themes.conf` for the chosen th
 day's status updates and `media/status/` for their files, `calls.db` for
 the call history, `media/` for downloaded
 attachments, `media/thumbs/` for the small copies media grids draw,
-`media/stickers/` for favorite stickers' files and `updates/` for
-downloaded update packages).
+`media/stickers/` for favorite stickers' files, `icons/` for the app icon
+drawn in the theme in use and `updates/` for downloaded update packages).
 
 Local stores are migrated, never dropped and rebuilt: WhatsApp sends the
 history only once, right after linking, so lost data cannot be synced
@@ -120,7 +120,10 @@ contacts are, and the chat list who has a status
 `StickerPicked` through `MessageLog::send_sticker`, tells the conversation
 which stickers are favorites, and passes its `StickerFavoriteToggled` to
 the `StickerShelf`. The `Updater` stands alone: the binary only shows it in
-the title bar.
+the title bar. The `ThemeBook` emits `ThemeChosen`, which the binary
+passes to the `Tray` (`Tray::set_theme`) and, on Linux, to the
+`Launcher`, so natizap's icon (`natizap-ui`'s `app_icon`) follows the
+theme in the tray and in the dock.
 
 The binary builds the features once per run and keeps them in its `Shell`,
 not in the window: closing the window leaves natizap running in the tray
@@ -179,6 +182,7 @@ organizing rule of the codebase.
 | `natizap-ui`       | shared  | Theme, fonts, icons, window frame and the component library. |
 | `natizap-themes`   | feature | Native and user-made themes, the one in use, and their editor. |
 | `natizap-tray`     | feature | The tray icon that reopens or quits natizap.             |
+| `natizap-launcher` | feature | The Linux desktop entry giving the dock the theme's icon. |
 | `natizap-update`   | feature | Finds, downloads and installs new releases from GitHub.   |
 
 Keep this table current when a crate is added, renamed or removed.

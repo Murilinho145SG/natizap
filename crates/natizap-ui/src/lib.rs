@@ -8,6 +8,7 @@
 //! the binary registers [`Assets`] and calls [`load_fonts`] and
 //! [`bind_text_input_keys`] at startup.
 
+mod app_icon;
 mod assets;
 mod avatar;
 mod components;
@@ -23,6 +24,7 @@ pub mod motion;
 mod text_boundary;
 pub mod theme;
 
+pub use app_icon::app_icon;
 pub use assets::{Assets, Icon, load_fonts};
 pub use avatar::{avatar, name_color, name_tint, status_ring};
 pub use components::alert::{Alert, AlertTone};

@@ -92,7 +92,12 @@ fn main() -> anyhow::Result<()> {
             let shell = cx.new(|cx| Shell::new(features, cx));
             shell.update(cx, |shell, cx| {
                 shell.show(None, cx);
-                Shell::start_tray(cx);
+                shell.start_tray(cx);
+                #[cfg(target_os = "linux")]
+                match natizap_launcher::Launcher::new(data_dir.join("icons")) {
+                    Ok(launcher) => shell.start_launcher(launcher, cx),
+                    Err(error) => tracing::warn!(%error, "the launcher keeps the package's icon"),
+                }
             });
             let show_requests = show_requests.clone();
             cx.spawn(async move |cx| {

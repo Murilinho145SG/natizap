@@ -63,18 +63,8 @@ pub(crate) fn show(
     actions: async_channel::Sender<TrayAction>,
     cx: &mut App,
 ) -> Task<Result<Icon, TrayError>> {
-    let side = i32::try_from(SIDE).unwrap_or(i32::MAX);
-    let mut argb = rgba;
-    // StatusNotifierItem pixmaps are ARGB in network byte order.
-    for pixel in argb.as_chunks_mut::<4>().0 {
-        pixel.rotate_right(1);
-    }
     let item = Item {
-        pixmap: ksni::Icon {
-            width: side,
-            height: side,
-            data: argb,
-        },
+        pixmap: pixmap(rgba),
         actions,
     };
     let spawning = gpui_tokio::Tokio::spawn(cx, async move { item.spawn().await });
@@ -85,4 +75,28 @@ pub(crate) fn show(
             Err(error) => Err(TrayError::Unavailable(error.to_string())),
         }
     })
+}
+
+pub(crate) fn set_icon(icon: &Icon, rgba: Vec<u8>, cx: &mut App) {
+    let (icon, pixmap) = (icon.clone(), pixmap(rgba));
+    gpui_tokio::Tokio::spawn(cx, async move {
+        // `None` only once the tray has gone, and natizap with it.
+        let _ = icon.update(|item| item.pixmap = pixmap).await;
+    })
+    .detach();
+}
+
+/// `rgba` as a `SIDE`×`SIDE` `StatusNotifierItem` pixmap.
+fn pixmap(rgba: Vec<u8>) -> ksni::Icon {
+    let side = i32::try_from(SIDE).unwrap_or(i32::MAX);
+    let mut argb = rgba;
+    // StatusNotifierItem pixmaps are ARGB in network byte order.
+    for pixel in argb.as_chunks_mut::<4>().0 {
+        pixel.rotate_right(1);
+    }
+    ksni::Icon {
+        width: side,
+        height: side,
+        data: argb,
+    }
 }

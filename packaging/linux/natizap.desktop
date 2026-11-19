@@ -4,6 +4,7 @@ Name=natizap
 GenericName=WhatsApp client
 Comment=A native desktop WhatsApp client
 Exec=natizap
+TryExec=natizap
 Icon=natizap
 Terminal=false
 Categories=Network;InstantMessaging;Chat;

@@ -82,6 +82,7 @@ natizap-notifications = { path = "crates/natizap-notifications" }
 natizap-outbox = { path = "crates/natizap-outbox" }
 natizap-playback = { path = "crates/natizap-playback" }
 natizap-profiles = { path = "crates/natizap-profiles" }
+natizap-launcher = { path = "crates/natizap-launcher" }
 natizap-tray = { path = "crates/natizap-tray" }
 natizap-player = { path = "crates/natizap-player" }
 natizap-protocol = { path = "crates/natizap-protocol" }
