@@ -14,7 +14,10 @@ use natizap_protocol::{
 };
 
 use crate::log::CallLog;
-use crate::ringtone::Ringtone;
+use std::path::PathBuf;
+
+use crate::ringtone::{Ringing, Ringtone};
+use crate::settings;
 
 /// How long an ended call stays on screen, saying how it ended.
 const ENDED_SHOWN: Duration = Duration::from_millis(2_500);
@@ -123,8 +126,14 @@ pub struct CallDesk {
     /// The serial the next call gets.
     serial: u64,
     /// The ringing sound, while something rings.
-    ringer: Option<(Ringtone, Task<()>)>,
-    _hearing: Task<()>,
+    ringer: Option<(Ringing, Task<()>)>,
+    /// What calls coming in ring with.
+    ringtone: Ringtone,
+    /// Where the choice of ringtone is kept.
+    settings: PathBuf,
+    /// A ringtone being tried in the settings.
+    preview: Option<Task<()>>,
+    _tasks: [Task<()>; 2],
 }
 
 impl std::fmt::Debug for CallDesk {
@@ -140,8 +149,14 @@ impl EventEmitter<CallRang> for CallDesk {}
 
 impl CallDesk {
     /// Takes calls through `protocol`, filing the ones made or answered
-    /// here in `log`.
-    pub fn new(protocol: Entity<Protocol>, log: Entity<CallLog>, cx: &mut Context<Self>) -> Self {
+    /// here in `log`, ringing with the ringtone chosen in the file at
+    /// `settings`.
+    pub fn new(
+        protocol: Entity<Protocol>,
+        log: Entity<CallLog>,
+        settings: PathBuf,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let events = protocol.read(cx).subscribe(Rings::EVENTS);
         let hearing = cx.spawn(async move |this, cx| {
             while let Ok(event) = events.recv().await {
@@ -153,6 +168,16 @@ impl CallDesk {
                 }
             }
         });
+        let reading = settings.clone();
+        let loading = cx.spawn(async move |this, cx| {
+            let ringtone = cx
+                .background_spawn(async move { settings::read(&reading) })
+                .await;
+            let _ = this.update(cx, |desk, cx| {
+                desk.ringtone = ringtone;
+                cx.notify();
+            });
+        });
         Self {
             protocol,
             log,
@@ -160,8 +185,27 @@ impl CallDesk {
             call: None,
             serial: 0,
             ringer: None,
-            _hearing: hearing,
+            ringtone: Ringtone::default(),
+            settings,
+            preview: None,
+            _tasks: [hearing, loading],
         }
+    }
+
+    /// What calls coming in ring with.
+    #[must_use]
+    pub fn ringtone(&self) -> Ringtone {
+        self.ringtone
+    }
+
+    /// Rings with `ringtone` from now on, keeping the choice and playing
+    /// it once to hear.
+    pub fn set_ringtone(&mut self, ringtone: Ringtone, cx: &mut Context<Self>) {
+        self.ringtone = ringtone;
+        settings::write(self.settings.clone(), ringtone, cx);
+        self.preview = Some(Ringing::Incoming(ringtone).play_once(cx));
+        self.update_ringer(cx);
+        cx.notify();
     }
 
     /// The call under way, or just ended.
@@ -495,8 +539,8 @@ impl CallDesk {
     /// phone rings; is quiet otherwise.
     fn update_ringer(&mut self, cx: &Context<Self>) {
         let wanted = match self.call.as_ref().map(|call| &call.phase) {
-            None if !self.rings.is_empty() => Some(Ringtone::Incoming),
-            Some(Phase::Ringing) => Some(Ringtone::Ringback),
+            None if !self.rings.is_empty() => Some(Ringing::Incoming(self.ringtone)),
+            Some(Phase::Ringing) => Some(Ringing::Ringback),
             _ => None,
         };
         if self.ringer.as_ref().map(|(tone, _)| *tone) == wanted {

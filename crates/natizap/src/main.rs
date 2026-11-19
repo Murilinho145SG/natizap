@@ -216,7 +216,14 @@ fn features(data_dir: &Path, executable: &Path, cx: &mut App) -> Features {
         )
     });
     let calls = cx.new(|cx| CallLog::new(&protocol, data_dir.join("calls.db"), cx));
-    let desk = cx.new(|cx| CallDesk::new(protocol.clone(), calls.clone(), cx));
+    let desk = cx.new(|cx| {
+        CallDesk::new(
+            protocol.clone(),
+            calls.clone(),
+            data_dir.join("calls.conf"),
+            cx,
+        )
+    });
     Features {
         session,
         chats,

@@ -66,7 +66,7 @@ Each feature crate owns its GPUI views, logic and local cache together
 share. Local data lives in the platform's per-user data directory, one
 file per owner (`session.db` for protocol keys, `chats.db` for the chat
 list, `messages.db` for messages, `notifications.conf` for notification
-settings, `conversation.conf` for chat settings, `themes.conf` for the chosen theme and `themes/` for the user's own, `stickers.db` for favorite stickers, `status.db` for the last
+settings, `calls.conf` for the ringtone, `conversation.conf` for chat settings, `themes.conf` for the chosen theme and `themes/` for the user's own, `stickers.db` for favorite stickers, `status.db` for the last
 day's status updates and `media/status/` for their files, `calls.db` for
 the call history, `media/` for downloaded
 attachments, `media/thumbs/` for the small copies media grids draw,
@@ -107,8 +107,8 @@ hands it the messages' `MessageSearch` through
 binary draws the navigation rail (`natizap-ui`'s `Rail`) itself: its
 Settings button opens `natizap-ui`'s `SettingsWindow`, a sidebar of
 categories whose pages each feature brings: the themes' `ThemeSettings`,
-the notifications' `NotificationSettings` and the messages'
-`ChatSettings`, and
+the notifications' `NotificationSettings`, the messages'
+`ChatSettings` and the calls' `CallSettings`, and
 your avatar opens the contacts' `OwnProfile` in place of the chat list,
 which emits `OwnProfileClosed` to go back. Its Status button shows the
 status' `StatusPane` there instead; the pane's `StatusOpened` and the chat

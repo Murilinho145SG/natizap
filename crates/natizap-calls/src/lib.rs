@@ -9,6 +9,7 @@ mod group;
 mod log;
 mod pane;
 mod ringtone;
+mod settings;
 mod store;
 mod window;
 
@@ -17,4 +18,6 @@ pub use desk::{CallDesk, CallRang, CallShown, Phase};
 pub use group::CallGroup;
 pub use log::CallLog;
 pub use pane::{CallChatRequested, CallsPane};
+pub use ringtone::Ringtone;
+pub use settings::CallSettings;
 pub use window::CallWindow;

@@ -3,6 +3,7 @@
 
 use gpui::prelude::*;
 use gpui::{Context, px};
+use natizap_calls::CallSettings;
 use natizap_contacts::{OwnProfile, OwnProfileClosed};
 use natizap_messages::ChatSettings;
 use natizap_notifications::NotificationSettings;
@@ -93,10 +94,11 @@ impl Root {
     /// Shows the settings over the chats: every feature's page, one
     /// category at a time.
     fn open_settings(&mut self, cx: &mut Context<Self>) {
-        let (notifier, messages, themes) = (
+        let (notifier, messages, themes, desk) = (
             self.notifier.clone(),
             self.messages.clone(),
             self.themes.clone(),
+            self.desk.clone(),
         );
         let pages = vec![
             SettingsPage::new(
@@ -113,6 +115,11 @@ impl Root {
                 Icon::Chats,
                 "Chats",
                 cx.new(|cx| ChatSettings::new(messages, cx)),
+            ),
+            SettingsPage::new(
+                Icon::Call,
+                "Calls",
+                cx.new(|cx| CallSettings::new(desk, cx)),
             ),
         ];
         let settings = cx.new(|_| SettingsWindow::new(pages));
