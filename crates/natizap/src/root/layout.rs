@@ -28,9 +28,10 @@ impl Root {
             .relative()
             .flex()
             .flex_col()
-            .child(self.call_bar.clone())
+            .child(self.call_views.bar.clone())
             .child(self.places(width, cx))
-            .child(self.ring_card.clone())
+            .child(self.call_views.panel.clone())
+            .child(self.call_views.card.clone())
             // Chats stay readable offline, so the news floats over them
             // instead of replacing them.
             .when(reconnecting, |content| {

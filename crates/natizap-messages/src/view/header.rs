@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use gpui::prelude::*;
 use gpui::{App, ClickEvent, Context, Div, FontWeight, Stateful, Window, div, px, rgb};
+use natizap_protocol::ChatId;
 use natizap_ui::theme::ActiveTheme as _;
 use natizap_ui::{Button, ButtonVariant, Icon, Menu, avatar, verified_seal};
 
@@ -80,19 +81,7 @@ pub(super) fn header(
                 .items_center()
                 .gap_1()
                 .when(!chat.id.is_group(), |buttons| {
-                    let peer = chat.id.clone();
-                    buttons.child(
-                        Button::new("chat-call")
-                            .icon(Icon::Call)
-                            .variant(ButtonVariant::Ghost)
-                            .round()
-                            .tooltip("Voice call")
-                            .on_click(cx.listener(move |_, _, _, cx| {
-                                // The header behind opens the profile.
-                                cx.stop_propagation();
-                                cx.emit(CallRequested(peer.clone()));
-                            })),
-                    )
+                    buttons.children(call_buttons(&chat.id, cx))
                 })
                 .child(
                     Button::new("chat-search")
@@ -120,6 +109,30 @@ pub(super) fn header(
                         })),
                 ),
         )
+}
+
+/// The buttons that call `peer`, with the camera on and without.
+fn call_buttons(peer: &ChatId, cx: &mut Context<ConversationView>) -> [Button; 2] {
+    [true, false].map(|video| {
+        let peer = peer.clone();
+        Button::new(if video {
+            "chat-video-call"
+        } else {
+            "chat-call"
+        })
+        .icon(if video { Icon::Video } else { Icon::Call })
+        .variant(ButtonVariant::Ghost)
+        .round()
+        .tooltip(if video { "Video call" } else { "Voice call" })
+        .on_click(cx.listener(move |_, _, _, cx| {
+            // The header behind opens the profile.
+            cx.stop_propagation();
+            cx.emit(CallRequested {
+                peer: peer.clone(),
+                video,
+            });
+        }))
+    })
 }
 
 /// The user chose to close the open chat.

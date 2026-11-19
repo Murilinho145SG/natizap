@@ -10,18 +10,34 @@ use natizap_protocol::{
     ActionError, CallEnd, CallOutcome, CallProgress, CallRecord, ChatId, LiveCall,
 };
 
-use super::{Call, CallDesk, ENDED_SHOWN, Going, Phase, Reached};
+use super::{Call, CallDesk, CallVideo, ENDED_SHOWN, Going, Phase, Reached};
+
+/// A call about to start: who with, which way, since when, and what it
+/// sounds and looks like.
+pub(super) struct NewCall {
+    pub(super) peer: ChatId,
+    pub(super) incoming: bool,
+    /// When it was placed or rang, in Unix seconds.
+    pub(super) at: i64,
+    pub(super) audio: Option<CallAudio>,
+    pub(super) video: Option<CallVideo>,
+}
 
 impl CallDesk {
+    /// Puts `call` on screen and follows it once `started` gives it.
     pub(super) fn start(
         &mut self,
-        peer: ChatId,
-        incoming: bool,
-        at: i64,
-        audio: Option<CallAudio>,
+        call: NewCall,
         started: Option<Task<Result<LiveCall, ActionError>>>,
         cx: &mut Context<Self>,
     ) {
+        let NewCall {
+            peer,
+            incoming,
+            at,
+            audio,
+            video,
+        } = call;
         self.serial += 1;
         let serial = self.serial;
         // Detached, not kept with the call: a call hung up before it got
@@ -72,6 +88,8 @@ impl CallDesk {
             },
             muted: false,
             going: Going::Starting,
+            video,
+            video_request: None,
             audio,
             at,
             ticking: None,
@@ -82,7 +100,7 @@ impl CallDesk {
     }
 
     /// The call under way, if it is the one numbered `serial`.
-    fn current(&mut self, serial: u64) -> Option<&mut Call> {
+    pub(super) fn current(&mut self, serial: u64) -> Option<&mut Call> {
         self.call.as_mut().filter(|call| call.serial == serial)
     }
 
@@ -104,6 +122,9 @@ impl CallDesk {
         } else {
             Phase::Calling
         };
+        if call.video.is_some() {
+            self.open_camera(cx);
+        }
         self.update_ringer(cx);
         cx.notify();
         true
@@ -122,10 +143,22 @@ impl CallDesk {
             CallProgress::Answered => call.reached.answered = true,
             CallProgress::Connected => call.reached.connected = true,
             CallProgress::Ended(end) => return self.finish(serial, &end, cx),
-            // Video comes with video calls, which this desk does not take yet.
-            CallProgress::PeerVideo(_)
-            | CallProgress::VideoRequested(_)
-            | CallProgress::KeyframeWanted => return,
+            CallProgress::PeerVideo(on) => {
+                if let Some(video) = call.video.as_mut() {
+                    video.peer_on = on;
+                }
+                return cx.notify();
+            }
+            CallProgress::VideoRequested(request) => {
+                call.video_request = Some(request);
+                return cx.notify();
+            }
+            CallProgress::KeyframeWanted => {
+                if let Some(video) = &call.video {
+                    video.keyframe_wanted();
+                }
+                return;
+            }
         }
         if call.reached.answered && !matches!(call.phase, Phase::Live { .. }) {
             if call.reached.connected {
@@ -156,6 +189,9 @@ impl CallDesk {
             _ => None,
         };
         call.audio = None;
+        // The camera goes off with the call.
+        let video = call.video.take().is_some();
+        call.video_request = None;
         call.ticking = None;
         call.phase = Phase::Ended(end.clone());
         if let Some(live) = call.going.live() {
@@ -164,7 +200,7 @@ impl CallDesk {
                 peer: call.peer.clone(),
                 group: None,
                 incoming: call.incoming,
-                video: false,
+                video,
                 outcome: match end {
                     CallEnd::Declined => CallOutcome::Declined,
                     _ if call.reached.answered => CallOutcome::Answered,

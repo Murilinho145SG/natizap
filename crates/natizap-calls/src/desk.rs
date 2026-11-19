@@ -4,13 +4,14 @@
 
 use std::time::{Duration, Instant};
 
-use gpui::{AppContext as _, Context, Entity, EventEmitter, SharedString, Task};
+use gpui::{AppContext as _, Context, Entity, EventEmitter, RenderImage, SharedString, Task};
 use natizap_playback::{CallAudio, CallFormat, CallPorts};
 use natizap_protocol::{
-    CallEnd, ChatId, LiveCall, Protocol, Ring, Rings, VOICE_FRAME, VOICE_RATE, Voice,
+    CallEnd, ChatId, LiveCall, Protocol, Ring, Rings, VOICE_FRAME, VOICE_RATE, VideoRequest, Voice,
 };
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use crate::log::CallLog;
 use crate::ringtone::{Ringing, Ringtone};
@@ -18,8 +19,12 @@ use crate::settings;
 
 mod lifecycle;
 mod ringing;
+mod video;
 
-use lifecycle::logged;
+use video::CallVideo;
+pub use video::CameraState;
+
+use lifecycle::{NewCall, logged};
 
 /// How long an ended call stays on screen, saying how it ended.
 const ENDED_SHOWN: Duration = Duration::from_millis(2_500);
@@ -69,6 +74,20 @@ pub struct CallShown {
     pub phase: Phase,
     /// The microphone is silenced.
     pub muted: bool,
+    /// The call's video, once it has some.
+    pub video: Option<VideoShown>,
+    /// The other end asks to turn the call into a video call.
+    pub video_requested: bool,
+}
+
+/// A call's video, as views show it.
+#[derive(Debug, Clone)]
+pub struct VideoShown {
+    /// The other end's newest picture, while their camera is on.
+    pub remote: Option<Arc<RenderImage>>,
+    /// The user's own newest picture, while the camera is on.
+    pub preview: Option<Arc<RenderImage>>,
+    pub camera: CameraState,
 }
 
 /// The one call natizap is in, from placing or answering it until shortly
@@ -82,6 +101,10 @@ struct Call {
     reached: Reached,
     muted: bool,
     going: Going,
+    /// The call's video, once it has some.
+    video: Option<CallVideo>,
+    /// The other end asks to turn the call into a video call.
+    video_request: Option<VideoRequest>,
     /// The microphone and speaker, open while the call is.
     audio: Option<CallAudio>,
     /// When it was placed or rang, in Unix seconds.
@@ -220,6 +243,18 @@ impl CallDesk {
             incoming: call.incoming,
             phase: call.phase.clone(),
             muted: call.muted,
+            video: call.video.as_ref().map(|video| VideoShown {
+                remote: video
+                    .peer_on
+                    .then(|| video.remote.read(cx).image())
+                    .flatten(),
+                preview: video
+                    .preview
+                    .as_ref()
+                    .and_then(|preview| preview.read(cx).image()),
+                camera: video.camera,
+            }),
+            video_requested: call.video_request.is_some(),
         })
     }
 
@@ -235,18 +270,24 @@ impl CallDesk {
         self.log.read(cx).title(chat)
     }
 
-    /// Calls `peer`, unless a call is under way already.
-    pub fn place(&mut self, peer: ChatId, cx: &mut Context<Self>) {
+    /// Calls `peer`, with the camera on for a `video` call, unless a call
+    /// is under way already.
+    pub fn place(&mut self, peer: ChatId, video: bool, cx: &mut Context<Self>) {
         if self.call.is_some() {
             return;
         }
         let at = now();
+        let (video, ends) = if video {
+            Self::video_for_call(cx).unzip()
+        } else {
+            (None, None)
+        };
         let (audio, started) = match CallAudio::open(FORMAT) {
             Ok((audio, ports)) => {
                 let started = self
                     .protocol
                     .read(cx)
-                    .place_call(&peer, voice(ports), None, cx);
+                    .place_call(&peer, voice(ports), ends, cx);
                 (Some(audio), Some(started))
             }
             Err(error) => {
@@ -254,7 +295,14 @@ impl CallDesk {
                 (None, None)
             }
         };
-        self.start(peer, false, at, audio, started, cx);
+        let call = NewCall {
+            peer,
+            incoming: false,
+            at,
+            audio,
+            video,
+        };
+        self.start(call, started, cx);
     }
 
     /// Answers the call ringing longest. A call under way ends first.
@@ -267,12 +315,18 @@ impl CallDesk {
         // One call at a time: the one under way ends, filed as it should.
         self.hang_up(cx);
         self.call = None;
+        // A video call is answered with the camera on, as the phone does.
+        let (video, ends) = if ring.video {
+            Self::video_for_call(cx).unzip()
+        } else {
+            (None, None)
+        };
         let (audio, started) = match CallAudio::open(FORMAT) {
             Ok((audio, ports)) => {
                 let started = self
                     .protocol
                     .read(cx)
-                    .answer_call(&ring, voice(ports), None, cx);
+                    .answer_call(&ring, voice(ports), ends, cx);
                 (Some(audio), Some(started))
             }
             Err(error) => {
@@ -280,7 +334,14 @@ impl CallDesk {
                 (None, None)
             }
         };
-        self.start(ring.caller, true, ring.at, audio, started, cx);
+        let call = NewCall {
+            peer: ring.caller,
+            incoming: true,
+            at: ring.at,
+            audio,
+            video,
+        };
+        self.start(call, started, cx);
     }
 
     /// Turns down the call ringing longest.

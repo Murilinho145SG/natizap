@@ -7,7 +7,7 @@ use natizap_profiles::ProfilePictures;
 use natizap_ui::theme::{ActiveTheme as _, DISPLAY_FONT, Theme};
 use natizap_ui::{Button, ButtonSize, ButtonVariant, Icon, avatar};
 
-use crate::desk::{CallDesk, CallShown, Phase};
+use crate::desk::{CallDesk, CallShown, CameraState, Phase};
 use crate::pane::CallChatRequested;
 
 /// The user asked for the call in a window of its own.
@@ -98,11 +98,21 @@ impl Render for CallBar {
                     .gap_1()
                     .when(!ended, |controls| {
                         controls
+                            .when(call.video_requested, |controls| {
+                                controls.child(video_request(cx))
+                            })
                             .child(mute_button(
                                 &call,
                                 ButtonSize::Medium,
                                 cx.listener(|bar, _, _, cx| {
                                     bar.desk.update(cx, CallDesk::toggle_muted);
+                                }),
+                            ))
+                            .child(camera_button(
+                                &call,
+                                ButtonSize::Medium,
+                                cx.listener(|bar, _, _, cx| {
+                                    bar.desk.update(cx, CallDesk::toggle_camera);
                                 }),
                             ))
                             .child(
@@ -167,7 +177,7 @@ impl Render for RingCard {
             .pictures
             .update(cx, |pictures, cx| pictures.picture(&ring.caller, cx));
         let kind = if ring.video {
-            "Video call · answered with sound for now"
+            "Video call"
         } else {
             "Voice call"
         };
@@ -231,7 +241,7 @@ impl Render for RingCard {
                             .child(
                                 div().flex_1().child(
                                     Button::new("ring-answer")
-                                        .icon(Icon::Call)
+                                        .icon(if ring.video { Icon::Video } else { Icon::Call })
                                         .label(if in_call { "End and answer" } else { "Answer" })
                                         .on_click(cx.listener(|card, _, _, cx| {
                                             card.desk.update(cx, CallDesk::answer);
@@ -288,6 +298,67 @@ pub(crate) fn mute_button(
         .round()
         .tooltip(if call.muted { "Unmute" } else { "Mute" })
         .on_click(on_click)
+}
+
+/// The camera's switch: turning it on makes a voice call a video call.
+pub(crate) fn camera_button(
+    call: &CallShown,
+    size: ButtonSize,
+    on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut gpui::App) + 'static,
+) -> Button {
+    let camera = call.video.as_ref().map(|video| video.camera);
+    let on = matches!(camera, Some(CameraState::On | CameraState::Opening));
+    Button::new("call-camera")
+        .icon(if on { Icon::Video } else { Icon::VideoOff })
+        .variant(if on {
+            ButtonVariant::Secondary
+        } else {
+            ButtonVariant::Ghost
+        })
+        .size(size)
+        .selected(on)
+        .round()
+        .tooltip(match camera {
+            Some(CameraState::Missing) => "No camera found",
+            _ if on => "Turn camera off",
+            _ => "Turn camera on",
+        })
+        .on_click(on_click)
+}
+
+/// The other end's request to turn the call into a video call, with the
+/// answers to it.
+fn video_request(cx: &mut Context<CallBar>) -> impl IntoElement + use<> {
+    let theme = *cx.theme();
+    div()
+        .mr_2()
+        .flex()
+        .items_center()
+        .gap_2()
+        .child(
+            div()
+                .text_size(px(12.5))
+                .text_color(rgb(theme.muted))
+                .child("Wants to turn on video"),
+        )
+        .child(
+            Button::new("call-video-accept")
+                .icon(Icon::Video)
+                .label("Turn on")
+                .size(ButtonSize::Small)
+                .on_click(cx.listener(|bar, _, _, cx| {
+                    bar.desk.update(cx, CallDesk::accept_video);
+                })),
+        )
+        .child(
+            Button::new("call-video-ignore")
+                .label("Not now")
+                .variant(ButtonVariant::Ghost)
+                .size(ButtonSize::Small)
+                .on_click(cx.listener(|bar, _, _, cx| {
+                    bar.desk.update(cx, CallDesk::ignore_video);
+                })),
+        )
 }
 
 /// How long a call has gone: `4:05`, or `1:02:09` past an hour.

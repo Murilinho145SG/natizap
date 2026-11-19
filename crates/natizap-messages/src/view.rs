@@ -148,7 +148,12 @@ impl EventEmitter<ProfileRequested> for ConversationView {}
 
 /// The user asked to call the person the open chat is with.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CallRequested(pub ChatId);
+pub struct CallRequested {
+    /// Who to call.
+    pub peer: ChatId,
+    /// With the camera on.
+    pub video: bool,
+}
 
 impl EventEmitter<CallRequested> for ConversationView {}
 

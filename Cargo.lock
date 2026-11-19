@@ -4096,6 +4096,7 @@ dependencies = [
  "async-channel",
  "chrono",
  "gpui",
+ "image",
  "natizap-playback",
  "natizap-profiles",
  "natizap-protocol",

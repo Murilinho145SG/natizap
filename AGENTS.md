@@ -121,11 +121,13 @@ contacts are, and the chat list who has a status
 `CallsPane`, whose `CallChatRequested` opens that chat. The calls'
 `CallDesk` lives in the `Shell` with the other features, so a call goes
 on with the window closed; its `CallRang` opens a closed window. The
-conversation emits `CallRequested` from its header, which the binary
-answers with `CallDesk::place`. The binary draws the desk's `CallBar`
-across the top of the window and its `RingCard` over the corner; the
-bar's `CallChatRequested` opens the call's chat and its `CallPoppedOut`
-opens a `CallWindow`, the call in a window of its own. The binary hands the conversation the stickers'
+conversation emits `CallRequested` from its header, voice or video,
+which the binary answers with `CallDesk::place`. The binary draws the
+desk's `CallBar` across the top of the window, its `RingCard` over the
+corner and, for a video call, its `VideoPanel` floating over the other
+corner; the bar's `CallChatRequested` opens the call's chat, and the
+bar's and the panel's `CallPoppedOut` open a `CallWindow`, the call in a
+window of its own. The binary hands the conversation the stickers'
 `StickerPicker` to show from its composer, sends what it emits as
 `StickerPicked` through `MessageLog::send_sticker`, tells the conversation
 which stickers are favorites, and passes its `StickerFavoriteToggled` to
@@ -180,7 +182,7 @@ organizing rule of the codebase.
 | `natizap-status`   | feature | Status updates: the list, the viewer, replies and posting. |
 | `natizap-stickers` | feature | Favorite stickers synced with the phone, and their picker. |
 | `natizap-protocol` | shared  | Owns the WhatsApp client; fans its events out to features. |
-| `natizap-calls`    | feature | Voice calls placed and answered, and the call history.    |
+| `natizap-calls`    | feature | Voice and video calls placed and answered, and their history. |
 | `natizap-chats`    | feature | Chat list synced from WhatsApp, cached in SQLite, and its view. |
 | `natizap-contacts` | feature | Profiles of people and businesses, and your own, editable. |
 | `natizap-messages` | feature | Message store, the open conversation and sending.         |

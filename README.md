@@ -61,9 +61,11 @@ end-to-end encrypted; keys and history live only on your machine.
   searchable. Your own name, about line and picture can be changed.
 - **Status**: everyone's updates of the last day, played in a viewer,
   replied to, and your own posted, text or media.
-- **Voice calls**: one-to-one calls placed from a chat and answered or
-  declined from a card that rings, under way in a bar across the window
-  while you keep chatting, or in a window of their own.
+- **Voice and video calls**: one-to-one calls placed from a chat and
+  answered or declined from a card that rings, under way in a bar across
+  the window while you keep chatting, a video call's pictures floating in
+  its corner, or in a window of their own. The camera turns a voice call
+  into a video call at any time, and three ringtones are drawn in code.
 - **Calls history**: missed and answered calls, each a way to its chat.
 - **Themes**: natizap's own Graphite and ports of well-known palettes
   (Catppuccin, Dracula, GitHub, Nord, …), plus themes of your own made in
@@ -78,7 +80,7 @@ end-to-end encrypted; keys and history live only on your machine.
 
 ## Not yet
 
-Video calls, group calls, channels and communities are on the roadmap.
+Group calls, channels and communities are on the roadmap.
 natizap targets full parity with the phone apps, calls included.
 
 ## Caveat

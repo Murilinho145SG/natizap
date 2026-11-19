@@ -11,6 +11,7 @@ repository.workspace = true
 async-channel.workspace = true
 chrono.workspace = true
 gpui.workspace = true
+image.workspace = true
 natizap-playback.workspace = true
 natizap-profiles.workspace = true
 natizap-protocol.workspace = true

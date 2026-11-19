@@ -6,7 +6,7 @@ use gpui::{
     Context, Div, Entity, FontWeight, MouseButton, NavigationDirection, Window, WindowHandle, div,
     px, rgb,
 };
-use natizap_calls::{CallBar, CallDesk, CallLog, CallWindow, CallsPane, RingCard};
+use natizap_calls::{CallDesk, CallLog, CallWindow, CallsPane};
 use natizap_chats::{
     ChatList, ChatListView, ChatPicker, ChatRow, ChatSelected, ChatsPicked, PickerDismissed,
 };
@@ -28,6 +28,7 @@ use natizap_ui::{SettingsWindow, window_frame};
 use natizap_update::Updater;
 
 use crate::history::History;
+use calls::CallViews;
 use opening::Opening;
 
 mod calls;
@@ -101,10 +102,8 @@ pub(crate) struct Root {
     /// The Calls place, once opened.
     calls_pane: Option<Entity<CallsPane>>,
     desk: Entity<CallDesk>,
-    /// The call under way, across the top of the window.
-    call_bar: Entity<CallBar>,
-    /// A call ringing, over the window's corner.
-    ring_card: Entity<RingCard>,
+    /// The call under way and ringing.
+    call_views: CallViews,
     /// The call under way in a window of its own, once moved there.
     call_window: Option<WindowHandle<CallWindow>>,
     /// A status playing over the window.
@@ -189,7 +188,7 @@ impl Root {
         Self::search_messages(&chat_list, &chats, messages, &conversation, cx);
         Self::follow_status(&status, &chats, &chat_list, window, cx);
         Self::follow_calls(&calls, &chats, cx);
-        let (call_bar, ring_card) = Self::follow_desk(&desk, pictures, &conversation, cx);
+        let call_views = Self::follow_desk(&desk, pictures, &conversation, cx);
 
         Self {
             session,
@@ -213,8 +212,7 @@ impl Root {
             themes,
             calls_pane: None,
             desk,
-            call_bar,
-            ring_card,
+            call_views,
             call_window: None,
             status_viewer: None,
             status_composer: None,

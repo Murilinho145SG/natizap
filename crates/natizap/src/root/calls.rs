@@ -5,6 +5,7 @@
 use gpui::{AppContext as _, Context, Entity, Window, px, size};
 use natizap_calls::{
     CallBar, CallChatRequested, CallDesk, CallLog, CallPoppedOut, CallWindow, CallsPane, RingCard,
+    VideoPanel,
 };
 use natizap_chats::ChatList;
 use natizap_messages::{CallRequested, ConversationView};
@@ -12,8 +13,18 @@ use natizap_profiles::ProfilePictures;
 
 use super::{Place, Root};
 
+/// The call under way and ringing, as the main window shows them.
+pub(super) struct CallViews {
+    /// The call across the top of the window.
+    pub(super) bar: Entity<CallBar>,
+    /// A call ringing, over the window's corner.
+    pub(super) card: Entity<RingCard>,
+    /// A video call's pictures, floating over the window's corner.
+    pub(super) panel: Entity<VideoPanel>,
+}
+
 impl Root {
-    /// The call's bar and ringing card over `desk`. Calls the open chat
+    /// The call's bar, ringing card and video panel over `desk`. Calls the open chat
     /// when its header asks, opens the chat of the call in the bar when it
     /// is clicked, and moves the call to its own window when the bar asks.
     pub(super) fn follow_desk(
@@ -21,12 +32,20 @@ impl Root {
         pictures: &Entity<ProfilePictures>,
         conversation: &Entity<ConversationView>,
         cx: &mut Context<Self>,
-    ) -> (Entity<CallBar>, Entity<RingCard>) {
+    ) -> CallViews {
         let bar = cx.new(|cx| CallBar::new(desk.clone(), pictures.clone(), cx));
         let card = cx.new(|cx| RingCard::new(desk.clone(), pictures.clone(), cx));
-        cx.subscribe(conversation, |root, _, CallRequested(peer), cx| {
-            root.desk
-                .update(cx, |desk, cx| desk.place(peer.clone(), cx));
+        let panel = cx.new(|cx| VideoPanel::new(desk.clone(), pictures.clone(), cx));
+        cx.subscribe(
+            conversation,
+            |root, _, CallRequested { peer, video }, cx| {
+                root.desk
+                    .update(cx, |desk, cx| desk.place(peer.clone(), *video, cx));
+            },
+        )
+        .detach();
+        cx.subscribe(&panel, |root, _, _: &CallPoppedOut, cx| {
+            root.pop_out_call(cx);
         })
         .detach();
         cx.subscribe(&bar, |root, _, CallChatRequested(chat), cx| {
@@ -39,7 +58,7 @@ impl Root {
             root.pop_out_call(cx);
         })
         .detach();
-        (bar, card)
+        CallViews { bar, card, panel }
     }
 
     /// Shows the call in its own window, opening it if it is not open.
