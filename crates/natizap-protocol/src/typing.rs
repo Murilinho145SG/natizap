@@ -29,10 +29,25 @@ pub struct Typing(HashMap<ChatId, Vec<(ChatId, Activity, Instant)>>);
 
 impl Typing {
     /// The events typing is followed through.
-    pub const EVENTS: &[EventKind] = &[EventKind::ChatPresence];
+    pub const EVENTS: &[EventKind] = &[EventKind::ChatPresence, EventKind::Messages];
 
     /// Takes in what `event` says; `true` when it changed who is typing.
     pub fn hear(&mut self, event: &Event) -> bool {
+        if let Event::Messages(batch) = event {
+            // What someone typed arrived: they are done typing it.
+            let mut sent = false;
+            for message in batch.messages.iter() {
+                let source = &message.info.source;
+                let chat = ChatId::new(&source.chat.to_non_ad().to_string());
+                let who = ChatId::new(&source.sender.to_non_ad().to_string());
+                if let Some(typers) = self.0.get_mut(&chat) {
+                    let before = typers.len();
+                    typers.retain(|(typer, _, _)| *typer != who);
+                    sent |= typers.len() != before;
+                }
+            }
+            return sent;
+        }
         let Event::ChatPresence(update) = event else {
             return false;
         };

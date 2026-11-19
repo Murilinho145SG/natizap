@@ -204,9 +204,11 @@ impl MessageLog {
         });
         let account = protocol.read(cx).account();
         let sync = cx.background_spawn(sync(store_path.clone(), inputs, outputs_tx, account));
-        let presence = protocol
-            .read(cx)
-            .subscribe(&[EventKind::Presence, EventKind::ChatPresence]);
+        let presence = protocol.read(cx).subscribe(&[
+            EventKind::Presence,
+            EventKind::ChatPresence,
+            EventKind::Messages,
+        ]);
         let seen = cx.spawn(async move |this, cx| {
             while let Ok(event) = presence.recv().await {
                 let followed = this.update(cx, |log, cx| {
