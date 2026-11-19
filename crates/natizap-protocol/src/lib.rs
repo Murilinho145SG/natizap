@@ -16,6 +16,7 @@ mod calls;
 mod chat;
 mod chat_actions;
 mod content;
+mod encryption;
 mod fanout;
 mod group;
 mod link;
@@ -43,6 +44,7 @@ pub use calls::{MissedCall, Ringing};
 pub use chat::{ChatId, PersonName};
 pub use chat_actions::ChatAction;
 pub use content::{Card, Content, ContentKind, Extra, Forwarding, Poll, Quote};
+pub use encryption::SecurityCode;
 pub use group::{GroupInfo, Member, Role};
 pub use link::LinkPreview;
 pub use live_call::{
