@@ -1,5 +1,5 @@
 //! A call ringing here, as a card floating over the main window: who
-//! calls, their picture filling its top, and the answers. It starts in the
+//! calls, and the answers. It starts in the
 //! top right corner and goes wherever the user drags it, as on Discord,
 //! staying there for the next calls.
 
@@ -9,8 +9,8 @@ use std::rc::Rc;
 
 use gpui::prelude::*;
 use gpui::{
-    Bounds, Context, Div, Entity, FontWeight, MouseButton, MouseDownEvent, ObjectFit, Pixels,
-    Point, SharedString, Window, div, img, linear_color_stop, linear_gradient, point, px, rgb, svg,
+    Bounds, Context, Div, Entity, FontWeight, MouseButton, MouseDownEvent, Pixels, Point,
+    SharedString, Window, div, point, px, rgb, svg,
 };
 use natizap_profiles::ProfilePictures;
 use natizap_protocol::Ring;
@@ -24,8 +24,6 @@ use crate::pointer::{DRAG_SLOP, Held, follower, inside};
 
 /// The card's width.
 const WIDTH: f32 = 300.0;
-/// How tall the caller's picture fills the card's top.
-const BACKDROP: f32 = 150.0;
 /// The gap the card keeps from the window's edges where it starts.
 const MARGIN: f32 = 12.0;
 
@@ -137,7 +135,6 @@ impl Render for RingCard {
                     .absolute()
                     .size_full(),
             )
-            .children(picture.clone().map(|picture| backdrop(picture, theme)))
             .child(Self::body(&ring, title, picture, in_call, theme, cx));
         div()
             .absolute()
@@ -231,29 +228,6 @@ impl RingCard {
                     )),
             )
     }
-}
-
-/// The caller's picture filling the card's top, dimmed and fading into
-/// the card, so the card is theirs at a glance and its words still read.
-fn backdrop(picture: PathBuf, theme: Theme) -> Div {
-    let card = rgb(theme.raised);
-    div()
-        .absolute()
-        .top_0()
-        .left_0()
-        .w(px(WIDTH))
-        .h(px(BACKDROP))
-        .child(
-            img(picture)
-                .size_full()
-                .object_fit(ObjectFit::Cover)
-                .opacity(0.35),
-        )
-        .child(div().absolute().inset_0().bg(linear_gradient(
-            180.0,
-            linear_color_stop(card.opacity(0.2), 0.0),
-            linear_color_stop(card, 1.0),
-        )))
 }
 
 /// What rings, under the caller's name.
