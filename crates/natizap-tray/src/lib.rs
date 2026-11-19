@@ -3,7 +3,8 @@
 //!
 //! GPUI has no tray of its own. On Linux the icon is a `StatusNotifierItem`
 //! over D-Bus (GNOME shows it with the `AppIndicator` extension, which
-//! Ubuntu ships on); on Windows it is a notification-area icon.
+//! Ubuntu ships on); on Windows it is a notification-area icon, and on
+//! macOS a menu bar extra.
 
 use gpui::{App, AppContext as _, Context, Entity, EventEmitter, Task};
 use natizap_ui::app_icon;
@@ -12,8 +13,8 @@ use natizap_ui::theme::Theme;
 #[cfg(target_os = "linux")]
 #[path = "linux.rs"]
 mod platform;
-#[cfg(windows)]
-#[path = "windows.rs"]
+#[cfg(any(windows, target_os = "macos"))]
+#[path = "tray_icon.rs"]
 mod platform;
 
 /// The app icon, drawn into the tray at this side.

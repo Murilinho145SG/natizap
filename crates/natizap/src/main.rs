@@ -6,6 +6,8 @@
 
 mod history;
 mod instance;
+#[cfg(target_os = "macos")]
+mod macos;
 mod root;
 mod shell;
 
@@ -13,8 +15,8 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Context as _;
 use gpui::{
-    App, AppContext as _, Bounds, KeyBinding, Pixels, Size, TitlebarOptions,
-    WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowOptions, actions, px, size,
+    App, AppContext as _, Bounds, KeyBinding, Pixels, Size, WindowBackgroundAppearance,
+    WindowBounds, WindowDecorations, WindowOptions, actions, px, size,
 };
 use natizap_calls::CallLog;
 use natizap_chats::ChatList;
@@ -26,7 +28,7 @@ use natizap_session::Session;
 use natizap_status::StatusBook;
 use natizap_stickers::StickerShelf;
 use natizap_themes::ThemeBook;
-use natizap_ui::{Assets, Gallery, bind_text_input_keys, load_fonts};
+use natizap_ui::{Assets, Gallery, bind_text_input_keys, load_fonts, titlebar_options};
 use natizap_update::Updater;
 use tracing_subscriber::EnvFilter;
 
@@ -65,49 +67,60 @@ fn main() -> anyhow::Result<()> {
     // Read now: a rebuild replaces the file, and the path the running
     // process reports for it afterwards no longer opens.
     let executable = std::env::current_exe().context("could not find natizap's executable")?;
-    gpui_platform::application()
+    let app = gpui_platform::application()
         .with_assets(Assets)
-        .with_restart_arguments(std::env::args_os().skip(1).collect())
-        .run(move |cx: &mut App| {
-            gpui_tokio::init(cx);
-            // Names natizap in the system's notifications.
-            cx.set_app_identity("natizap", "natizap");
-            bind_text_input_keys(cx);
-            cx.bind_keys([
-                KeyBinding::new("ctrl-alt-g", OpenComponents, None),
-                KeyBinding::new("ctrl-r", Restart, None),
-            ]);
-            cx.set_restart_path(executable.clone());
-            cx.on_action(|_: &Restart, cx| cx.restart());
-            cx.on_action(|_: &OpenComponents, cx| {
-                if let Err(error) = open_components_window(cx) {
-                    tracing::error!(?error, "could not open the components window");
-                }
-            });
-            if let Err(error) = load_fonts(cx) {
-                // System fonts still render every screen, just less consistently.
-                tracing::error!(?error, "could not load the bundled fonts");
+        .with_restart_arguments(std::env::args_os().skip(1).collect());
+    // macOS asks this of the running natizap when its Dock icon is clicked.
+    let (reopen, reopened) = async_channel::unbounded();
+    app.on_reopen(move |_| {
+        // Heard for as long as natizap runs.
+        let _ = reopen.try_send(());
+    });
+    app.run(move |cx: &mut App| {
+        gpui_tokio::init(cx);
+        // Names natizap in the system's notifications.
+        cx.set_app_identity("natizap", "natizap");
+        bind_text_input_keys(cx);
+        cx.bind_keys([
+            // `secondary` is Cmd on macOS and Ctrl elsewhere.
+            KeyBinding::new("secondary-alt-g", OpenComponents, None),
+            KeyBinding::new("secondary-r", Restart, None),
+        ]);
+        cx.set_restart_path(executable.clone());
+        cx.on_action(|_: &Restart, cx| cx.restart());
+        cx.on_action(|_: &OpenComponents, cx| {
+            if let Err(error) = open_components_window(cx) {
+                tracing::error!(?error, "could not open the components window");
             }
-            let features = features(&data_dir, &executable, cx);
-            let shell = cx.new(|cx| Shell::new(features, cx));
-            shell.update(cx, |shell, cx| {
-                shell.show(None, cx);
-                shell.start_tray(cx);
-                #[cfg(target_os = "linux")]
-                match natizap_launcher::Launcher::new(data_dir.join("icons")) {
-                    Ok(launcher) => shell.start_launcher(launcher, cx),
-                    Err(error) => tracing::warn!(%error, "the launcher keeps the package's icon"),
-                }
-            });
-            let show_requests = show_requests.clone();
+        });
+        #[cfg(target_os = "macos")]
+        macos::add_menu(cx);
+        if let Err(error) = load_fonts(cx) {
+            // System fonts still render every screen, just less consistently.
+            tracing::error!(?error, "could not load the bundled fonts");
+        }
+        let features = features(&data_dir, &executable, cx);
+        let shell = cx.new(|cx| Shell::new(features, cx));
+        shell.update(cx, |shell, cx| {
+            shell.show(None, cx);
+            shell.start_tray(cx);
+            #[cfg(target_os = "linux")]
+            match natizap_launcher::Launcher::new(data_dir.join("icons")) {
+                Ok(launcher) => shell.start_launcher(launcher, cx),
+                Err(error) => tracing::warn!(%error, "the launcher keeps the package's icon"),
+            }
+        });
+        for requests in [show_requests.clone(), reopened.clone()] {
+            let shell = shell.clone();
             cx.spawn(async move |cx| {
-                while show_requests.recv().await.is_ok() {
+                while requests.recv().await.is_ok() {
                     shell.update(cx, |shell, cx| shell.show(None, cx));
                 }
             })
             .detach();
-            cx.activate(true);
-        });
+        }
+        cx.activate(true);
+    });
     Ok(())
 }
 
@@ -115,13 +128,16 @@ fn main() -> anyhow::Result<()> {
 fn window_options(title: &str, open: Size<Pixels>, min: Size<Pixels>, cx: &App) -> WindowOptions {
     WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(Bounds::centered(None, open, cx))),
-        titlebar: Some(TitlebarOptions {
-            title: Some(title.to_owned().into()),
-            ..Default::default()
-        }),
+        titlebar: Some(titlebar_options(title.to_owned())),
         app_id: Some("natizap".into()),
         window_decorations: Some(WindowDecorations::Client),
-        window_background: WindowBackgroundAppearance::Transparent,
+        // See-through only where natizap draws its own rounded frame: macOS
+        // rounds and shadows the window itself.
+        window_background: if cfg!(target_os = "macos") {
+            WindowBackgroundAppearance::Opaque
+        } else {
+            WindowBackgroundAppearance::Transparent
+        },
         window_min_size: Some(min),
         ..Default::default()
     }

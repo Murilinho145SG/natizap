@@ -44,7 +44,7 @@ pub use components::skeleton::skeleton;
 pub use components::splash::{SPLASH_INTRO, SPLASH_OUT, splash};
 pub use components::switch::Switch;
 pub use components::tooltip::Tooltip;
-pub use frame::window_frame;
+pub use frame::{titlebar_options, window_frame};
 pub use gallery::Gallery;
 pub use input::{FilesPasted, Submitted, TextInput};
 pub use input_keys::bind_text_input_keys;

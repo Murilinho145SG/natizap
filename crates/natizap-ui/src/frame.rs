@@ -1,8 +1,8 @@
 use gpui::prelude::*;
 use gpui::{
     AnyElement, Bounds, CursorStyle, Decorations, Hitbox, HitboxBehavior, Hsla, MouseButton,
-    Pixels, Point, ResizeEdge, Size, Tiling, Window, canvas, div, point, px, rgb, svg,
-    transparent_black,
+    Pixels, Point, ResizeEdge, SharedString, Size, Tiling, TitlebarOptions, Window, canvas, div,
+    point, px, rgb, svg, transparent_black,
 };
 
 use crate::Icon;
@@ -14,6 +14,28 @@ use crate::theme::Theme;
 const EDGE: Pixels = px(10.0);
 const CORNER_RADIUS: Pixels = px(10.0);
 const TITLE_BAR_HEIGHT: Pixels = px(40.0);
+/// macOS's close, minimize and zoom buttons: 12 points high, with their
+/// first one this far in from the window's left edge.
+const TRAFFIC_LIGHTS_INSET: Pixels = px(14.0);
+const TRAFFIC_LIGHT_SIDE: Pixels = px(12.0);
+/// Room the title bar leaves on its left for macOS's buttons.
+const TRAFFIC_LIGHTS_ROOM: Pixels = px(80.0);
+
+/// The title bar a natizap window asks the system for. On macOS none but
+/// its window buttons, which sit over [`window_frame`]'s title bar, centred
+/// in it; elsewhere the system's own (Windows hides it otherwise, and
+/// Linux leaves it to natizap anyway).
+#[must_use]
+pub fn titlebar_options(title: impl Into<SharedString>) -> TitlebarOptions {
+    TitlebarOptions {
+        title: Some(title.into()),
+        appears_transparent: cfg!(target_os = "macos"),
+        traffic_light_position: Some(point(
+            TRAFFIC_LIGHTS_INSET,
+            (TITLE_BAR_HEIGHT - TRAFFIC_LIGHT_SIDE) / 2.0,
+        )),
+    }
+}
 
 /// Frames the window's content under natizap's title bar.
 ///
@@ -108,15 +130,24 @@ fn title_bar(
         .flex_none()
         .flex()
         .items_center()
-        .pl_4()
+        .map(|bar| {
+            if cfg!(target_os = "macos") {
+                bar.pl(TRAFFIC_LIGHTS_ROOM)
+            } else {
+                bar.pl_4()
+            }
+        })
         .pr_1()
         .border_b_1()
         .border_color(rgb(theme.line))
         .on_mouse_down(MouseButton::Left, |event, window, _| {
-            if event.click_count == 2 {
-                window.zoom_window();
-            } else {
+            if event.click_count != 2 {
                 window.start_window_move();
+            } else if cfg!(target_os = "macos") {
+                // Zooms or minimizes, as the user set in System Settings.
+                window.titlebar_double_click();
+            } else {
+                window.zoom_window();
             }
         })
         .on_mouse_down(MouseButton::Right, |event, window, _| {

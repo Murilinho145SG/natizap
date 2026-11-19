@@ -1,5 +1,5 @@
-//! The tray icon in Windows's notification area. It lives on the main
-//! thread, whose message loop GPUI runs.
+//! The tray icon in Windows's notification area or macOS's menu bar. It
+//! lives on the main thread, whose event loop GPUI runs.
 
 use gpui::{App, Task};
 use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
