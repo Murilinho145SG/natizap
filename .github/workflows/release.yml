@@ -63,6 +63,31 @@ jobs:
             libx11-xcb-dev libxkbcommon-x11-dev libxcb1-dev libvulkan-dev \
             libzstd-dev libpipewire-0.3-dev nfpm
 
+      # Ubuntu 22.04's PipeWire (0.3.48) predates headers the pipewire
+      # crate builds against, though its library has every function natizap
+      # calls. So natizap builds against 24.04's headers and links 22.04's
+      # library, still running where 22.04's PipeWire is; a function that
+      # library lacked would fail the link here, not on a user's machine.
+      - name: Use newer PipeWire headers
+        env:
+          PACKAGE: ${{ matrix.package }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          case "$PACKAGE" in
+            amd64) mirror=http://archive.ubuntu.com/ubuntu ;;
+            *) mirror=http://ports.ubuntu.com/ubuntu-ports ;;
+          esac
+          headers="$RUNNER_TEMP/pipewire-headers"
+          mkdir -p "$headers"
+          for name in libpipewire-0.3-dev libspa-0.2-dev; do
+            deb="${name}_1.0.5-1_${PACKAGE}.deb"
+            curl -fsSLo "$RUNNER_TEMP/$deb" "$mirror/pool/main/p/pipewire/$deb"
+            dpkg-deb -x "$RUNNER_TEMP/$deb" "$headers"
+          done
+          pc="$headers/usr/lib/$ARCH-linux-gnu/pkgconfig"
+          sed -i "s|^prefix=.*|prefix=$headers/usr|; s|^libdir=.*|libdir=/usr/lib/$ARCH-linux-gnu|" "$pc"/*.pc
+          echo "PKG_CONFIG_PATH=$pc" >> "$GITHUB_ENV"
+
       # The runner's preinstalled Rust can trail the one the workspace needs.
       - uses: dtolnay/rust-toolchain@stable
 
