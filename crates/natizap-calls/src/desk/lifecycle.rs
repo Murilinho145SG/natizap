@@ -13,6 +13,7 @@ use natizap_protocol::{
 
 use super::{Call, CallDesk, CallVideo, ENDED_SHOWN, FORMAT, Going, Phase, Reached, voice};
 use crate::quality::QualityWatch;
+use crate::ringtone::Ringing;
 use crate::volume::{Listening, PeerMicrophone};
 
 /// A call about to start: who with, which way, since when, and what it
@@ -297,6 +298,8 @@ impl CallDesk {
                 cx.notify();
             });
         }));
+        // Heard however it ended: hung up here, there, or lost.
+        self.farewell = Some(Ringing::Ended.play_once(cx));
         self.update_ringer(cx);
         cx.notify();
     }

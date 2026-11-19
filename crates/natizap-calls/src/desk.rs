@@ -208,6 +208,8 @@ pub struct CallDesk {
     settings: PathBuf,
     /// A ringtone being tried in the settings.
     preview: Option<Task<()>>,
+    /// The sound of the last call ending, while it plays.
+    farewell: Option<Task<()>>,
     /// How the call shows in the main window.
     arrangement: Arrangement,
     /// Keeps a loudness the user set, once it rests.
@@ -267,6 +269,7 @@ impl CallDesk {
             choices: Choices::default(),
             settings,
             preview: None,
+            farewell: None,
             arrangement: Arrangement::default(),
             keeping: None,
             _tasks: [hearing, loading],

@@ -59,13 +59,15 @@ impl Ringtone {
     }
 }
 
-/// A sound a call rings with.
+/// A sound a call makes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Ringing {
     /// A call coming in.
     Incoming(Ringtone),
     /// The other phone ringing.
     Ringback,
+    /// The call ended, whoever ended it: played once.
+    Ended,
 }
 
 impl Ringing {
@@ -75,6 +77,7 @@ impl Ringing {
             Self::Incoming(Ringtone::Kalimba) => 3_200,
             Self::Incoming(Ringtone::Guitar | Ringtone::Piano) => 3_600,
             Self::Ringback => 5_000,
+            Self::Ended => 1_000,
         })
     }
 
@@ -137,6 +140,15 @@ impl Ringing {
                     *sample = tone * edges;
                 }
                 return scaled(sound, 0.22);
+            }
+            // Two notes falling a fifth, in the kalimba's voice: soft, and
+            // done before the call leaves the screen.
+            Self::Ended => {
+                for (at, key) in [(0.0, 76), (0.14, 69)] {
+                    mix(&mut sound, at, &kalimba(pitch(key), 0.85));
+                }
+                room(&mut sound, 0.18);
+                return scaled(sound, 0.35);
             }
         }
         scaled(sound, PEAK)
@@ -333,7 +345,7 @@ mod tests {
         Ringtone::ALL
             .into_iter()
             .map(Ringing::Incoming)
-            .chain([Ringing::Ringback])
+            .chain([Ringing::Ringback, Ringing::Ended])
             .collect()
     }
 
