@@ -48,6 +48,7 @@ const MIGRATIONS: &[&str] = &[
     // What the last message was. Older previews leave it empty and spell
     // it in their text instead ("Photo: caption"), read by `legacy_preview`.
     "ALTER TABLE chats ADD COLUMN preview_kind TEXT;",
+    "ALTER TABLE people ADD COLUMN looked_up INTEGER NOT NULL DEFAULT 0;",
 ];
 
 /// `muted_until` value for [`Mute::Forever`].
@@ -95,7 +96,9 @@ impl ChatStore {
             .collect::<rusqlite::Result<Vec<_>>>()?;
         let people = self
             .connection
-            .prepare("SELECT id, contact_name, push_name, business_name, verified FROM people")?
+            .prepare(
+                "SELECT id, contact_name, push_name, business_name, verified, looked_up FROM people",
+            )?
             .query_map([], |row| {
                 Ok((
                     ChatId::new(&row.get::<_, String>(0)?),
@@ -104,6 +107,7 @@ impl ChatStore {
                         push_name: row.get(2)?,
                         business_name: row.get(3)?,
                         verified: row.get(4)?,
+                        looked_up: row.get(5)?,
                     },
                 ))
             })?
@@ -162,7 +166,7 @@ impl ChatStore {
                 alias.execute(params![from.as_str(), to.as_str()])?;
             }
             let mut person =
-                tx.prepare_cached("INSERT OR REPLACE INTO people VALUES (?1, ?2, ?3, ?4, ?5)")?;
+                tx.prepare_cached("INSERT OR REPLACE INTO people VALUES (?1, ?2, ?3, ?4, ?5, ?6)")?;
             for id in &dirty.people {
                 if let Some(names) = book.person_named(id) {
                     person.execute(params![
@@ -171,6 +175,7 @@ impl ChatStore {
                         names.push_name,
                         names.business_name,
                         names.verified,
+                        names.looked_up,
                     ])?;
                 }
             }

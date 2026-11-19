@@ -126,6 +126,7 @@ mod tests {
             title: title.to_owned().into(),
             preview: None,
             preview_kind: None,
+            looked_up: false,
             sent_at: None,
             unread,
             marked_unread: false,

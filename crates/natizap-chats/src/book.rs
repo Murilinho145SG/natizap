@@ -114,6 +114,9 @@ pub(crate) struct Person {
     pub(crate) business_name: Option<String>,
     /// WhatsApp vouches for the business, which then shows a seal.
     pub(crate) verified: bool,
+    /// WhatsApp was already asked whether this is a business, so it is not
+    /// asked again.
+    pub(crate) looked_up: bool,
 }
 
 /// Snapshot of one chat from a history sync. History can arrive after live
@@ -157,6 +160,8 @@ pub(crate) enum ChatChange {
     /// A business account's verified name, and whether WhatsApp vouches for
     /// it with a seal, when the source says.
     BusinessName(ChatId, String, Option<bool>),
+    /// WhatsApp answered whether the chat is a business.
+    LookedUp(ChatId),
     /// Pinned at the given time, or unpinned.
     Pinned(ChatId, Option<i64>),
     /// Muted, or unmuted.
@@ -269,6 +274,7 @@ impl ChatBook {
                     person.verified = verified;
                 }
             }
+            ChatChange::LookedUp(id) => self.person(id).looked_up = true,
             ChatChange::Pinned(id, at) => self.update(&id, |chat| chat.pinned_at = at),
             ChatChange::Muted(id, mute) => self.update(&id, |chat| chat.mute = mute),
             ChatChange::Disappearing(id, seconds) => {
@@ -350,6 +356,15 @@ impl ChatBook {
             .chain(aliases.iter().copied())
             .filter_map(|address| self.people.get(address))
             .any(|person| person.business_name.is_some())
+    }
+
+    /// Whether WhatsApp was already asked whether `chat` is a business.
+    #[must_use]
+    pub(crate) fn looked_up(&self, chat: &Chat, aliases: &[&ChatId]) -> bool {
+        std::iter::once(&chat.id)
+            .chain(aliases.iter().copied())
+            .filter_map(|address| self.people.get(address))
+            .any(|person| person.looked_up)
     }
 
     /// Whether `chat` is a business WhatsApp vouches for.

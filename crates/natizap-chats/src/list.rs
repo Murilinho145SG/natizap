@@ -15,7 +15,7 @@ use crate::sync::{CHAT_EVENTS, changes};
 
 /// Time left between background business lookups, so they stay under
 /// the contacts service's rate limit.
-const BUSINESS_LOOKUP_GAP: Duration = Duration::from_secs(2);
+const BUSINESS_LOOKUP_GAP: Duration = Duration::from_secs(5);
 
 /// One line of the chat list, ready to render.
 #[derive(Debug, Clone)]
@@ -47,6 +47,8 @@ pub struct ChatRow {
     pub muted: bool,
     /// A business WhatsApp vouches for, shown with a seal.
     pub verified: bool,
+    /// WhatsApp was already asked whether it is a business.
+    pub(crate) looked_up: bool,
     /// Known to be a business, seal or not.
     pub(crate) business: bool,
     /// How long new messages last, when they disappear.
@@ -111,6 +113,7 @@ impl ChatRow {
             pinned: chat.pinned_at.is_some(),
             muted: chat.is_muted(now),
             verified: book.verified(chat, aliases),
+            looked_up: book.looked_up(chat, aliases),
             business: book.business(chat, aliases),
             disappearing: chat.disappearing.and_then(Disappearing::from_seconds),
         }
@@ -289,7 +292,7 @@ impl ChatList {
     /// Asks, one at a time, whether chats known only by their number are
     /// businesses, and whether businesses without a seal have one: chats
     /// from before natizap read business names from messages have neither.
-    /// Each chat is asked once per launch.
+    /// Each chat is asked once, ever; the answer is kept.
     fn name_businesses(&mut self, cx: &mut Context<Self>) {
         if self.asking {
             return;
@@ -300,6 +303,7 @@ impl ChatList {
                 .iter()
                 .any(|address| address.phone_number().as_deref() == Some(&*row.title));
             !row.id.is_group()
+                && !row.looked_up
                 && !self.asked.contains(&row.id)
                 && (unnamed || (row.business && !row.verified))
         });
@@ -318,17 +322,29 @@ impl ChatList {
         let asking = self.protocol.read(cx).profile(&phone, cx);
         self.asking = true;
         cx.spawn(async move |this, cx| {
-            let business = asking.await.ok().and_then(|profile| profile.business);
+            let answer = asking.await;
             // WhatsApp's contacts service refuses a burst of lookups
-            // (`rate-overlimit`), and then refuses the profile the user
-            // opens too: these background ones leave room between them.
+            // (`rate-overlimit`), and then refuses what the user opens too:
+            // these background ones leave room between them.
             cx.background_executor().timer(BUSINESS_LOOKUP_GAP).await;
-            let named = business.and_then(|business| Some((business.name?, business.verified)));
             let _ = this.update(cx, |list, cx| {
+                let profile = match answer {
+                    Ok(profile) => profile,
+                    // Refused, most likely for asking too often: no more
+                    // lookups this run, and this chat is asked next run.
+                    Err(error) => {
+                        tracing::debug!(%error, "business lookups paused until next launch");
+                        return;
+                    }
+                };
+                let named = profile
+                    .business
+                    .and_then(|business| Some((business.name?, business.verified)));
                 if let Some((name, verified)) = named {
-                    let change = ChatChange::BusinessName(id, name, Some(verified));
+                    let change = ChatChange::BusinessName(id.clone(), name, Some(verified));
                     list.send(Input::Change(change));
                 }
+                list.send(Input::Change(ChatChange::LookedUp(id)));
                 list.asking = false;
                 list.name_businesses(cx);
             });
