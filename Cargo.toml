@@ -78,8 +78,10 @@ ksni = { version = "0.3", default-features = false, features = ["tokio"] }
 # Must match the version GPUI uses for RenderImage frames.
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 phonenumber = "0.3"
-# Must share libsqlite3-sys with whatsapp-rust's SQLite store.
-rusqlite = "0.39"
+# Must share libsqlite3-sys with whatsapp-rust's SQLite store, through
+# diesel. Bundled: SQLite is built in rather than looked for on the system,
+# where Windows has none to link and the Linux packages depend on none.
+rusqlite = { version = "0.39", features = ["bundled"] }
 # Reads which natizap release is the newest.
 semver = "1"
 serde = { version = "1", features = ["derive"] }
