@@ -1,7 +1,7 @@
 //! Downloading attachments, opening, saving and copying them, and taking
 //! stills of videos.
 
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 
 use gpui::{AppContext as _, ClipboardItem, Context, Image, ImageFormat, Task};
@@ -145,6 +145,27 @@ impl MessageLog {
         if then == Then::Keep && fetch.media.link_expired() {
             return;
         }
+        let background = then == Then::Keep;
+        if !background {
+            // Asked for now: it no longer waits its turn.
+            self.background
+                .waiting
+                .retain(|waiting| waiting.message_id != fetch.message_id);
+        }
+        if background && !self.fetching.contains_key(&fetch.message_id) {
+            if self.background.running >= BACKGROUND_AT_ONCE {
+                if !self
+                    .background
+                    .waiting
+                    .iter()
+                    .any(|waiting| waiting.message_id == fetch.message_id)
+                {
+                    self.background.waiting.push_back(fetch);
+                }
+                return;
+            }
+            self.background.running += 1;
+        }
         if let Some(waiting) = self.fetching.get_mut(&fetch.message_id) {
             if then != Then::Keep {
                 waiting.push(then);
@@ -198,6 +219,12 @@ impl MessageLog {
                             waiting.clear();
                         }
                         log.failed.fetches.insert(message_id);
+                    }
+                }
+                if background {
+                    log.background.running = log.background.running.saturating_sub(1);
+                    if let Some(next) = log.background.waiting.pop_front() {
+                        log.fetch(next, Then::Keep, cx);
                     }
                 }
             });
@@ -268,6 +295,19 @@ impl MessageLog {
         self.posters.retain(|id| !failed.posters.contains(id));
         self.send_input(Input::Refresh);
     }
+}
+
+/// How many attachments download at once without being asked for. Each
+/// failed download makes the client ask WhatsApp for its media servers
+/// again; a chat's worth of old attachments at once runs into WhatsApp's
+/// rate limit, which then refuses everything for a while.
+const BACKGROUND_AT_ONCE: usize = 2;
+
+/// Attachments downloading without being asked for, and those waiting.
+#[derive(Debug, Default)]
+pub(super) struct Background {
+    running: usize,
+    waiting: VecDeque<Fetch>,
 }
 
 /// Downloads and stills that failed, by message id.

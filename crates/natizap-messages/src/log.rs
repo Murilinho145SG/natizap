@@ -28,7 +28,7 @@ mod uploads;
 mod worker;
 
 pub use backlog::StoredStatus;
-use downloads::{Failed, Then};
+use downloads::{Background, Failed, Then};
 
 use worker::sync;
 
@@ -129,6 +129,8 @@ pub struct MessageLog {
     /// Downloads and stills that failed, by message id: kept out of the
     /// above until the connection comes back, then tried again.
     failed: Failed,
+    /// Attachments downloaded without being asked for, a few at a time.
+    background: Background,
     pinned: Option<Pinned>,
     group: Option<GroupInfo>,
     /// What people are called, by address.
@@ -234,6 +236,7 @@ impl MessageLog {
             fetching: HashMap::new(),
             posters: HashSet::new(),
             failed: Failed::default(),
+            background: Background::default(),
             pinned: None,
             group: None,
             names: Arc::default(),
