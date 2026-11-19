@@ -15,9 +15,11 @@ impl ConversationView {
     /// Hears the list scroll, to show the way back to the latest messages
     /// only while it is away from them.
     pub(super) fn watch_scroll(messages: &ListState, cx: &mut Context<Self>) {
-        let (list, view) = (messages.clone(), cx.weak_entity());
-        messages.set_scroll_handler(move |_, _, cx| {
-            let away = list.is_scrolled_to_end() == Some(false);
+        let view = cx.weak_entity();
+        // The list is still busy scrolling when it calls this: what it says
+        // in the event is all that may be read, not the list itself.
+        messages.set_scroll_handler(move |event, _, cx| {
+            let away = event.visible_range.end < event.count;
             let _ = view.update(cx, |view, cx| {
                 if view.away_from_end != away {
                     view.away_from_end = away;
