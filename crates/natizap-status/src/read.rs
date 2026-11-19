@@ -39,9 +39,9 @@ pub(crate) fn changes(event: &Event) -> Vec<Change> {
                 .iter()
                 .map(|id| {
                     Change::Viewed(Viewer {
-                        id: id.clone(),
+                        id: id.to_string(),
                         viewer: viewer.clone(),
-                        seen_at: receipt.timestamp.timestamp(),
+                        seen_at: receipt.timestamp.as_secs(),
                     })
                 })
                 .collect()
@@ -56,12 +56,12 @@ fn live(inbound: &InboundMessage) -> Option<Change> {
         return None;
     }
     let poster = ChatId::new(&source.sender.to_non_ad().to_string());
-    let author = Some(inbound.info.push_name.clone()).filter(|name| !name.is_empty());
+    let author = Some(inbound.info.push_name.to_string()).filter(|name| !name.is_empty());
     change(
         &inbound.message,
         poster,
-        inbound.info.id.clone(),
-        inbound.info.timestamp.timestamp(),
+        inbound.info.id.to_string(),
+        inbound.info.timestamp.as_secs(),
         author,
         source.is_from_me,
         source.is_from_me,

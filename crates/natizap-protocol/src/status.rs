@@ -33,7 +33,7 @@ impl Protocol {
                     StatusSendOptions::default(),
                 )
                 .await
-                .map(|sent| sent.message_id)
+                .map(|sent| sent.message_id.into_string())
                 .map_err(|error| ActionError::Rejected(error.to_string()))
         })
     }
@@ -58,7 +58,7 @@ impl Protocol {
                 .status()
                 .send_raw(message, &audience, StatusSendOptions::default())
                 .await
-                .map(|sent| sent.message_id)
+                .map(|sent| sent.message_id.into_string())
                 .map_err(|error| ActionError::Rejected(error.to_string()))
         })
     }

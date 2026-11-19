@@ -81,7 +81,8 @@ pub(crate) fn header(message: &wa::Message) -> Option<wa::Message> {
             Header::ImageMessage(m) => shown.image_message = (**m).clone().into(),
             Header::VideoMessage(m) => shown.video_message = (**m).clone().into(),
             Header::LocationMessage(m) => shown.location_message = (**m).clone().into(),
-            Header::Text(_) => return None,
+            // A text header, or a kind added later: nothing to show.
+            _ => return None,
         }
         return Some(shown);
     }
@@ -106,14 +107,16 @@ pub(crate) fn header(message: &wa::Message) -> Option<wa::Message> {
             interactive(message, &mut shown)?;
             return Some(shown);
         }
-        Some(Format::FourRowTemplate(_)) | None => template.hydrated_template.as_option()?,
+        // A four-row template or none: the hydrated one holds the header.
+        _ => template.hydrated_template.as_option()?,
     };
     match hydrated.title.as_ref()? {
         Title::DocumentMessage(m) => shown.document_message = (**m).clone().into(),
         Title::ImageMessage(m) => shown.image_message = (**m).clone().into(),
         Title::VideoMessage(m) => shown.video_message = (**m).clone().into(),
         Title::LocationMessage(m) => shown.location_message = (**m).clone().into(),
-        Title::HydratedTitleText(_) => return None,
+        // A text title, or a kind added later: nothing to show.
+        _ => return None,
     }
     Some(shown)
 }
@@ -126,10 +129,10 @@ pub(crate) fn reply_text(message: &wa::Message) -> Option<String> {
         .buttons_response_message
         .as_option()
         .and_then(|reply| {
-            reply
-                .response
-                .as_ref()
-                .map(|Response::SelectedDisplayText(text)| text.clone())
+            reply.response.as_ref().and_then(|response| match response {
+                Response::SelectedDisplayText(text) => Some(text.clone()),
+                _ => None,
+            })
         })
         .or_else(|| {
             message
@@ -227,9 +230,8 @@ fn template_message(message: &wa::message::TemplateMessage) -> Option<(Option<St
     match &message.format {
         Some(Format::HydratedFourRowTemplate(template)) => Some(hydrated(template)),
         Some(Format::InteractiveMessageTemplate(interactive)) => interactive_message(interactive),
-        Some(Format::FourRowTemplate(_)) | None => {
-            message.hydrated_template.as_option().map(hydrated)
-        }
+        // A four-row template or none: the hydrated one holds the buttons.
+        _ => message.hydrated_template.as_option().map(hydrated),
     }
 }
 
@@ -265,6 +267,7 @@ fn hydrated(
                     call.display_text.clone()?,
                     ButtonAction::Call(call.phone_number.clone()?),
                 ),
+                _ => return None,
             };
             Some(Button { label, action })
         })

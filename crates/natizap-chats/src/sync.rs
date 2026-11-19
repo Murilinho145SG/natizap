@@ -17,7 +17,6 @@ pub(crate) const CHAT_EVENTS: &[EventKind] = &[
     EventKind::ClearChatUpdate,
     EventKind::DeleteChatUpdate,
     EventKind::ContactUpdate,
-    EventKind::PushNameUpdate,
     EventKind::LoggedOut,
 ];
 
@@ -35,7 +34,7 @@ pub(crate) fn changes(event: &Event) -> Vec<ChatChange> {
                 .action
                 .pinned
                 .unwrap_or(false)
-                .then(|| pin.timestamp.timestamp());
+                .then(|| pin.timestamp.as_secs());
             vec![ChatChange::Pinned(id(&pin.jid), at)]
         }
         Event::MuteUpdate(mute) => {
@@ -70,12 +69,6 @@ pub(crate) fn changes(event: &Event) -> Vec<ChatChange> {
                 .map(|name| ChatChange::ContactName(id(&contact.jid), name))
                 .into_iter()
                 .collect()
-        }
-        Event::PushNameUpdate(update) if !update.new_push_name.is_empty() => {
-            vec![ChatChange::PushName(
-                id(&update.jid),
-                update.new_push_name.clone(),
-            )]
         }
         _ => Vec::new(),
     }
@@ -134,21 +127,21 @@ fn message_changes(inbound: &InboundMessage) -> Vec<ChatChange> {
         if !source.is_from_me && !inbound.info.push_name.is_empty() {
             changes.push(ChatChange::PushName(
                 chat.clone(),
-                inbound.info.push_name.clone(),
+                inbound.info.push_name.to_string(),
             ));
         }
     }
 
     if let Some((kind, text)) = Content::of(&inbound.message).map(|content| preview_of(&content)) {
         let author = (source.is_group && !source.is_from_me)
-            .then(|| inbound.info.push_name.clone())
+            .then(|| inbound.info.push_name.to_string())
             .filter(|name| !name.is_empty());
         changes.push(ChatChange::Message(
             chat,
             Preview {
                 kind,
                 text,
-                sent_at: inbound.info.timestamp.timestamp(),
+                sent_at: inbound.info.timestamp.as_secs(),
                 from_me: source.is_from_me,
                 author,
             },

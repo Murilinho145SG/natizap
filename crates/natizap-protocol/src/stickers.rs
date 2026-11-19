@@ -16,6 +16,7 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use whatsapp_rust::Client;
 use whatsapp_rust::NodeBuilder;
 use whatsapp_rust::buffa::Message as _;
+use whatsapp_rust::download::DownloadLimits;
 use whatsapp_rust::jid_utils::server_jid;
 use whatsapp_rust::request::{InfoQuery, InfoQueryType};
 use whatsapp_rust::wacore::appstate::hash::HashState;
@@ -138,22 +139,24 @@ pub(crate) async fn set_favorite(
     favorite: bool,
 ) -> Result<(), ActionError> {
     let media = &sticker.media;
-    let value = wa::SyncActionValue {
-        sticker_action: wa::sync_action_value::StickerAction {
-            file_enc_sha256: Some(media.file_enc_sha256.clone()),
-            media_key: Some(media.media_key.clone()),
-            mimetype: media.mime.clone(),
-            height: media.height,
-            width: media.width,
-            direct_path: Some(media.direct_path.clone()),
-            file_length: media.size,
-            is_favorite: Some(favorite),
-            is_lottie: Some(sticker.lottie),
-            ..Default::default()
+    let value = {
+        let mut proto = wa::SyncActionValue::default();
+        proto.sticker_action = {
+            let mut proto = wa::sync_action_value::StickerAction::default();
+            proto.file_enc_sha256 = Some(media.file_enc_sha256.clone());
+            proto.media_key = Some(media.media_key.clone());
+            proto.mimetype.clone_from(&media.mime);
+            proto.height = media.height;
+            proto.width = media.width;
+            proto.direct_path = Some(media.direct_path.clone());
+            proto.file_length = media.size;
+            proto.is_favorite = Some(favorite);
+            proto.is_lottie = Some(sticker.lottie);
+            proto
         }
-        .into(),
-        timestamp: Some(now_ms()),
-        ..Default::default()
+        .into();
+        proto.timestamp = Some(now_ms());
+        proto
     };
     client
         .send_app_state_action(&schemas::FAVORITE_STICKER, &[&sticker.hash], &value)
@@ -175,7 +178,7 @@ pub(crate) async fn send(
             .send_message(to, message)
             .await
             .map(|sent| SentMedia {
-                id: sent.message_id,
+                id: sent.message_id.into_string(),
                 media: sticker.media,
             })
             .map_err(|error| ActionError::Rejected(error.to_string()));
@@ -245,7 +248,7 @@ async fn inline_blobs(client: &Client, list: &mut PatchList) -> Result<(), Actio
     let rejected = |error: &dyn std::fmt::Display| ActionError::Rejected(error.to_string());
     if let Some(blob) = list.snapshot_ref.take() {
         let bytes = client
-            .download(&blob)
+            .download(&blob, DownloadLimits::default())
             .await
             .map_err(|error| rejected(&error))?;
         list.snapshot =
@@ -254,7 +257,7 @@ async fn inline_blobs(client: &Client, list: &mut PatchList) -> Result<(), Actio
     for patch in &mut list.patches {
         if let Some(blob) = patch.external_mutations.as_option().cloned() {
             let bytes = client
-                .download(&blob)
+                .download(&blob, DownloadLimits::default())
                 .await
                 .map_err(|error| rejected(&error))?;
             let external =
@@ -388,17 +391,19 @@ mod tests {
 
     fn mark(hash: &str, favorite: bool, operation: wa::syncd_mutation::SyncdOperation) -> Mutation {
         Mutation {
-            action_value: Some(wa::SyncActionValue {
-                sticker_action: wa::sync_action_value::StickerAction {
-                    direct_path: Some(format!("/v/{hash}")),
-                    media_key: Some(vec![1; 32]),
-                    file_enc_sha256: Some(vec![2; 32]),
-                    mimetype: Some("image/webp".into()),
-                    is_favorite: Some(favorite),
-                    ..Default::default()
+            action_value: Some({
+                let mut proto = wa::SyncActionValue::default();
+                proto.sticker_action = {
+                    let mut proto = wa::sync_action_value::StickerAction::default();
+                    proto.direct_path = Some(format!("/v/{hash}"));
+                    proto.media_key = Some(vec![1; 32]);
+                    proto.file_enc_sha256 = Some(vec![2; 32]);
+                    proto.mimetype = Some("image/webp".into());
+                    proto.is_favorite = Some(favorite);
+                    proto
                 }
-                .into(),
-                ..Default::default()
+                .into();
+                proto
             }),
             index: vec!["favoriteSticker".into(), hash.into()],
             operation,
@@ -466,16 +471,18 @@ mod tests {
     /// sticker record is encrypted with `key_id`'s key.
     fn encrypted_page(key_id: &[u8], key_data: &[u8]) -> PatchList {
         let keys = expand_app_state_keys(key_data);
-        let value = wa::SyncActionValue {
-            sticker_action: wa::sync_action_value::StickerAction {
-                direct_path: Some("/v/sticker".into()),
-                media_key: Some(vec![1; 32]),
-                file_enc_sha256: Some(vec![2; 32]),
-                is_favorite: Some(true),
-                ..Default::default()
+        let value = {
+            let mut proto = wa::SyncActionValue::default();
+            proto.sticker_action = {
+                let mut proto = wa::sync_action_value::StickerAction::default();
+                proto.direct_path = Some("/v/sticker".into());
+                proto.media_key = Some(vec![1; 32]);
+                proto.file_enc_sha256 = Some(vec![2; 32]);
+                proto.is_favorite = Some(true);
+                proto
             }
-            .into(),
-            ..Default::default()
+            .into();
+            proto
         };
         let index = format!(r#"["favoriteSticker","{}"]"#, hash(9));
         let (mutation, _) = encode_record(
@@ -491,14 +498,22 @@ mod tests {
             name: WAPatchName::RegularLow,
             has_more_patches: false,
             patches: Vec::new(),
-            snapshot: Some(wa::SyncdSnapshot {
-                version: wa::SyncdVersion { version: Some(4) }.into(),
-                records: mutation.record.into_option().into_iter().collect(),
-                key_id: wa::KeyId {
-                    id: Some(key_id.to_vec()),
+            snapshot: Some({
+                let mut proto = wa::SyncdSnapshot::default();
+                proto.version = {
+                    let mut version = wa::SyncdVersion::default();
+                    version.version = Some(4);
+                    version
                 }
-                .into(),
-                ..Default::default()
+                .into();
+                proto.records = mutation.record.into_option().into_iter().collect();
+                proto.key_id = {
+                    let mut key = wa::KeyId::default();
+                    key.id = Some(key_id.to_vec());
+                    key
+                }
+                .into();
+                proto
             }),
             snapshot_ref: None,
             error: None,

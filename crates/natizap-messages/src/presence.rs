@@ -3,6 +3,7 @@
 
 use chrono::{DateTime, Datelike as _, Local, TimeZone as _};
 use natizap_protocol::whatsapp_rust::prelude::Event;
+use natizap_protocol::whatsapp_rust::types::presence::PresenceStatus;
 use natizap_protocol::{Activity, ChatId};
 
 /// Whether the person in a one-to-one chat is here.
@@ -22,9 +23,9 @@ impl Presence {
         if !addresses.contains(&ChatId::new(&update.from.to_non_ad().to_string())) {
             return false;
         }
-        self.online = !update.unavailable;
+        self.online = update.status != PresenceStatus::Unavailable;
         if let Some(last_seen) = update.last_seen {
-            self.last_seen = Some(last_seen.timestamp());
+            self.last_seen = Some(last_seen.as_secs());
         }
         true
     }

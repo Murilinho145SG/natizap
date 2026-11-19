@@ -3,13 +3,13 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use whatsapp_rust::download::DownloadParams;
+use whatsapp_rust::download::{DownloadLimits, DownloadParams};
 use whatsapp_rust::features::{MediaRetryResult, MediaReuploadRequest};
 use whatsapp_rust::prelude::{Client, wa};
 use whatsapp_rust::wacore::download::{DownloadWriter, MediaType};
 use whatsapp_rust::wacore_binary::JidExt as _;
 
-use crate::actions::jid;
+use crate::actions::{jid, message_ref};
 use crate::{ActionError, ChatId, ContentKind};
 
 /// A photo, video, voice note, audio file, document or sticker attached to a
@@ -172,7 +172,7 @@ impl Media {
 }
 
 /// What WhatsApp needs to fetch and decrypt `media`.
-fn params(kind: ContentKind, media: Media) -> DownloadParams {
+fn params(kind: ContentKind, media: Media) -> Result<DownloadParams, ActionError> {
     let media_type = match kind {
         ContentKind::Photo => MediaType::Image,
         ContentKind::Video => MediaType::Video,
@@ -188,6 +188,7 @@ fn params(kind: ContentKind, media: Media) -> DownloadParams {
         media.size.unwrap_or_default(),
         media_type,
     )
+    .map_err(|error| ActionError::Rejected(error.to_string()))
 }
 
 pub(crate) async fn download(
@@ -196,7 +197,7 @@ pub(crate) async fn download(
     media: Media,
 ) -> Result<Vec<u8>, ActionError> {
     client
-        .download(&params(kind, media))
+        .download(&params(kind, media)?, DownloadLimits::default())
         .await
         .map_err(|error| ActionError::refused(&error))
 }
@@ -225,7 +226,7 @@ pub(crate) async fn download_tracked(
         received,
     };
     client
-        .download_to_writer(&params(kind, media), writer)
+        .download_to_writer(&params(kind, media)?, writer, DownloadLimits::default())
         .await
         .map(|writer| writer.bytes.into_inner())
         .map_err(|error| ActionError::refused(&error))
@@ -287,17 +288,23 @@ pub(crate) async fn recover(
     origin: MediaOrigin,
 ) -> Result<(Vec<u8>, Media), ActionError> {
     let chat = jid(&origin.chat)?;
-    // Only groups and broadcasts name who sent a message.
+    // Only groups, broadcasts and statuses name who sent a message.
     let sender = match &origin.sender {
-        Some(sender) if chat.is_group() || chat.is_broadcast_list() => Some(jid(sender)?),
+        Some(sender)
+            if chat.is_group() || chat.is_broadcast_list() || chat.is_status_broadcast() =>
+        {
+            Some(jid(sender)?)
+        }
         _ => None,
     };
+    let media_key = media
+        .media_key
+        .as_slice()
+        .try_into()
+        .map_err(|_| ActionError::Rejected("the file's key is malformed".to_owned()))?;
     let request = MediaReuploadRequest {
-        msg_id: &origin.message_id,
-        chat_jid: &chat,
-        media_key: &media.media_key,
-        is_from_me: origin.from_me,
-        participant: sender.as_ref(),
+        target: message_ref(&chat, &origin.message_id, sender.as_ref(), origin.from_me)?,
+        media_key,
     };
     let answer = client
         .media_reupload()

@@ -611,7 +611,7 @@ async fn run(
     if keys == Keys::Discard {
         discard_store(&store_path).await;
     }
-    let store = SqliteStore::new(&store_path.to_string_lossy())
+    let store = SqliteStore::open(&store_path.to_string_lossy())
         .await
         .map_err(|source| StartError::Store {
             path: store_path,

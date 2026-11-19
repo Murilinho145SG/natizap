@@ -44,10 +44,16 @@ impl Watch {
         tell: async_channel::Sender<CallProgress>,
     ) {
         let ending = handle.clone();
+        let events = handle.take_events();
+        if events.is_none() {
+            // The watch is the one reader of a call's media events; were
+            // they taken already, only its signals and its end are heard.
+            tracing::warn!(call = %self.id, "call media events already taken");
+        }
         let heard = futures::stream::select(
             futures::stream::select(
                 signals.map(Heard::Signal),
-                handle.events().map(Heard::Media),
+                futures::stream::iter(events).flatten().map(Heard::Media),
             ),
             futures::stream::once(async move {
                 ending.wait_ended().await;
@@ -131,7 +137,14 @@ impl Watch {
                     CallEvent::AudioFormatMismatch { .. } => {
                         self.fail("the other end's sound is in a format natizap lacks".to_owned());
                     }
-                    CallEvent::VideoStateChanged {
+                    CallEvent::MediaSetupFailed(why) => {
+                        self.fail(format!("the call's media could not start: {why}"));
+                    }
+                    // The call's own sending dropped pictures, e.g. after the
+                    // relay reconnected, and the other end waits for a
+                    // keyframe to go on.
+                    CallEvent::VideoKeyframeNeeded => return Some(CallProgress::KeyframeWanted),
+                    CallEvent::PeerVideoStateChanged {
                         state,
                         upgrade_token,
                         ..
@@ -222,7 +235,6 @@ fn standard_opus(packet: &[u8]) -> Option<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use whatsapp_rust::Jid;
-    use whatsapp_rust::chrono::Utc;
     use whatsapp_rust::voip::packetize_opus_for_mlow;
     use whatsapp_rust::wacore::types::call::IncomingCall;
 
@@ -233,11 +245,14 @@ mod tests {
     }
 
     fn signal(action: CallAction) -> Heard {
-        Heard::Signal(Arc::new(Event::IncomingCall(IncomingCall::new_for_test(
-            peer(),
-            "stanza".into(),
-            Utc::now(),
-            action,
+        Heard::Signal(Arc::new(Event::IncomingCall(Box::new(
+            IncomingCall::builder()
+                .from(peer())
+                .stanza_id("stanza".into())
+                .timestamp(whatsapp_rust::time::now_utc())
+                .offline(false)
+                .action(action)
+                .build(),
         ))))
     }
 
@@ -258,17 +273,20 @@ mod tests {
     }
 
     fn terminate_event() -> Arc<Event> {
-        Arc::new(Event::IncomingCall(IncomingCall::new_for_test(
-            peer(),
-            "stanza".into(),
-            Utc::now(),
-            CallAction::Terminate {
-                call_id: "CALL1".into(),
-                call_creator: peer(),
-                reason: None,
-                duration: None,
-                audio_duration: None,
-            },
+        Arc::new(Event::IncomingCall(Box::new(
+            IncomingCall::builder()
+                .from(peer())
+                .stanza_id("stanza".into())
+                .timestamp(whatsapp_rust::time::now_utc())
+                .offline(false)
+                .action(CallAction::Terminate {
+                    call_id: "CALL1".into(),
+                    call_creator: peer(),
+                    reason: None,
+                    duration: None,
+                    audio_duration: None,
+                })
+                .build(),
         )))
     }
 
@@ -304,7 +322,7 @@ mod tests {
 
     #[test]
     fn a_keyframe_is_wanted_when_the_other_end_lost_pictures() {
-        use whatsapp_rust::wacore::voip::rtcp::RtcpFeedback;
+        use whatsapp_rust::voip_control::MediaRtcpFeedback;
         let rtcp = |packet_type, fmt| {
             Heard::Media(CallEvent::RtcpReceived {
                 packet_types: vec![packet_type],
@@ -313,13 +331,15 @@ mod tests {
                 reports_audio: false,
                 reports_video: true,
                 report_blocks: Vec::new(),
-                feedback: vec![RtcpFeedback {
-                    packet_type,
-                    fmt,
-                    sender_ssrc: 1,
-                    media_ssrc: 2,
-                    fci: Vec::new(),
-                }],
+                feedback: vec![
+                    MediaRtcpFeedback::builder()
+                        .packet_type(packet_type)
+                        .fmt(fmt)
+                        .sender_ssrc(1)
+                        .media_ssrc(2)
+                        .fci(Vec::new())
+                        .build(),
+                ],
             })
         };
         let mut watch = Watch::new("CALL1", true);
@@ -336,9 +356,20 @@ mod tests {
     }
 
     #[test]
+    fn a_keyframe_is_wanted_after_the_call_dropped_pictures() {
+        let mut watch = Watch::new("CALL1", true);
+        assert_eq!(
+            watch.hear(&Heard::Media(CallEvent::VideoKeyframeNeeded)),
+            Some(CallProgress::KeyframeWanted)
+        );
+    }
+
+    #[test]
     fn the_other_ends_camera_going_off_is_told() {
         let mut watch = Watch::new("CALL1", true);
-        let stopped = Heard::Media(CallEvent::VideoStateChanged {
+        let stopped = Heard::Media(CallEvent::PeerVideoStateChanged {
+            source: peer(),
+            call_creator: peer(),
             state: VideoState::Stopped,
             orientation: None,
             upgrade_token: None,

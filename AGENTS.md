@@ -215,9 +215,12 @@ Keep this table current when a crate is added, renamed or removed.
 - GPUI comes from Zed's Git repository pinned to one commit. The root
   `[patch.crates-io]` mirrors the patches Zed applies at that commit; update
   both together when bumping the pin.
-- `whatsapp-rust` is used without its `simd` feature, which needs nightly.
-- `patches/` holds copies of published crates carrying a fix upstream has
-  not released, wired through `[patch.crates-io]` and excluded from the
+- `whatsapp-rust` comes from upstream's Git repository pinned to one commit
+  of main: the 0.7.0 release drops a phone's voice in video calls. Move to
+  a release once one carries that fix. It is used without its `signal`
+  feature: the GUI owns shutdown.
+- `patches/` holds copies of upstream crates carrying a fix upstream has
+  not made, wired through a `[patch]` section and excluded from the
   workspace; `patches/README.md` says what each changes and why. Keep the
   change minimal and marked `natizap:`, and drop the copy once a release
   carries the fix.

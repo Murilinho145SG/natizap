@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use gpui::{App, AppContext as _, Task};
 use gpui_tokio::Tokio;
 use whatsapp_rust::prelude::{Client, MessageBuilderExt as _, MessageExt as _, MessageField, wa};
-use whatsapp_rust::{Jid, PinDuration, RevokeType};
+use whatsapp_rust::{Jid, MessageId, MessageRef, PinDuration, RevokeType};
 
 use crate::ChatId;
 use crate::content::{Card, Extra};
@@ -42,13 +42,21 @@ impl Connection {
         F: Future<Output = Result<R, ActionError>> + Send + 'static,
         R: Send + 'static,
     {
-        let client = match self.client() {
-            Ok(client) => client,
-            Err(error) => return Task::ready(Err(error)),
-        };
-        let task = Tokio::spawn(cx, action(client));
-        cx.background_spawn(async move { task.await.map_err(|_| ActionError::Interrupted)? })
+        match self.client() {
+            Ok(client) => on_tokio(cx, action(client)),
+            Err(error) => Task::ready(Err(error)),
+        }
     }
+}
+
+/// Runs `work` on Tokio, where the client's own work runs.
+pub(crate) fn on_tokio<R, F>(cx: &App, work: F) -> Task<Result<R, ActionError>>
+where
+    F: Future<Output = Result<R, ActionError>> + Send + 'static,
+    R: Send + 'static,
+{
+    let task = Tokio::spawn(cx, work);
+    cx.background_spawn(async move { task.await.map_err(|_| ActionError::Interrupted)? })
 }
 
 /// This account's own addresses: its phone number and its LID.
@@ -166,7 +174,7 @@ pub(crate) async fn send_text(
         .await
         .map_err(|error| ActionError::Rejected(error.to_string()))?;
     Ok(Sent {
-        id: sent.message_id,
+        id: sent.message_id.into_string(),
         secret: None,
     })
 }
@@ -193,36 +201,35 @@ pub(crate) async fn send_extra(
             } else {
                 1
             };
-            let (sent, secret) = client
+            let (sent, _, secret) = client
                 .polls()
                 .create(to, &poll.question, &poll.options, selectable)
                 .await
-                .map_err(|error| rejected(&error))?;
+                .map_err(|error| rejected(&error))?
+                .into_parts();
             return Ok(Sent {
-                id: sent.message_id,
-                secret: Some(secret),
+                id: sent.message_id.into_string(),
+                secret: Some(secret.into_bytes().to_vec()),
             });
         }
         Extra::Cards(cards) => {
-            let contact = |card: &Card| wa::message::ContactMessage {
-                display_name: Some(card.name.clone()),
-                vcard: Some(vcard(card)),
-                ..Default::default()
+            let contact = |card: &Card| {
+                let mut contact = wa::message::ContactMessage::default();
+                contact.display_name = Some(card.name.clone());
+                contact.vcard = Some(vcard(card));
+                contact
             };
+            let mut message = wa::Message::default();
             match cards.as_slice() {
-                [card] => wa::Message {
-                    contact_message: MessageField::some(contact(card)),
-                    ..Default::default()
-                },
-                cards => wa::Message {
-                    contacts_array_message: MessageField::some(wa::message::ContactsArrayMessage {
-                        display_name: Some(format!("{} contacts", cards.len())),
-                        contacts: cards.iter().map(contact).collect(),
-                        ..Default::default()
-                    }),
-                    ..Default::default()
-                },
+                [card] => message.contact_message = MessageField::some(contact(card)),
+                cards => {
+                    let mut array = wa::message::ContactsArrayMessage::default();
+                    array.display_name = Some(format!("{} contacts", cards.len()));
+                    array.contacts = cards.iter().map(contact).collect();
+                    message.contacts_array_message = MessageField::some(array);
+                }
             }
+            message
         }
     };
     let sent = client
@@ -230,7 +237,7 @@ pub(crate) async fn send_extra(
         .await
         .map_err(|error| rejected(&error))?;
     Ok(Sent {
-        id: sent.message_id,
+        id: sent.message_id.into_string(),
         secret: None,
     })
 }
@@ -252,8 +259,21 @@ pub(crate) async fn delete_for_everyone(
     message_id: String,
 ) -> Result<(), ActionError> {
     client
-        .revoke_message(chat, message_id, RevokeType::Sender)
+        .revoke_message_raw(chat, message_id, RevokeType::Sender)
         .await
+        .map(drop)
+        .map_err(|error| ActionError::Rejected(error.to_string()))
+}
+
+/// The client's handle on a message: its chat, id and author.
+pub(crate) fn message_ref<'a>(
+    chat: &'a Jid,
+    message_id: &str,
+    sender: Option<&'a Jid>,
+    from_me: bool,
+) -> Result<MessageRef<'a>, ActionError> {
+    MessageId::new(message_id)
+        .and_then(|id| MessageRef::new(chat, id, sender, from_me))
         .map_err(|error| ActionError::Rejected(error.to_string()))
 }
 
@@ -267,9 +287,10 @@ pub(crate) async fn delete_for_me(
     sender: Option<Jid>,
     from_me: bool,
 ) -> Result<(), ActionError> {
+    let target = message_ref(&chat, &message_id, sender.as_ref(), from_me)?;
     client
         .chat_actions()
-        .delete_message_for_me(&chat, sender.as_ref(), &message_id, from_me, true, None)
+        .delete_message_for_me(&target, true, None)
         .await
         .map_err(|error| ActionError::Rejected(error.to_string()))
 }
@@ -285,15 +306,12 @@ pub(crate) async fn star(
     from_me: bool,
     starred: bool,
 ) -> Result<(), ActionError> {
+    let target = message_ref(&chat, &message_id, sender.as_ref(), from_me)?;
     let actions = client.chat_actions();
     let result = if starred {
-        actions
-            .star_message(&chat, sender.as_ref(), &message_id, from_me)
-            .await
+        actions.star_message(&target).await
     } else {
-        actions
-            .unstar_message(&chat, sender.as_ref(), &message_id, from_me)
-            .await
+        actions.unstar_message(&target).await
     };
     result.map_err(|error| ActionError::Rejected(error.to_string()))
 }
@@ -426,12 +444,11 @@ pub(crate) async fn pin(
     from_me: bool,
     pin: Option<PinFor>,
 ) -> Result<(), ActionError> {
-    let key = wa::MessageKey {
-        remote_jid: Some(chat.to_string()),
-        from_me: Some(from_me),
-        id: Some(message_id),
-        participant: sender.map(|sender| sender.to_string()),
-    };
+    let mut key = wa::MessageKey::default();
+    key.remote_jid = Some(chat.to_string());
+    key.from_me = Some(from_me);
+    key.id = Some(message_id);
+    key.participant = sender.map(|sender| sender.to_string());
     let result = match pin {
         Some(pin) => {
             let duration = match pin {
@@ -439,11 +456,13 @@ pub(crate) async fn pin(
                 PinFor::Week => PinDuration::Days7,
                 PinFor::Month => PinDuration::Days30,
             };
-            client.pin_message(chat, key, duration).await
+            client.pin_message_raw(chat, key, duration).await
         }
-        None => client.unpin_message(chat, key).await,
+        None => client.unpin_message_raw(chat, key).await,
     };
-    result.map_err(|error| ActionError::Rejected(error.to_string()))
+    result
+        .map(drop)
+        .map_err(|error| ActionError::Rejected(error.to_string()))
 }
 
 /// What makes a message a reply to `reply`.
@@ -452,16 +471,15 @@ pub(crate) fn reply_context(client: &Client, reply: Reply) -> Result<wa::Context
         Some(sender) => Some(jid(sender)?),
         None => client.pn(),
     };
-    Ok(wa::ContextInfo {
-        stanza_id: Some(reply.id),
-        participant: participant.map(|jid| jid.to_string()),
-        quoted_message: MessageField::some(wa::Message::text(reply.text)),
-        // A status is quoted from the status chat, not the reply's own.
-        remote_jid: reply
-            .from_status
-            .then(|| Jid::status_broadcast().to_string()),
-        ..Default::default()
-    })
+    let mut context = wa::ContextInfo::default();
+    context.stanza_id = Some(reply.id);
+    context.participant = participant.map(|jid| jid.to_string());
+    context.quoted_message = MessageField::some(wa::Message::text(reply.text));
+    // A status is quoted from the status chat, not the reply's own.
+    context.remote_jid = reply
+        .from_status
+        .then(|| Jid::status_broadcast().to_string());
+    Ok(context)
 }
 
 pub(crate) async fn react(
@@ -477,21 +495,18 @@ pub(crate) async fn react(
         Some(sender) if chat.to_string().ends_with("@g.us") => Some(jid(sender)?.to_string()),
         _ => None,
     };
-    let reaction = wa::Message {
-        reaction_message: MessageField::some(wa::message::ReactionMessage {
-            key: MessageField::some(wa::MessageKey {
-                remote_jid: Some(chat.to_string()),
-                from_me: Some(from_me),
-                id: Some(message_id),
-                participant,
-            }),
-            // An empty reaction removes the previous one.
-            text: Some(emoji.unwrap_or_default()),
-            sender_timestamp_ms: Some(now_ms()),
-            ..Default::default()
-        }),
-        ..Default::default()
-    };
+    let mut key = wa::MessageKey::default();
+    key.remote_jid = Some(chat.to_string());
+    key.from_me = Some(from_me);
+    key.id = Some(message_id);
+    key.participant = participant;
+    let mut reaction_message = wa::message::ReactionMessage::default();
+    reaction_message.key = MessageField::some(key);
+    // An empty reaction removes the previous one.
+    reaction_message.text = Some(emoji.unwrap_or_default());
+    reaction_message.sender_timestamp_ms = Some(now_ms());
+    let mut reaction = wa::Message::default();
+    reaction.reaction_message = MessageField::some(reaction_message);
     client
         .send_message(chat, reaction)
         .await

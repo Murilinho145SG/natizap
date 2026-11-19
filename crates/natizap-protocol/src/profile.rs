@@ -2,10 +2,11 @@
 
 use std::sync::Arc;
 
-use whatsapp_rust::Jid;
 use whatsapp_rust::http::HttpRequest;
 use whatsapp_rust::prelude::Client;
 use whatsapp_rust::wacore::iq::usync::UserInfo;
+use whatsapp_rust::wacore_binary::JidExt as _;
+use whatsapp_rust::{Jid, ProfilePictureRequest, ProfilePictureTarget, ProfilePictureType};
 
 use crate::ActionError;
 use crate::business::{self, Business};
@@ -74,16 +75,27 @@ pub(crate) async fn picture(
     let rejected = |error: &dyn std::fmt::Display| ActionError::refused(error);
     // The preview is 96 pixels square, plenty for avatars and a fraction of
     // the full picture's size.
+    let size = if full {
+        ProfilePictureType::Full
+    } else {
+        ProfilePictureType::Preview
+    };
+    let target = if jid.is_group() {
+        ProfilePictureTarget::Group(&jid)
+    } else {
+        ProfilePictureTarget::Contact(&jid)
+    };
     let Some(picture) = client
-        .contacts()
-        .get_profile_picture(&jid, !full)
+        .pictures()
+        .lookup(ProfilePictureRequest::new(target, size))
         .await
         .map_err(|error| rejected(&error))?
+        .into_found()
     else {
         return Ok(None);
     };
     let response = client
-        .http_client
+        .http_client()
         .execute(HttpRequest::get(picture.url))
         .await
         .map_err(|error| rejected(&error))?;

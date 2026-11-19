@@ -78,7 +78,8 @@ fn app_name(source: wa::status_attribution::external_share::Source) -> Option<&'
         Source::GOOGLE_PHOTOS => "Google Photos",
         Source::SOUNDCLOUD => "SoundCloud",
         Source::SHAZAM => "Shazam",
-        Source::UNKNOWN => return None,
+        // Unknown, or an app added later: no name to give.
+        _ => return None,
     })
 }
 
@@ -92,28 +93,23 @@ mod tests {
     use super::*;
 
     fn photo(context: wa::ContextInfo) -> wa::Message {
-        wa::Message {
-            image_message: MessageField::some(wa::message::ImageMessage {
-                context_info: MessageField::some(context),
-                ..Default::default()
-            }),
-            ..Default::default()
-        }
+        let mut image = wa::message::ImageMessage::default();
+        image.context_info = MessageField::some(context);
+        let mut message = wa::Message::default();
+        message.image_message = MessageField::some(image);
+        message
     }
 
     #[test]
     fn a_song_shared_from_spotify_opens_in_spotify() {
-        let message = photo(wa::ContextInfo {
-            status_attributions: vec![wa::StatusAttribution {
-                attribution_data: Some(AttributionData::ExternalShare(Box::new(ExternalShare {
-                    action_url: Some("https://open.spotify.com/track/1".into()),
-                    source: Some(Source::SPOTIFY),
-                    ..Default::default()
-                }))),
-                ..Default::default()
-            }],
-            ..Default::default()
-        });
+        let mut share = ExternalShare::default();
+        share.action_url = Some("https://open.spotify.com/track/1".into());
+        share.source = Some(Source::SPOTIFY);
+        let mut attribution = wa::StatusAttribution::default();
+        attribution.attribution_data = Some(AttributionData::ExternalShare(Box::new(share)));
+        let mut context = wa::ContextInfo::default();
+        context.status_attributions = vec![attribution];
+        let message = photo(context);
         assert_eq!(
             StatusLink::of(&message),
             Some(StatusLink {

@@ -3,7 +3,7 @@
 //! blocking the person behind it.
 
 use gpui::{App, Task};
-use whatsapp_rust::{Jid, message_range};
+use whatsapp_rust::{ClearChatOptions, Jid, MediaDeletion, StarredMessages, message_range};
 
 use crate::actions::jid;
 use crate::{ActionError, ChatId, Protocol};
@@ -47,7 +47,12 @@ impl Protocol {
                 ChatAction::Archive(true) => actions.archive_chat(&jid, range).await,
                 ChatAction::Archive(false) => actions.unarchive_chat(&jid, range).await,
                 ChatAction::MarkRead(read) => actions.mark_chat_as_read(&jid, read, range).await,
-                ChatAction::Clear => actions.clear_chat(&jid, false, false, range).await,
+                ChatAction::Clear => {
+                    let keep = ClearChatOptions::default()
+                        .with_starred_messages(StarredMessages::Keep)
+                        .with_media(MediaDeletion::Keep);
+                    actions.clear_chat_with_options(&jid, keep, range).await
+                }
                 ChatAction::Delete => actions.delete_chat(&jid, false, range).await,
             };
             result.map_err(|error| ActionError::Rejected(error.to_string()))

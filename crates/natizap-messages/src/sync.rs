@@ -143,7 +143,8 @@ fn live_change(inbound: &InboundMessage) -> Option<MessageChange> {
                 Some(since + i64::from(length))
             }
             Type::UnpinForAll => None,
-            Type::UnknownType => return None,
+            // Unknown, or a kind added later: not a pin natizap can follow.
+            _ => return None,
         };
         return Some(MessageChange::Pinned { message_id, until });
     }
@@ -169,13 +170,13 @@ fn live_change(inbound: &InboundMessage) -> Option<MessageChange> {
     let in_group = source.is_group && !source.is_from_me;
     Some(MessageChange::Received(Message {
         chat,
-        id: inbound.info.id.clone(),
+        id: inbound.info.id.to_string(),
         from_me: source.is_from_me,
         sender: in_group.then(|| ChatId::new(&source.sender.to_string())),
         author: in_group
-            .then(|| inbound.info.push_name.clone())
+            .then(|| inbound.info.push_name.to_string())
             .filter(|name| !name.is_empty()),
-        sent_at: inbound.info.timestamp.timestamp(),
+        sent_at: inbound.info.timestamp.as_secs(),
         kind: content.kind,
         text: content.text,
         quote: content.quote,
@@ -380,7 +381,6 @@ fn history_content(chat: &ChatId, info: &wa::WebMessageInfo) -> Option<MessageCh
 
 #[cfg(test)]
 mod tests {
-    use natizap_protocol::whatsapp_rust::chrono::Utc;
     use natizap_protocol::whatsapp_rust::types::events::Receipt;
     use natizap_protocol::whatsapp_rust::types::message::MessageSource;
 
@@ -391,7 +391,7 @@ mod tests {
             Receipt::builder()
                 .source(MessageSource::default())
                 .message_ids(vec!["3EB0A".into(), "3EB0B".into()])
-                .timestamp(Utc::now())
+                .timestamp(natizap_protocol::whatsapp_rust::time::now_utc())
                 .r#type(r#type)
                 .offline(false)
                 .build(),

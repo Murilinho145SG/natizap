@@ -1,4 +1,4 @@
-//! Auto-generated AppState (syncd) action schemas (WhatsApp 2.3000.1042742319). DO NOT EDIT.
+//! Auto-generated AppState (syncd) action schemas (WhatsApp 2.3000.1054751086). DO NOT EDIT.
 //!
 //! Typed registry of syncd actions: collection, version, scope, value proto type,
 //! enum fields, and the mutation-index parts. `const`/`&'static`, no deps.
@@ -6,7 +6,23 @@
 #![allow(clippy::all)]
 
 /// A syncd collection (mutation bucket / priority).
+///
+/// Consumers must allow new catalog variants.
+///
+/// ```compile_fail,E0004
+/// use wacore_appstate::schemas::Collection;
+/// fn exhaustive(value: Collection) {
+///     match value {
+///         Collection::Regular => (),
+///         Collection::RegularLow => (),
+///         Collection::RegularHigh => (),
+///         Collection::CriticalBlock => (),
+///         Collection::CriticalUnblockLow => (),
+///     }
+/// }
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Collection {
     Regular,
     RegularLow,
@@ -27,8 +43,76 @@ impl Collection {
     }
 }
 
+/// Runtime sync collection, derived from the same catalog as [`Collection`].
+/// Unlisted wire names retain the legacy [`Self::Unknown`] fallback.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum WAPatchName {
+    CriticalBlock,
+    CriticalUnblockLow,
+    Regular,
+    RegularHigh,
+    RegularLow,
+    Unknown,
+}
+
+impl WAPatchName {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::CriticalBlock => "critical_block",
+            Self::CriticalUnblockLow => "critical_unblock_low",
+            Self::Regular => "regular",
+            Self::RegularHigh => "regular_high",
+            Self::RegularLow => "regular_low",
+            Self::Unknown => "unknown",
+        }
+    }
+
+    /// Total reservation order, sorted by the exact wire name.
+    pub const fn reservation_rank(self) -> u8 {
+        match self {
+            Self::CriticalBlock => 0,
+            Self::CriticalUnblockLow => 1,
+            Self::Regular => 2,
+            Self::RegularHigh => 3,
+            Self::RegularLow => 4,
+            Self::Unknown => 5,
+        }
+    }
+}
+
+impl std::str::FromStr for WAPatchName {
+    type Err = ();
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        Ok(match value {
+            "critical_block" => Self::CriticalBlock,
+            "critical_unblock_low" => Self::CriticalUnblockLow,
+            "regular" => Self::Regular,
+            "regular_high" => Self::RegularHigh,
+            "regular_low" => Self::RegularLow,
+            _ => Self::Unknown,
+        })
+    }
+}
+
 /// The index scope an action applies to.
+///
+/// Consumers must allow new catalog variants.
+///
+/// ```compile_fail,E0004
+/// use wacore_appstate::schemas::Scope;
+/// fn exhaustive(value: Scope) {
+///     match value {
+///         Scope::Account => (),
+///         Scope::Chat => (),
+///         Scope::ChatMessageRange => (),
+///         Scope::ChatOrContact => (),
+///         Scope::Message => (),
+///     }
+/// }
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Scope {
     Account,
     Chat,
@@ -50,7 +134,22 @@ impl Scope {
 }
 
 /// One component of a mutation index key.
+///
+/// Consumers must allow new index-part variants.
+///
+/// ```compile_fail,E0004
+/// use wacore_appstate::schemas::IndexPart;
+/// fn exhaustive(part: IndexPart) {
+///     match part {
+///         IndexPart::Literal { .. } | IndexPart::Jid { .. }
+///         | IndexPart::BoolString { .. } | IndexPart::JidOrZero { .. }
+///         | IndexPart::Enum { .. } | IndexPart::StringPart { .. }
+///         | IndexPart::Unknown { .. } => (),
+///     }
+/// }
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum IndexPart {
     /// Fixed wire name at position 0.
     Literal { value: &'static str },
@@ -72,7 +171,15 @@ pub enum IndexPart {
 }
 
 /// A syncd action schema.
+///
+/// Use [`Schema::new`] or copy a registry entry, leaving room for new metadata.
+///
+/// ```compile_fail,E0639
+/// use wacore_appstate::schemas::{Schema, ALL};
+/// let schema = Schema { ..ALL[0] };
+/// ```
 #[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
 pub struct Schema {
     /// Registry key (e.g. "Agent").
     pub key: &'static str,
@@ -92,6 +199,48 @@ pub struct Schema {
     /// Index position holding the chat JID, if any.
     pub chat_jid_index: Option<i64>,
     pub index_parts: &'static [IndexPart],
+}
+
+impl Schema {
+    /// Construct a schema with no optional metadata.
+    ///
+    /// Public fields remain readable and writable for host-defined actions.
+    ///
+    /// ```
+    /// use wacore_appstate::schemas::{Collection, IndexPart, Schema, Scope};
+    /// const CUSTOM: Schema = Schema::new(
+    ///     "Custom", "custom", "Host", Collection::Regular, 1, Scope::Account,
+    ///     &[IndexPart::Literal { value: "custom" }],
+    /// );
+    /// let mut action = CUSTOM;
+    /// action.value_field = Some("customAction");
+    /// let Schema { name, value_field, .. } = action;
+    /// assert_eq!(name, "custom");
+    /// assert_eq!(value_field, Some("customAction"));
+    /// ```
+    pub const fn new(
+        key: &'static str,
+        name: &'static str,
+        module: &'static str,
+        collection: Collection,
+        version: u32,
+        scope: Scope,
+        index_parts: &'static [IndexPart],
+    ) -> Self {
+        Self {
+            key,
+            name,
+            module,
+            collection,
+            version,
+            scope,
+            value_field: None,
+            value_proto_type: None,
+            value_enum_fields: &[],
+            chat_jid_index: None,
+            index_parts,
+        }
+    }
 }
 
 /// All syncd collections, in dependency order.
@@ -258,6 +407,26 @@ pub const AVATAR_UPDATED: Schema = Schema {
     }],
 };
 
+/// `BBProPendingCustomerBaseAction` — module `WAWebBizBroadcastProPendingActionSync`.
+pub const BB_PRO_PENDING_CUSTOMER_BASE_ACTION: Schema = Schema {
+    key: "BBProPendingCustomerBaseAction",
+    name: "bb_pro_pending_customer_base_action",
+    module: "WAWebBizBroadcastProPendingActionSync",
+    collection: Collection::RegularLow,
+    version: 7,
+    scope: Scope::Account,
+    value_field: Some("bbProPendingCustomerBaseAction"),
+    value_proto_type: Some("SyncActionValue.BBProPendingCustomerBaseAction"),
+    value_enum_fields: &[],
+    chat_jid_index: None,
+    index_parts: &[
+        IndexPart::Literal {
+            value: "bb_pro_pending_customer_base_action",
+        },
+        IndexPart::StringPart { name: "action" },
+    ],
+};
+
 /// `BizAiSettingsNudge` — module `WAWebBizAiSettingsNudgeSync`.
 pub const BIZ_AI_SETTINGS_NUDGE: Schema = Schema {
     key: "BizAiSettingsNudge",
@@ -305,13 +474,16 @@ pub const BUSINESS_BROADCAST_CAMPAIGN: Schema = Schema {
     scope: Scope::Account,
     value_field: Some("businessBroadcastCampaignAction"),
     value_proto_type: Some("SyncActionValue.BusinessBroadcastCampaignAction"),
-    value_enum_fields: &[("status", "BusinessBroadcastCampaignStatus")],
+    value_enum_fields: &[
+        ("bbProStatus", "BusinessBroadcastCampaignBBProStatus"),
+        ("status", "BusinessBroadcastCampaignStatus"),
+    ],
     chat_jid_index: None,
     index_parts: &[
         IndexPart::Literal {
             value: "business_broadcast_campaign",
         },
-        IndexPart::StringPart { name: "campaign" },
+        IndexPart::StringPart { name: "campaignId" },
     ],
 };
 
@@ -478,6 +650,23 @@ pub const CONTACT: Schema = Schema {
     ],
 };
 
+/// `ContactManagerMetadata` — module `WAWebContactManagerMetadataSync`.
+pub const CONTACT_MANAGER_METADATA: Schema = Schema {
+    key: "ContactManagerMetadata",
+    name: "contact_manager_metadata",
+    module: "WAWebContactManagerMetadataSync",
+    collection: Collection::RegularLow,
+    version: 1,
+    scope: Scope::Account,
+    value_field: Some("contactManagerMetadataAction"),
+    value_proto_type: Some("SyncActionValue.ContactManagerMetadataAction"),
+    value_enum_fields: &[],
+    chat_jid_index: None,
+    index_parts: &[IndexPart::Literal {
+        value: "contact_manager_metadata",
+    }],
+};
+
 /// `CustomPaymentMethods` — module `WAWebCustomPaymentMethodsSync`.
 pub const CUSTOM_PAYMENT_METHODS: Schema = Schema {
     key: "CustomPaymentMethods",
@@ -580,23 +769,6 @@ pub const DETECTED_OUTCOME_STATUS: Schema = Schema {
     }],
 };
 
-/// `DeviceCapabilities` — module `WAWebDeviceCapabilitiesSync`.
-pub const DEVICE_CAPABILITIES: Schema = Schema {
-    key: "DeviceCapabilities",
-    name: "device_capabilities",
-    module: "WAWebDeviceCapabilitiesSync",
-    collection: Collection::RegularLow,
-    version: 7,
-    scope: Scope::Account,
-    value_field: Some("deviceCapabilities"),
-    value_proto_type: Some("DeviceCapabilities"),
-    value_enum_fields: &[],
-    chat_jid_index: None,
-    index_parts: &[IndexPart::Literal {
-        value: "device_capabilities",
-    }],
-};
-
 /// `DisableLinkPreviews` — module `WAWebDisableLinkPreviewsSync`.
 pub const DISABLE_LINK_PREVIEWS: Schema = Schema {
     key: "DisableLinkPreviews",
@@ -666,6 +838,29 @@ pub const FAVORITES: Schema = Schema {
     index_parts: &[IndexPart::Literal { value: "favorites" }],
 };
 
+/// `GroupHistoryToggle` — module `WAWebGroupHistoryToggleSync`.
+pub const GROUP_HISTORY_TOGGLE: Schema = Schema {
+    key: "GroupHistoryToggle",
+    name: "group_history_toggle",
+    module: "WAWebGroupHistoryToggleSync",
+    collection: Collection::RegularLow,
+    version: 1,
+    scope: Scope::Chat,
+    value_field: Some("groupHistoryToggleAction"),
+    value_proto_type: Some("SyncActionValue.GroupHistoryToggleAction"),
+    value_enum_fields: &[(
+        "groupHistoryToggleMode",
+        "GroupHistoryToggleAction.GroupHistoryToggleMode",
+    )],
+    chat_jid_index: Some(1),
+    index_parts: &[
+        IndexPart::Literal {
+            value: "group_history_toggle",
+        },
+        IndexPart::Jid { name: "chatJid" },
+    ],
+};
+
 /// `InteractiveMessageAction` — module `WAWebInteractiveMessageSync`.
 pub const INTERACTIVE_MESSAGE_ACTION: Schema = Schema {
     key: "InteractiveMessageAction",
@@ -711,7 +906,7 @@ pub const LABEL_EDIT: Schema = Schema {
         IndexPart::Literal {
             value: "label_edit",
         },
-        IndexPart::StringPart { name: "id" },
+        IndexPart::StringPart { name: "labelId" },
     ],
 };
 
@@ -749,6 +944,29 @@ pub const LABEL_REORDERING: Schema = Schema {
     index_parts: &[IndexPart::Literal {
         value: "label_reordering",
     }],
+};
+
+/// `LabelSublist` — module `WAWebLabelSublistSync`.
+pub const LABEL_SUBLIST: Schema = Schema {
+    key: "LabelSublist",
+    name: "label_sublist",
+    module: "WAWebLabelSublistSync",
+    collection: Collection::Regular,
+    version: 1,
+    scope: Scope::ChatOrContact,
+    value_field: Some("labelSublistAction"),
+    value_proto_type: Some("SyncActionValue.LabelSublistAction"),
+    value_enum_fields: &[],
+    chat_jid_index: Some(2),
+    index_parts: &[
+        IndexPart::Literal {
+            value: "label_sublist",
+        },
+        IndexPart::StringPart {
+            name: "predefinedId",
+        },
+        IndexPart::Jid { name: "chatJid" },
+    ],
 };
 
 /// `LidContact` — module `WAWebLidContactSync`.
@@ -836,7 +1054,10 @@ pub const MARKETING_MESSAGE: Schema = Schema {
     scope: Scope::Account,
     value_field: Some("marketingMessageAction"),
     value_proto_type: Some("SyncActionValue.MarketingMessageAction"),
-    value_enum_fields: &[],
+    value_enum_fields: &[(
+        "type",
+        "MarketingMessageAction.MarketingMessagePrototypeType",
+    )],
     chat_jid_index: None,
     index_parts: &[
         IndexPart::Literal {
@@ -1174,6 +1395,10 @@ pub const SETTINGS_SYNC: Schema = Schema {
             "SettingsSyncAction.DisplayMode",
         ),
         (
+            "mediaAutoDownloadQuality",
+            "SettingsSyncAction.MediaAutoDownloadQualitySetting",
+        ),
+        (
             "mediaUploadQuality",
             "SettingsSyncAction.MediaQualitySetting",
         ),
@@ -1377,7 +1602,10 @@ pub const WASA_ROOT_SECRET: Schema = Schema {
     scope: Scope::Chat,
     value_field: Some("wasaRootSecretAction"),
     value_proto_type: Some("SyncActionValue.WASARootSecretAction"),
-    value_enum_fields: &[],
+    value_enum_fields: &[(
+        "secrets.status",
+        "WASARootSecretAction.RootSecretEntry.Status",
+    )],
     chat_jid_index: Some(1),
     index_parts: &[
         IndexPart::Literal {
@@ -1397,6 +1625,7 @@ pub const ALL: &[Schema] = &[
     ANDROID_UNSUPPORTED_ACTIONS,
     ARCHIVE,
     AVATAR_UPDATED,
+    BB_PRO_PENDING_CUSTOMER_BASE_ACTION,
     BIZ_AI_SETTINGS_NUDGE,
     BOT_WELCOME_REQUEST,
     BUSINESS_BROADCAST_CAMPAIGN,
@@ -1408,20 +1637,22 @@ pub const ALL: &[Schema] = &[
     CHAT_LOCK_SETTINGS,
     CLEAR_CHAT,
     CONTACT,
+    CONTACT_MANAGER_METADATA,
     CUSTOM_PAYMENT_METHODS,
     CUSTOMER_DATA,
     DELETE_CHAT,
     DELETE_MESSAGE_FOR_ME,
     DETECTED_OUTCOME_STATUS,
-    DEVICE_CAPABILITIES,
     DISABLE_LINK_PREVIEWS,
     EXTERNAL_WEB_BETA,
     FAVORITE_STICKER,
     FAVORITES,
+    GROUP_HISTORY_TOGGLE,
     INTERACTIVE_MESSAGE_ACTION,
     LABEL_EDIT,
     LABEL_JID,
     LABEL_REORDERING,
+    LABEL_SUBLIST,
     LID_CONTACT,
     LOCALE_SETTING,
     LOCK_CHAT,
@@ -1457,6 +1688,83 @@ pub const ALL: &[Schema] = &[
     WASA_ROOT_SECRET,
 ];
 
+/// Whether `name` is an on-wire action name. Log gating only: a
+/// `match` over string literals, so referencing a name keeps just
+/// the compared bytes, never the full `Schema` record.
+pub(crate) fn is_known_wire_name(name: &str) -> bool {
+    match name {
+        "agentChatAssignment" => true,
+        "agentChatAssignmentOpenedStatus" => true,
+        "ai_thread_delete" => true,
+        "ai_thread_rename" => true,
+        "android_unsupported_actions" => true,
+        "archive" => true,
+        "avatar_updated_action" => true,
+        "bb_pro_pending_customer_base_action" => true,
+        "biz_ai_settings_nudge" => true,
+        "bot_welcome_request" => true,
+        "business_broadcast_campaign" => true,
+        "business_broadcast_insights_sync" => true,
+        "business_broadcast_list" => true,
+        "call_log" => true,
+        "clearChat" => true,
+        "contact" => true,
+        "contact_manager_metadata" => true,
+        "ctwaPerCustomerDataSharing" => true,
+        "custom_payment_methods" => true,
+        "customer_data" => true,
+        "deleteChat" => true,
+        "deleteMessageForMe" => true,
+        "detected_outcomes_status_action" => true,
+        "deviceAgent" => true,
+        "external_web_beta" => true,
+        "favoriteSticker" => true,
+        "favorites" => true,
+        "group_history_toggle" => true,
+        "interactive_message_action" => true,
+        "label_edit" => true,
+        "label_jid" => true,
+        "label_reordering" => true,
+        "label_sublist" => true,
+        "lid_contact" => true,
+        "lock" => true,
+        "markChatAsRead" => true,
+        "marketingMessage" => true,
+        "marketingMessageBroadcast" => true,
+        "merchant_payment_partner" => true,
+        "mute" => true,
+        "nct_salt_sync" => true,
+        "note_edit" => true,
+        "nux" => true,
+        "out_contact" => true,
+        "payment_info" => true,
+        "payment_tos" => true,
+        "pin_v1" => true,
+        "pnForLidChat" => true,
+        "primary_feature" => true,
+        "primary_version" => true,
+        "quick_reply" => true,
+        "removeRecentSticker" => true,
+        "sentinel" => true,
+        "setting_chatLock" => true,
+        "setting_disableLinkPreviews" => true,
+        "setting_locale" => true,
+        "setting_pushName" => true,
+        "setting_relayAllCalls" => true,
+        "setting_unarchiveChats" => true,
+        "settings_sync" => true,
+        "shareOwnPn" => true,
+        "star" => true,
+        "status_privacy" => true,
+        "subscriptions_sync_v2" => true,
+        "thread_pin" => true,
+        "time_format" => true,
+        "userStatusMute" => true,
+        "waffle_account_link_state" => true,
+        "wasa_root_secret" => true,
+        _ => false,
+    }
+}
 /// Look up a schema by its action key (the registry key, e.g. `"Agent"`).
 pub fn by_name(key: &str) -> Option<&'static Schema> {
     ALL.iter().find(|s| s.key == key)

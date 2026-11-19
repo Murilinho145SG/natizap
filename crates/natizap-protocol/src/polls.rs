@@ -60,7 +60,7 @@ impl SealedVote {
                 .then(|| ChatId::new(&source.sender.to_non_ad().to_string())),
             cast_at: update
                 .sender_timestamp_ms
-                .unwrap_or_else(|| inbound.info.timestamp.timestamp_millis()),
+                .unwrap_or_else(|| inbound.info.timestamp.as_millis()),
             addresses: std::iter::once(&source.sender)
                 .chain(&source.sender_alt)
                 .map(|jid| jid.to_non_ad().to_string())
@@ -143,11 +143,11 @@ impl Protocol {
             };
             let sent = client
                 .polls()
-                .vote(chat, &poll_id, &creator, &secret, &options)
+                .vote_raw(chat, &poll_id, &creator, &secret, &options)
                 .await
                 .map_err(|error| ActionError::Rejected(error.to_string()))?;
             Ok(Sent {
-                id: sent.message_id,
+                id: sent.message_id.into_string(),
                 secret: None,
             })
         })

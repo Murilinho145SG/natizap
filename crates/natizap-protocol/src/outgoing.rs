@@ -63,11 +63,9 @@ pub(crate) async fn forward(
     to: Jid,
     forward: Forward,
 ) -> Result<String, ActionError> {
-    let context = wa::ContextInfo {
-        is_forwarded: Some(true),
-        forwarding_score: Some(1),
-        ..Default::default()
-    };
+    let mut context = wa::ContextInfo::default();
+    context.is_forwarded = Some(true);
+    context.forwarding_score = Some(1);
     let mut message = match forward.media {
         Some(media) => media_message(forward.kind, &media, forward.text, None),
         None => wa::Message::text(forward.text.unwrap_or_default()),
@@ -77,7 +75,7 @@ pub(crate) async fn forward(
         .send_message(to, message)
         .await
         .map_err(|error| ActionError::Rejected(error.to_string()))?;
-    Ok(sent.message_id)
+    Ok(sent.message_id.into_string())
 }
 
 pub(crate) async fn send(
@@ -98,7 +96,7 @@ pub(crate) async fn send(
         .await
         .map_err(|error| rejected(&error))?;
     Ok(SentMedia {
-        id: sent.message_id,
+        id: sent.message_id.into_string(),
         media,
     })
 }
@@ -170,89 +168,94 @@ pub(crate) fn media_message(
     let mut message = wa::Message::default();
     match kind {
         ContentKind::Photo => {
-            message.image_message = MessageField::some(wa::message::ImageMessage {
-                url,
-                mimetype: m.mime,
-                caption,
-                file_sha256: Some(m.file_sha256),
-                file_length: m.size,
-                height: m.height,
-                width: m.width,
-                media_key: Some(m.media_key),
-                file_enc_sha256: Some(m.file_enc_sha256),
-                direct_path: Some(m.direct_path),
-                media_key_timestamp: timestamp,
-                jpeg_thumbnail: m.thumbnail,
-                ..Default::default()
+            message.image_message = MessageField::some({
+                let mut proto = wa::message::ImageMessage::default();
+                proto.url = url;
+                proto.mimetype = m.mime;
+                proto.caption = caption;
+                proto.file_sha256 = Some(m.file_sha256);
+                proto.file_length = m.size;
+                proto.height = m.height;
+                proto.width = m.width;
+                proto.media_key = Some(m.media_key);
+                proto.file_enc_sha256 = Some(m.file_enc_sha256);
+                proto.direct_path = Some(m.direct_path);
+                proto.media_key_timestamp = timestamp;
+                proto.jpeg_thumbnail = m.thumbnail;
+                proto
             });
         }
         ContentKind::Video => {
-            message.video_message = MessageField::some(wa::message::VideoMessage {
-                url,
-                mimetype: m.mime,
-                file_sha256: Some(m.file_sha256),
-                file_length: m.size,
-                seconds: m.seconds,
-                media_key: Some(m.media_key),
-                caption,
-                height: m.height,
-                width: m.width,
-                file_enc_sha256: Some(m.file_enc_sha256),
-                direct_path: Some(m.direct_path),
-                media_key_timestamp: timestamp,
-                jpeg_thumbnail: m.thumbnail,
-                streaming_sidecar: sidecar,
-                ..Default::default()
+            message.video_message = MessageField::some({
+                let mut proto = wa::message::VideoMessage::default();
+                proto.url = url;
+                proto.mimetype = m.mime;
+                proto.file_sha256 = Some(m.file_sha256);
+                proto.file_length = m.size;
+                proto.seconds = m.seconds;
+                proto.media_key = Some(m.media_key);
+                proto.caption = caption;
+                proto.height = m.height;
+                proto.width = m.width;
+                proto.file_enc_sha256 = Some(m.file_enc_sha256);
+                proto.direct_path = Some(m.direct_path);
+                proto.media_key_timestamp = timestamp;
+                proto.jpeg_thumbnail = m.thumbnail;
+                proto.streaming_sidecar = sidecar;
+                proto
             });
         }
         ContentKind::VoiceMessage | ContentKind::Audio => {
-            message.audio_message = MessageField::some(wa::message::AudioMessage {
-                url,
-                mimetype: m.mime,
-                file_sha256: Some(m.file_sha256),
-                file_length: m.size,
-                seconds: m.seconds,
-                ptt: Some(kind == ContentKind::VoiceMessage),
-                media_key: Some(m.media_key),
-                file_enc_sha256: Some(m.file_enc_sha256),
-                direct_path: Some(m.direct_path),
-                media_key_timestamp: timestamp,
-                streaming_sidecar: sidecar,
-                waveform: m.waveform,
-                ..Default::default()
+            message.audio_message = MessageField::some({
+                let mut proto = wa::message::AudioMessage::default();
+                proto.url = url;
+                proto.mimetype = m.mime;
+                proto.file_sha256 = Some(m.file_sha256);
+                proto.file_length = m.size;
+                proto.seconds = m.seconds;
+                proto.ptt = Some(kind == ContentKind::VoiceMessage);
+                proto.media_key = Some(m.media_key);
+                proto.file_enc_sha256 = Some(m.file_enc_sha256);
+                proto.direct_path = Some(m.direct_path);
+                proto.media_key_timestamp = timestamp;
+                proto.streaming_sidecar = sidecar;
+                proto.waveform = m.waveform;
+                proto
             });
         }
         ContentKind::Sticker => {
-            message.sticker_message = MessageField::some(wa::message::StickerMessage {
-                url,
-                file_sha256: Some(m.file_sha256),
-                file_enc_sha256: Some(m.file_enc_sha256),
-                media_key: Some(m.media_key),
-                mimetype: m.mime,
-                height: m.height,
-                width: m.width,
-                direct_path: Some(m.direct_path),
-                file_length: m.size,
-                media_key_timestamp: timestamp,
-                ..Default::default()
+            message.sticker_message = MessageField::some({
+                let mut proto = wa::message::StickerMessage::default();
+                proto.url = url;
+                proto.file_sha256 = Some(m.file_sha256);
+                proto.file_enc_sha256 = Some(m.file_enc_sha256);
+                proto.media_key = Some(m.media_key);
+                proto.mimetype = m.mime;
+                proto.height = m.height;
+                proto.width = m.width;
+                proto.direct_path = Some(m.direct_path);
+                proto.file_length = m.size;
+                proto.media_key_timestamp = timestamp;
+                proto
             });
         }
         // Anything else goes as a document, which takes any file.
         _ => {
-            message.document_message = MessageField::some(wa::message::DocumentMessage {
-                url,
-                mimetype: m.mime,
-                title: m.file_name.clone(),
-                file_sha256: Some(m.file_sha256),
-                file_length: m.size,
-                media_key: Some(m.media_key),
-                file_name: m.file_name,
-                file_enc_sha256: Some(m.file_enc_sha256),
-                direct_path: Some(m.direct_path),
-                media_key_timestamp: timestamp,
-                jpeg_thumbnail: m.thumbnail,
-                caption,
-                ..Default::default()
+            message.document_message = MessageField::some({
+                let mut proto = wa::message::DocumentMessage::default();
+                proto.url = url;
+                proto.mimetype = m.mime;
+                proto.title.clone_from(&m.file_name);
+                proto.file_sha256 = Some(m.file_sha256);
+                proto.file_length = m.size;
+                proto.media_key = Some(m.media_key);
+                proto.file_name = m.file_name;
+                proto.file_enc_sha256 = Some(m.file_enc_sha256);
+                proto.direct_path = Some(m.direct_path);
+                proto.media_key_timestamp = timestamp;
+                proto.jpeg_thumbnail = m.thumbnail;
+                proto.caption = caption;
+                proto
             });
         }
     }

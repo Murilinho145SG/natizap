@@ -22,15 +22,18 @@ gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "482e7652
     "x11",
 ] }
 gpui_tokio = { git = "https://github.com/zed-industries/zed", rev = "482e76524bd33d8cbdfc352f1fef3eefbf2fad92" }
-# Default features minus `simd` (nightly-only) and `signal` (the GUI owns shutdown),
-# plus calls with the pure-Rust MLOW voice codec (`voip-mlow`).
-whatsapp-rust = { version = "0.7", default-features = false, features = [
+# Pinned to a commit of main: the 0.7.0 release drops a phone's voice in a
+# video call, which it sends inside its video packets (upstream #1720).
+# Default features minus `signal` (the GUI owns shutdown), plus calls with
+# the pure-Rust MLOW voice codec over the native relay.
+whatsapp-rust = { git = "https://github.com/oxidezap/whatsapp-rust", rev = "3f6982dc025ccc3e6e64843f85976d5e89b467ee", default-features = false, features = [
     "sqlite-storage",
     "tokio-native",
     "tokio-runtime",
     "tokio-transport",
     "ureq-client",
     "voip-mlow",
+    "voip-relay-native",
 ] }
 
 anyhow = "1"
@@ -127,12 +130,11 @@ async-process = { git = "https://github.com/zed-industries/async-process.git", r
 async-task = { git = "https://github.com/smol-rs/async-task", rev = "41fd3359c75e221bd8b187a8ee361aa309c1714c" }
 calloop = { git = "https://github.com/zed-industries/calloop", rev = "3759371fee14c40066d64777e2a36b6ffcc22590" }
 khronos-egl = { git = "https://github.com/zed-industries/khronos-egl", rev = "42214b36347b108fd9630ca6254b96dde59e04fe" }
+
 # Skips app state patches already applied instead of failing on them; see
 # patches/README.md. Drop when whatsapp-rust ships the fix.
+[patch."https://github.com/oxidezap/whatsapp-rust"]
 wacore-appstate = { path = "patches/wacore-appstate" }
-# Takes MLOW on RTP payload type 122, which a calling phone sends; see
-# patches/README.md. Drop when whatsapp-rust ships the fix.
-wacore = { path = "patches/wacore" }
 
 [profile.release]
 lto = "thin"

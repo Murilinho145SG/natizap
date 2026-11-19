@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use whatsapp_rust::prelude::{Event, EventKind};
-use whatsapp_rust::types::presence::{ChatPresence, ChatPresenceMedia};
+use whatsapp_rust::types::presence::ChatActivity;
 
 use crate::ChatId;
 
@@ -54,10 +54,11 @@ impl Typing {
         let chat = ChatId::new(&update.source.chat.to_non_ad().to_string());
         // In a group the one typing is the sender; alone, the chat.
         let who = ChatId::new(&update.source.sender.to_non_ad().to_string());
-        let activity = match (update.state, update.media) {
-            (ChatPresence::Composing, ChatPresenceMedia::Audio) => Some(Activity::Recording),
-            (ChatPresence::Composing, ChatPresenceMedia::Text) => Some(Activity::Typing),
-            (ChatPresence::Paused, _) => None,
+        let activity = match update.state {
+            ChatActivity::RecordingAudio => Some(Activity::Recording),
+            ChatActivity::Typing => Some(Activity::Typing),
+            // Idle, or a kind added later: not typing.
+            _ => None,
         };
         let typers = self.0.entry(chat).or_default();
         typers.retain(|(typer, _, _)| *typer != who);

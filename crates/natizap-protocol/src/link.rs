@@ -43,18 +43,15 @@ mod tests {
     use super::LinkPreview;
 
     fn message(title: Option<&str>, thumbnail: Option<Vec<u8>>) -> wa::Message {
-        wa::Message {
-            extended_text_message: wa::message::ExtendedTextMessage {
-                text: Some("see https://natizap.dev".into()),
-                matched_text: Some("https://natizap.dev".into()),
-                title: title.map(Into::into),
-                description: Some("A WhatsApp client".into()),
-                jpeg_thumbnail: thumbnail,
-                ..Default::default()
-            }
-            .into(),
-            ..Default::default()
-        }
+        let mut text = wa::message::ExtendedTextMessage::default();
+        text.text = Some("see https://natizap.dev".into());
+        text.matched_text = Some("https://natizap.dev".into());
+        text.title = title.map(Into::into);
+        text.description = Some("A WhatsApp client".into());
+        text.jpeg_thumbnail = thumbnail;
+        let mut message = wa::Message::default();
+        message.extended_text_message = text.into();
+        message
     }
 
     #[test]

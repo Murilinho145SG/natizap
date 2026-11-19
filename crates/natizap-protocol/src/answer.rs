@@ -61,51 +61,45 @@ impl Answer {
             ButtonsResponseMessage, InteractiveResponseMessage as Interactive,
             TemplateButtonReplyMessage, buttons_response_message, interactive_response_message,
         };
+        let mut message = wa::Message::default();
         match self {
-            Self::Button(id) => wa::Message {
-                buttons_response_message: MessageField::some(ButtonsResponseMessage {
-                    selected_button_id: Some(id.clone()),
-                    response: Some(Response::SelectedDisplayText(label)),
-                    r#type: Some(buttons_response_message::Type::DISPLAY_TEXT),
-                    context_info: MessageField::some(context),
-                }),
-                ..Default::default()
-            },
-            Self::Template { id, index } => wa::Message {
-                template_button_reply_message: MessageField::some(TemplateButtonReplyMessage {
-                    selected_id: Some(id.clone()),
-                    selected_display_text: Some(label),
-                    selected_index: Some(*index),
-                    context_info: MessageField::some(context),
-                    ..Default::default()
-                }),
-                ..Default::default()
-            },
-            Self::Flow(id) => wa::Message {
-                interactive_response_message: MessageField::some(Interactive {
-                    body: MessageField::some(interactive_response_message::Body {
-                        text: Some(label),
-                        ..Default::default()
-                    }),
-                    interactive_response_message: Some(
-                        InteractiveResponseMessage::NativeFlowResponseMessage(Box::new(
-                            interactive_response_message::NativeFlowResponseMessage {
-                                name: Some("quick_reply".into()),
-                                params_json: Some(serde_json::json!({ "id": id }).to_string()),
-                                version: Some(3),
-                            },
-                        )),
-                    ),
-                    context_info: MessageField::some(context),
-                }),
-                ..Default::default()
-            },
+            Self::Button(id) => {
+                let mut response = ButtonsResponseMessage::default();
+                response.selected_button_id = Some(id.clone());
+                response.response = Some(Response::SelectedDisplayText(label));
+                response.r#type = Some(buttons_response_message::Type::DISPLAY_TEXT);
+                response.context_info = MessageField::some(context);
+                message.buttons_response_message = MessageField::some(response);
+            }
+            Self::Template { id, index } => {
+                let mut reply = TemplateButtonReplyMessage::default();
+                reply.selected_id = Some(id.clone());
+                reply.selected_display_text = Some(label);
+                reply.selected_index = Some(*index);
+                reply.context_info = MessageField::some(context);
+                message.template_button_reply_message = MessageField::some(reply);
+            }
+            Self::Flow(id) => {
+                let mut body = interactive_response_message::Body::default();
+                body.text = Some(label);
+                let mut flow = interactive_response_message::NativeFlowResponseMessage::default();
+                flow.name = Some("quick_reply".into());
+                flow.params_json = Some(serde_json::json!({ "id": id }).to_string());
+                flow.version = Some(3);
+                let mut response = Interactive::default();
+                response.body = MessageField::some(body);
+                response.interactive_response_message = Some(
+                    InteractiveResponseMessage::NativeFlowResponseMessage(Box::new(flow)),
+                );
+                response.context_info = MessageField::some(context);
+                message.interactive_response_message = MessageField::some(response);
+            }
             Self::Unknown => {
-                let mut text = wa::Message::text(label);
-                text.set_context_info(context);
-                text
+                message = wa::Message::text(label);
+                message.set_context_info(context);
             }
         }
+        message
     }
 }
 
@@ -123,7 +117,7 @@ pub(crate) async fn send(
         .await
         .map_err(|error| ActionError::refused(&error))?;
     Ok(Sent {
-        id: sent.message_id,
+        id: sent.message_id.into_string(),
         secret: None,
     })
 }

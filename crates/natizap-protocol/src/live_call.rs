@@ -107,12 +107,12 @@ impl Rings {
                     is_video,
                     group_jid: None,
                     ..
-                } if !call.offline && call.media.is_some() => Some(RingChange::Rang(Ring {
+                } if !call.offline && call.media().is_some() => Some(RingChange::Rang(Ring {
                     id: call_id.clone(),
                     caller: ChatId::new(&call.from.to_non_ad().to_string()),
                     video: *is_video,
-                    at: call.timestamp.timestamp(),
-                    offer: Arc::new(call.clone()),
+                    at: crate::calls::sent_at(call),
+                    offer: Arc::new((**call).clone()),
                 })),
                 CallAction::Terminate { call_id, .. } => Some(RingChange::Stopped(call_id.clone())),
                 _ => None,
@@ -193,9 +193,17 @@ impl LiveCall {
         self.handle.call_id()
     }
 
-    /// Stops or resumes sending the microphone's sound.
-    pub fn set_muted(&self, muted: bool) {
-        self.handle.set_muted(muted);
+    /// Stops or resumes sending the microphone's sound, and tells the
+    /// other end. Muting takes effect even when the other end cannot be
+    /// told; unmuting waits until it was.
+    pub fn set_muted(&self, muted: bool, cx: &App) -> Task<Result<(), ActionError>> {
+        let handle = self.handle.clone();
+        actions::on_tokio(cx, async move {
+            handle
+                .set_muted(muted)
+                .await
+                .map_err(|error| ActionError::refused(&error))
+        })
     }
 
     /// How the call goes, step by step, ending with
@@ -319,7 +327,7 @@ impl Protocol {
         });
         cx.background_spawn(async move {
             let told = told.await;
-            handle.hangup().await;
+            handle.hangup_local().await;
             told
         })
     }
@@ -349,24 +357,26 @@ fn follow(
 #[cfg(test)]
 mod tests {
     use whatsapp_rust::Jid;
-    use whatsapp_rust::chrono::Utc;
 
     use super::*;
 
     #[test]
     fn a_call_hung_up_elsewhere_stops_ringing() {
         let caller = Jid::pn("5511912345678");
-        let terminate = Event::IncomingCall(IncomingCall::new_for_test(
-            caller.clone(),
-            "stanza".into(),
-            Utc::now(),
-            CallAction::Terminate {
-                call_id: "CALL1".into(),
-                call_creator: caller,
-                reason: None,
-                duration: None,
-                audio_duration: None,
-            },
+        let terminate = Event::IncomingCall(Box::new(
+            IncomingCall::builder()
+                .from(caller.clone())
+                .stanza_id("stanza".into())
+                .timestamp(whatsapp_rust::time::now_utc())
+                .offline(false)
+                .action(CallAction::Terminate {
+                    call_id: "CALL1".into(),
+                    call_creator: caller,
+                    reason: None,
+                    duration: None,
+                    audio_duration: None,
+                })
+                .build(),
         ));
         let stopped = Rings.hear(&terminate);
         assert!(matches!(stopped, Some(RingChange::Stopped(id)) if id == "CALL1"));

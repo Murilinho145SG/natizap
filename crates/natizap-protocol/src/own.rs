@@ -2,6 +2,7 @@
 //! line and picture on all its devices.
 
 use gpui::{App, Task};
+use whatsapp_rust::PushNameOutcome;
 
 use crate::business::{self, Business};
 use crate::profile;
@@ -59,6 +60,13 @@ impl Protocol {
                 .profile()
                 .set_push_name(&name)
                 .await
+                .map(|outcome| {
+                    // The new name is in effect: its copy on this account's
+                    // other devices failing does not undo the rename.
+                    if let PushNameOutcome::SyncPending { source } = outcome {
+                        tracing::warn!(%source, "the new name did not reach the other devices");
+                    }
+                })
                 .map_err(|error| ActionError::Rejected(error.to_string()))
         })
     }

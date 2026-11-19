@@ -99,7 +99,7 @@ impl CallFollower {
     pub fn hear(&mut self, event: &Event) -> Vec<CallRecord> {
         match event {
             Event::IncomingCall(call) => {
-                let at = call.timestamp.timestamp();
+                let at = crate::calls::sent_at(call);
                 let peer = ChatId::new(&call.from.to_non_ad().to_string());
                 self.action(&call.action, peer, at).into_iter().collect()
             }
@@ -122,7 +122,7 @@ impl CallFollower {
                 incoming: true,
                 video: false,
                 outcome: CallOutcome::Missed,
-                at: missed.timestamp.timestamp(),
+                at: missed.timestamp.as_secs(),
                 seconds: None,
             }],
             Event::HistorySync(history) => history.get().map_or_else(Vec::new, |history| {
@@ -241,7 +241,8 @@ fn from_history(record: &wa::CallLogRecord) -> Option<CallRecord> {
         | CallResult::UNAVAILABLE
         | CallResult::ABANDONED
         | CallResult::FAILED => CallOutcome::Missed,
-        CallResult::INVALID | CallResult::UPCOMING | CallResult::ONGOING => return None,
+        // Not over yet, or a result added later: nothing to file.
+        _ => return None,
     };
     Some(CallRecord {
         id: record.call_id.clone()?,
@@ -261,7 +262,6 @@ fn from_history(record: &wa::CallLogRecord) -> Option<CallRecord> {
 #[cfg(test)]
 mod tests {
     use whatsapp_rust::Jid;
-    use whatsapp_rust::chrono::Utc;
     use whatsapp_rust::wacore::types::call::IncomingCall;
 
     use super::*;
@@ -271,11 +271,14 @@ mod tests {
     }
 
     fn stanza(action: CallAction) -> Event {
-        Event::IncomingCall(IncomingCall::new_for_test(
-            caller(),
-            "stanza".into(),
-            Utc::now(),
-            action,
+        Event::IncomingCall(Box::new(
+            IncomingCall::builder()
+                .from(caller())
+                .stanza_id("stanza".into())
+                .timestamp(whatsapp_rust::time::now_utc())
+                .offline(false)
+                .action(action)
+                .build(),
         ))
     }
 

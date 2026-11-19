@@ -56,7 +56,7 @@ fn arrival(inbound: &InboundMessage) -> Option<Arrival> {
         chat,
         group: source.is_group,
         author,
-        push_name: inbound.info.push_name.clone(),
+        push_name: inbound.info.push_name.to_string(),
         summary: content.summary(),
         offline: inbound.info.is_offline,
     })

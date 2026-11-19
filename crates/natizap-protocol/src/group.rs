@@ -63,11 +63,14 @@ pub enum Role {
 }
 
 pub(crate) async fn info(client: Arc<Client>, group: Jid) -> Result<GroupInfo, ActionError> {
-    let metadata = client
-        .groups()
-        .get_metadata(&group)
+    let groups = client.groups();
+    let mut metadata = groups
+        .fetch_metadata(&group)
         .await
         .map_err(|error| ActionError::Rejected(error.to_string()))?;
+    // Members' phone numbers, which the server leaves out in groups that go
+    // by LID.
+    groups.resolve_participant_addresses(&mut metadata).await;
     let admins: Vec<ChatId> = metadata
         .participants
         .iter()
@@ -122,7 +125,7 @@ pub(crate) async fn info(client: Arc<Client>, group: Jid) -> Result<GroupInfo, A
         admins_only: metadata.is_announcement,
         community_announcements: metadata.is_default_sub_group,
         phones,
-        subject: metadata.subject,
+        subject: metadata.subject.unwrap_or_default(),
         description: metadata
             .description
             .filter(|description| !description.trim().is_empty()),

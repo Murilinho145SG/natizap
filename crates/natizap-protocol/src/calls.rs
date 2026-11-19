@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use whatsapp_rust::prelude::{Event, EventKind};
-use whatsapp_rust::wacore::types::call::CallAction;
+use whatsapp_rust::wacore::types::call::{CallAction, IncomingCall};
 
 use crate::ChatId;
 use crate::live_call::AnsweredHere;
@@ -22,6 +22,15 @@ pub struct MissedCall {
     pub video: bool,
     /// When it rang, in Unix seconds.
     pub at: i64,
+}
+
+/// When `call`'s stanza was sent, in Unix seconds. Only mid-call key
+/// rotations come without a time; those read as now.
+pub(crate) fn sent_at(call: &IncomingCall) -> i64 {
+    call.timestamp.map_or_else(
+        whatsapp_rust::time::now_secs,
+        whatsapp_rust::Timestamp::as_secs,
+    )
 }
 
 /// What is known about a call still ringing.
@@ -112,7 +121,7 @@ impl Ringing {
                             chat: ring.chat,
                             caller: ring.caller,
                             video: ring.video,
-                            at: call.timestamp.timestamp(),
+                            at: sent_at(call),
                         })
                     }
                     _ => None,
@@ -126,7 +135,7 @@ impl Ringing {
                 chat: ChatId::new(&missed.from.to_non_ad().to_string()),
                 caller: None,
                 video: false,
-                at: missed.timestamp.timestamp(),
+                at: missed.timestamp.as_secs(),
             }),
             _ => None,
         }
@@ -136,7 +145,6 @@ impl Ringing {
 #[cfg(test)]
 mod tests {
     use whatsapp_rust::Jid;
-    use whatsapp_rust::chrono::Utc;
     use whatsapp_rust::wacore::types::call::IncomingCall;
 
     use super::*;
@@ -146,11 +154,14 @@ mod tests {
     }
 
     fn stanza(action: CallAction) -> Event {
-        Event::IncomingCall(IncomingCall::new_for_test(
-            caller(),
-            "stanza".into(),
-            Utc::now(),
-            action,
+        Event::IncomingCall(Box::new(
+            IncomingCall::builder()
+                .from(caller())
+                .stanza_id("stanza".into())
+                .timestamp(whatsapp_rust::time::now_utc())
+                .offline(false)
+                .action(action)
+                .build(),
         ))
     }
 

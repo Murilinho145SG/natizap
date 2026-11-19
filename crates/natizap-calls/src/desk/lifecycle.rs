@@ -115,7 +115,8 @@ impl CallDesk {
             logged(hung_up, "could not tell the other end the call ended", cx);
             return false;
         };
-        live.set_muted(call.muted);
+        let told = live.set_muted(call.muted, cx);
+        logged(told, "could not tell the other end of the microphone", cx);
         call.going = Going::Live(live);
         call.phase = if call.incoming {
             Phase::Connecting

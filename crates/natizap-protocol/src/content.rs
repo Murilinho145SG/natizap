@@ -390,13 +390,10 @@ mod tests {
             Some("hello")
         );
 
-        let photo = wa::Message {
-            image_message: MessageField::some(wa::message::ImageMessage {
-                caption: Some("beach".into()),
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
+        let mut image = wa::message::ImageMessage::default();
+        image.caption = Some("beach".into());
+        let mut photo = wa::Message::default();
+        photo.image_message = MessageField::some(image);
         let photo = Content::of(&photo);
         assert_eq!(photo.as_ref().map(|c| c.kind), Some(ContentKind::Photo));
         assert_eq!(photo.map(|c| c.summary()).as_deref(), Some("Photo: beach"));
@@ -409,37 +406,24 @@ mod tests {
         use wa::__buffa::oneof::message::template_message::hydrated_four_row_template::Title;
         use wa::message::template_message::HydratedFourRowTemplate;
 
-        let picture = wa::message::ImageMessage {
-            direct_path: Some("/v/picture".into()),
-            media_key: Some(vec![1]),
-            file_sha256: Some(vec![2]),
-            file_enc_sha256: Some(vec![3]),
-            ..Default::default()
-        };
-        let button = wa::HydratedTemplateButton {
-            hydrated_button: Some(HydratedButton::UrlButton(Box::new(
-                wa::hydrated_template_button::HydratedURLButton {
-                    display_text: Some("Verify".into()),
-                    url: Some("https://example.com".into()),
-                    ..Default::default()
-                },
-            ))),
-            ..Default::default()
-        };
-        let template = wa::Message {
-            template_message: MessageField::some(wa::message::TemplateMessage {
-                format: Some(Format::HydratedFourRowTemplate(Box::new(
-                    HydratedFourRowTemplate {
-                        hydrated_content_text: Some("Your wallet was updated".into()),
-                        title: Some(Title::ImageMessage(Box::new(picture))),
-                        hydrated_buttons: vec![button],
-                        ..Default::default()
-                    },
-                ))),
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
+        let mut picture = wa::message::ImageMessage::default();
+        picture.direct_path = Some("/v/picture".into());
+        picture.media_key = Some(vec![1]);
+        picture.file_sha256 = Some(vec![2]);
+        picture.file_enc_sha256 = Some(vec![3]);
+        let mut link = wa::hydrated_template_button::HydratedURLButton::default();
+        link.display_text = Some("Verify".into());
+        link.url = Some("https://example.com".into());
+        let mut button = wa::HydratedTemplateButton::default();
+        button.hydrated_button = Some(HydratedButton::UrlButton(Box::new(link)));
+        let mut hydrated = HydratedFourRowTemplate::default();
+        hydrated.hydrated_content_text = Some("Your wallet was updated".into());
+        hydrated.title = Some(Title::ImageMessage(Box::new(picture)));
+        hydrated.hydrated_buttons = vec![button];
+        let mut template_message = wa::message::TemplateMessage::default();
+        template_message.format = Some(Format::HydratedFourRowTemplate(Box::new(hydrated)));
+        let mut template = wa::Message::default();
+        template.template_message = MessageField::some(template_message);
 
         let content = Content::of(&template);
         assert_eq!(content.as_ref().map(|c| c.kind), Some(ContentKind::Photo));
@@ -469,19 +453,15 @@ mod tests {
 
     #[test]
     fn reads_the_quoted_message_of_a_reply() {
-        let reply = wa::Message {
-            extended_text_message: MessageField::some(wa::message::ExtendedTextMessage {
-                text: Some("agreed".into()),
-                context_info: MessageField::some(wa::ContextInfo {
-                    stanza_id: Some("3EB0".into()),
-                    participant: Some("5511:2@s.whatsapp.net".into()),
-                    quoted_message: MessageField::some(wa::Message::text("lunch?")),
-                    ..Default::default()
-                }),
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
+        let mut context = wa::ContextInfo::default();
+        context.stanza_id = Some("3EB0".into());
+        context.participant = Some("5511:2@s.whatsapp.net".into());
+        context.quoted_message = MessageField::some(wa::Message::text("lunch?"));
+        let mut text = wa::message::ExtendedTextMessage::default();
+        text.text = Some("agreed".into());
+        text.context_info = MessageField::some(context);
+        let mut reply = wa::Message::default();
+        reply.extended_text_message = MessageField::some(text);
         let quote = Content::of(&reply).and_then(|content| content.quote);
         assert_eq!(
             quote,
@@ -495,18 +475,18 @@ mod tests {
 
     #[test]
     fn carries_what_is_needed_to_show_and_download_a_photo() {
-        let image = |direct_path: Option<&str>| wa::Message {
-            image_message: MessageField::some(wa::message::ImageMessage {
-                direct_path: direct_path.map(str::to_owned),
-                media_key: Some(vec![1]),
-                file_sha256: Some(vec![2]),
-                file_enc_sha256: Some(vec![3]),
-                width: Some(800),
-                height: Some(600),
-                jpeg_thumbnail: Some(vec![0xff, 0xd8]),
-                ..Default::default()
-            }),
-            ..Default::default()
+        let image = |direct_path: Option<&str>| {
+            let mut image = wa::message::ImageMessage::default();
+            image.direct_path = direct_path.map(str::to_owned);
+            image.media_key = Some(vec![1]);
+            image.file_sha256 = Some(vec![2]);
+            image.file_enc_sha256 = Some(vec![3]);
+            image.width = Some(800);
+            image.height = Some(600);
+            image.jpeg_thumbnail = Some(vec![0xff, 0xd8]);
+            let mut message = wa::Message::default();
+            message.image_message = MessageField::some(image);
+            message
         };
 
         let media = Content::of(&image(Some("/v/t62/abc"))).and_then(|content| content.media);
@@ -526,10 +506,8 @@ mod tests {
 
     #[test]
     fn skips_messages_without_visible_content() {
-        let reaction = wa::Message {
-            reaction_message: MessageField::some(wa::message::ReactionMessage::default()),
-            ..Default::default()
-        };
+        let mut reaction = wa::Message::default();
+        reaction.reaction_message = MessageField::some(wa::message::ReactionMessage::default());
         assert_eq!(Content::of(&reaction), None);
     }
 }

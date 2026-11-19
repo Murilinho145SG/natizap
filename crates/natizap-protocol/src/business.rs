@@ -238,7 +238,7 @@ fn weekday(day: &DayOfWeek) -> Option<u8> {
 }
 
 async fn download(client: &Arc<Client>, url: String) -> Option<Vec<u8>> {
-    match client.http_client.execute(HttpRequest::get(url)).await {
+    match client.http_client().execute(HttpRequest::get(url)).await {
         Ok(response) if (200..300).contains(&response.status_code) => Some(response.body),
         Ok(response) => {
             tracing::debug!(status = response.status_code, "cover photo refused");

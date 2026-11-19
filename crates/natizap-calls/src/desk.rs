@@ -389,7 +389,8 @@ impl CallDesk {
         };
         call.muted = !call.muted;
         if let Some(live) = call.going.live() {
-            live.set_muted(call.muted);
+            let told = live.set_muted(call.muted, cx);
+            logged(told, "could not tell the other end of the microphone", cx);
         }
         cx.notify();
     }

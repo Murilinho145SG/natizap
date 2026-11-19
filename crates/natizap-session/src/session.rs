@@ -115,8 +115,7 @@ impl Update {
                     .unwrap_or_else(|| format!("{:?}", f.reason)),
             )),
             Event::TemporaryBan(ban) => Self::Failed(SessionError::TemporarilyBanned {
-                // A negative remainder means the ban already lapsed.
-                expires_in: ban.expire.to_std().unwrap_or_default(),
+                expires_in: ban.expire,
             }),
             _ => return None,
         };
