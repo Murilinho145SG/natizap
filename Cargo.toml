@@ -64,6 +64,11 @@ futures = "0.3"
 # Encodes a call's camera as H.264 (Constrained Baseline, what WhatsApp
 # sends), built from Cisco's source: FFmpeg has no H.264 encoder of its own.
 openh264 = "0.9"
+# Screen sharing on Linux: the desktop portal asks the user what to share
+# (ashpd), and the pictures come over PipeWire, read through libpipewire as
+# browsers and OBS read them; FFmpeg has no PipeWire input.
+ashpd = { version = "0.14", default-features = false, features = ["async-io", "screencast"] }
+pipewire = "0.10"
 # Cleans a call's microphone: echo cancelling (AEC3), noise suppression and
 # gain control, WebRTC's audio processing ported to Rust.
 sonora = "0.3"

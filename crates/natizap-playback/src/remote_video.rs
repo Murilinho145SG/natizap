@@ -24,6 +24,9 @@ pub enum VideoError {
     /// There is no camera, or it would not open.
     #[error("the camera could not be opened: {0}")]
     Camera(String),
+    /// The screen could not be shared.
+    #[error("the screen could not be shared: {0}")]
+    Screen(String),
     /// A video thread could not start.
     #[error("could not start the call's video: {0}")]
     Thread(String),

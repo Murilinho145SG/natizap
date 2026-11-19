@@ -25,6 +25,7 @@ mod probe;
 mod record;
 mod remote_video;
 mod resample;
+mod screen_share;
 mod speed;
 mod turn;
 mod voice_processing;
@@ -42,6 +43,7 @@ pub use poster::{MediaFileError, save_poster, still_jpeg};
 pub use probe::{Probe, probe};
 pub use record::{Heard, RecordError, Recorder, Recording, save as save_recording};
 pub use remote_video::{AccessUnits, VideoError, decode_video};
+pub use screen_share::ScreenShare;
 pub use speed::Speed;
 
 use decode::{Command, Shared};

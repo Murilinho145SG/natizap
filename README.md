@@ -121,10 +121,12 @@ you a release is out.
 ## Building
 
 natizap builds FFmpeg from source and links it statically, which needs `nasm`
-and `libclang`, plus the usual GPUI dependencies. On Debian or Ubuntu:
+and `libclang`, plus the usual GPUI dependencies. On Linux, sharing the screen
+in a call reads it through PipeWire, which needs its development files. On
+Debian or Ubuntu:
 
 ```sh
-sudo apt install nasm libclang-dev
+sudo apt install nasm libclang-dev libpipewire-0.3-dev
 cargo run --release
 ```
 

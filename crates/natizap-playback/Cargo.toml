@@ -11,11 +11,16 @@ repository.workspace = true
 async-channel.workspace = true
 cpal.workspace = true
 ffmpeg-next.workspace = true
+futures.workspace = true
 image.workspace = true
 openh264.workspace = true
 sonora.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+ashpd.workspace = true
+pipewire.workspace = true
 
 [lints]
 workspace = true

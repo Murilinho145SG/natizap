@@ -61,7 +61,7 @@ jobs:
           sudo apt-get install -y nasm clang libclang-dev pkg-config \
             libasound2-dev libfontconfig-dev libfreetype-dev libwayland-dev \
             libx11-xcb-dev libxkbcommon-x11-dev libxcb1-dev libvulkan-dev \
-            libzstd-dev nfpm
+            libzstd-dev libpipewire-0.3-dev nfpm
 
       # The runner's preinstalled Rust can trail the one the workspace needs.
       - uses: dtolnay/rust-toolchain@stable

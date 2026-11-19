@@ -14,8 +14,32 @@ use openh264::formats::YUVSlices;
 /// Pictures a second a call's camera sends: the cadence the call's RTP
 /// clock assumes unless told otherwise.
 pub(crate) const FRAME_RATE: u32 = 15;
-/// What a call's camera spends, in bits a second: a clear 480p.
-const BITRATE: u32 = 700_000;
+/// What a picture source is, which sets how it is encoded.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Source {
+    /// A camera: faces and rooms, a clear 480p.
+    Camera,
+    /// A screen: text that must stay sharp, up to 720p.
+    Screen,
+}
+
+impl Source {
+    /// What it spends, in bits a second.
+    fn bitrate(self) -> u32 {
+        match self {
+            Self::Camera => 700_000,
+            Self::Screen => 1_500_000,
+        }
+    }
+
+    /// The widest picture sent.
+    pub(crate) fn width(self) -> u32 {
+        match self {
+            Self::Camera => 640,
+            Self::Screen => 1280,
+        }
+    }
+}
 /// Pictures between two keyframes, so a lost one heals within seconds.
 const KEYFRAME_EVERY: u32 = 2 * FRAME_RATE;
 
@@ -25,13 +49,16 @@ pub(crate) struct H264Encoder {
 }
 
 impl H264Encoder {
-    pub(crate) fn new() -> Result<Self, openh264::Error> {
+    pub(crate) fn new(source: Source) -> Result<Self, openh264::Error> {
         #[expect(clippy::cast_precision_loss, reason = "a small frame rate")]
         let rate = FrameRate::from_hz(FRAME_RATE as f32);
         let config = EncoderConfig::new()
-            .bitrate(BitRate::from_bps(BITRATE))
+            .bitrate(BitRate::from_bps(source.bitrate()))
             .max_frame_rate(rate)
-            .usage_type(UsageType::CameraVideoRealTime)
+            .usage_type(match source {
+                Source::Camera => UsageType::CameraVideoRealTime,
+                Source::Screen => UsageType::ScreenContentRealTime,
+            })
             .rate_control_mode(RateControlMode::Bitrate)
             .profile(Profile::Baseline)
             .intra_frame_period(IntraFramePeriod::from_num_frames(KEYFRAME_EVERY))
@@ -67,7 +94,7 @@ mod tests {
     use ffmpeg::util::frame;
     use ffmpeg_next as ffmpeg;
 
-    use super::H264Encoder;
+    use super::{H264Encoder, Source};
     use crate::remote_video::Decoder;
     use crate::turn::Turn;
 
@@ -87,7 +114,7 @@ mod tests {
 
     #[test]
     fn what_the_camera_encodes_the_other_end_decodes() -> Result<(), Box<dyn std::error::Error>> {
-        let mut encoder = H264Encoder::new()?;
+        let mut encoder = H264Encoder::new(Source::Camera)?;
         let mut decoder = Decoder::new()?;
         let mut shown = None;
         for index in 0..10 {
@@ -103,7 +130,7 @@ mod tests {
 
     #[test]
     fn a_phone_held_sideways_is_shown_upright() -> Result<(), Box<dyn std::error::Error>> {
-        let mut encoder = H264Encoder::new()?;
+        let mut encoder = H264Encoder::new(Source::Camera)?;
         let mut decoder = Decoder::new()?;
         let mut shown = None;
         for index in 0..5 {

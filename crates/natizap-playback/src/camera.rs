@@ -18,12 +18,9 @@ use crate::Picture;
 use crate::decode::{fit, packed_rows};
 use crate::devices::default_camera;
 use crate::feed::{FeedWriter, VideoFeed, feed};
-use crate::h264::{FRAME_RATE, H264Encoder};
+use crate::h264::{FRAME_RATE, H264Encoder, Source};
 use crate::remote_video::VideoError;
 
-/// The widest picture sent: what a phone shows a call in, at the bitrate
-/// a call can count on.
-const SENT_WIDTH: u32 = 640;
 /// The widest the user's own picture is drawn: it shows small.
 const PREVIEW_WIDTH: u32 = 320;
 /// Access units waiting for the call before new ones are dropped.
@@ -166,14 +163,14 @@ impl Capture {
         stop: &AtomicBool,
         keyframe: &AtomicBool,
     ) {
-        let mut encoder = match H264Encoder::new() {
+        let mut encoder = match H264Encoder::new(Source::Camera) {
             Ok(encoder) => encoder,
             Err(error) => {
                 tracing::warn!(%error, "no H.264 encoder: the camera stays off");
                 return;
             }
         };
-        let mut scalers = Scalers::default();
+        let mut scalers = Scalers::new(Source::Camera.width(), true);
         let every = Duration::from_secs(1) / FRAME_RATE;
         let mut last: Option<Instant> = None;
         let mut decoded = frame::Video::empty();
@@ -208,21 +205,36 @@ impl Capture {
 
 /// The scalers from the camera's format: to the YUV the encoder takes,
 /// and to the user's own small, mirrored picture.
-#[derive(Default)]
-struct Scalers {
+pub(crate) struct Scalers {
+    sent_width: u32,
+    /// Whether the user's own picture shows as in a mirror: a camera's
+    /// does, a screen's does not.
+    mirror: bool,
     made_for: Option<(Pixel, u32, u32)>,
     sent: Option<scaling::Context>,
     shown: Option<scaling::Context>,
 }
 
 impl Scalers {
-    fn convert(
+    /// Scalers sending pictures at most `sent_width` wide.
+    pub(crate) fn new(sent_width: u32, mirror: bool) -> Self {
+        Self {
+            sent_width,
+            mirror,
+            made_for: None,
+            sent: None,
+            shown: None,
+        }
+    }
+
+    /// `picture` as the encoder takes it, and as the user sees it.
+    pub(crate) fn convert(
         &mut self,
         picture: &frame::Video,
     ) -> Result<(frame::Video, Picture), ffmpeg::Error> {
         let shape = (picture.format(), picture.width(), picture.height());
         if self.made_for != Some(shape) {
-            let (sent_width, sent_height) = fit(shape.1, shape.2, SENT_WIDTH);
+            let (sent_width, sent_height) = fit(shape.1, shape.2, self.sent_width);
             let (shown_width, shown_height) = fit(shape.1, shape.2, PREVIEW_WIDTH);
             self.sent = Some(scaling::Context::get(
                 shape.0,
@@ -252,10 +264,12 @@ impl Scalers {
         let mut shown = frame::Video::empty();
         shown_scaler.run(picture, &mut shown)?;
         let (width, height) = (shown.width(), shown.height());
-        let bgra = mirrored(
-            packed_rows(&shown, width as usize * 4, height as usize),
-            width,
-        );
+        let packed = packed_rows(&shown, width as usize * 4, height as usize);
+        let bgra = if self.mirror {
+            mirrored(packed, width)
+        } else {
+            packed
+        };
         Ok((
             sent,
             Picture {
