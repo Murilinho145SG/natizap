@@ -158,6 +158,8 @@ icons! {
     Verified => "verified.svg",
     /// A video.
     Video => "video.svg",
+    /// The camera turned off in a call.
+    VideoOff => "video-off.svg",
     /// Sound: marks voice notes.
     Waveform => "waveform.svg",
 }
