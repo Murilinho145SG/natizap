@@ -13,7 +13,7 @@ use gpui::{
 use natizap_protocol::ContentKind;
 use natizap_ui::{FilesPasted, Submitted, TextInput};
 
-use crate::outbox::kind_of;
+use natizap_outbox::kind_of;
 
 mod render;
 

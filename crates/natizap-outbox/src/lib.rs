@@ -1,6 +1,6 @@
-//! Turning a file the user picked into something to send: what kind of
-//! message it makes, and the preview, size and length WhatsApp shows
-//! before it downloads.
+//! Turning a file the user picked into something to send, as a message or
+//! a status update: what kind of message it makes, and the preview, size
+//! and length WhatsApp shows before it downloads.
 
 use std::io::Cursor;
 use std::path::Path;
@@ -17,7 +17,7 @@ const MAX_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 
 /// Why a file cannot be sent.
 #[derive(Debug, thiserror::Error)]
-pub(crate) enum PrepareError {
+pub enum PrepareError {
     /// The file could not be read.
     #[error("could not read the file: {0}")]
     Read(#[from] std::io::Error),
@@ -33,7 +33,7 @@ pub(crate) enum PrepareError {
 /// the phone does, photos go as photos, MP4 as video, common sound files as
 /// audio, and anything else as a document. Other video formats go as
 /// documents because WhatsApp only plays MP4.
-pub(crate) fn kind_of(path: &Path) -> (ContentKind, &'static str) {
+pub fn kind_of(path: &Path) -> (ContentKind, &'static str) {
     let extension = path
         .extension()
         .and_then(|extension| extension.to_str())
@@ -76,7 +76,7 @@ pub(crate) fn kind_of(path: &Path) -> (ContentKind, &'static str) {
 ///
 /// Fails when the file cannot be read, is too large, or is a photo that
 /// cannot be decoded.
-pub(crate) fn prepare(
+pub fn prepare(
     path: &Path,
     caption: Option<String>,
     as_document: bool,

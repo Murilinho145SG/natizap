@@ -3815,6 +3815,7 @@ dependencies = [
  "emojis",
  "gpui",
  "image",
+ "natizap-outbox",
  "natizap-playback",
  "natizap-profiles",
  "natizap-protocol",
@@ -3833,6 +3834,16 @@ dependencies = [
  "natizap-protocol",
  "natizap-ui",
  "tracing",
+]
+
+[[package]]
+name = "natizap-outbox"
+version = "0.1.0"
+dependencies = [
+ "image",
+ "natizap-playback",
+ "natizap-protocol",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

@@ -156,6 +156,7 @@ organizing rule of the codebase.
 | `natizap-contacts` | feature | Profiles of people and businesses, and your own, editable. |
 | `natizap-messages` | feature | Message store, the open conversation and sending.         |
 | `natizap-notifications` | feature | Chimes for messages arriving outside the chat on screen. |
+| `natizap-outbox`   | shared  | Turns a picked file into a message or status to send.     |
 | `natizap-playback` | shared | Media engine: static FFmpeg decoding, cpal sound, clock. |
 | `natizap-player`   | feature | The video player the media carousel plays videos on.     |
 | `natizap-profiles` | shared  | Profile pictures: fetched on sight, cached on disk.        |

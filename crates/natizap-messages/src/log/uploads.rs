@@ -10,7 +10,7 @@ use super::sending::outgoing_message;
 use super::{Input, MessageLog, MessageSent};
 use crate::media::Fetch;
 use crate::message::MessageChange;
-use crate::outbox::prepare;
+use natizap_outbox::prepare;
 
 impl MessageLog {
     /// Sends each file to the open chat as a message of its own, with its

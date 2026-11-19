@@ -78,6 +78,7 @@ natizap-chats = { path = "crates/natizap-chats" }
 natizap-contacts = { path = "crates/natizap-contacts" }
 natizap-messages = { path = "crates/natizap-messages" }
 natizap-notifications = { path = "crates/natizap-notifications" }
+natizap-outbox = { path = "crates/natizap-outbox" }
 natizap-playback = { path = "crates/natizap-playback" }
 natizap-profiles = { path = "crates/natizap-profiles" }
 natizap-tray = { path = "crates/natizap-tray" }
