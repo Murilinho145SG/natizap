@@ -7,6 +7,7 @@ use whatsapp_rust::prelude::{Event, EventKind, wa};
 use whatsapp_rust::wacore::types::call::{CallAction, ElsewhereOutcome};
 
 use crate::ChatId;
+use crate::live_call::AnsweredHere;
 
 /// How a call ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -70,11 +71,22 @@ struct Ringing {
 }
 
 /// Follows calls through their events into [`CallRecord`]s. Feed it every
-/// event of [`CallFollower::EVENTS`].
-#[derive(Debug, Default)]
-pub struct CallFollower(HashMap<String, Ringing>);
+/// event of [`CallFollower::EVENTS`]. Made by
+/// [`Protocol::call_follower`](crate::Protocol::call_follower).
+#[derive(Debug)]
+pub struct CallFollower {
+    ringing: HashMap<String, Ringing>,
+    answered: AnsweredHere,
+}
 
 impl CallFollower {
+    pub(crate) fn new(answered: AnsweredHere) -> Self {
+        Self {
+            ringing: HashMap::new(),
+            answered,
+        }
+    }
+
     /// The events calls are followed through.
     pub const EVENTS: &[EventKind] = &[
         EventKind::IncomingCall,
@@ -92,7 +104,7 @@ impl CallFollower {
                 self.action(&call.action, peer, at).into_iter().collect()
             }
             Event::CallEndedElsewhere(ended) => {
-                if let Some(ringing) = self.0.get_mut(&ended.call_id) {
+                if let Some(ringing) = self.ringing.get_mut(&ended.call_id) {
                     ringing.outcome = match ended.outcome {
                         ElsewhereOutcome::Accepted => Some(CallOutcome::Answered),
                         ElsewhereOutcome::Rejected => Some(CallOutcome::Declined),
@@ -132,7 +144,7 @@ impl CallFollower {
                 group_jid,
                 ..
             } => {
-                self.0.entry(call_id.clone()).or_insert(Ringing {
+                self.ringing.entry(call_id.clone()).or_insert(Ringing {
                     peer,
                     group: group_jid
                         .as_ref()
@@ -146,7 +158,7 @@ impl CallFollower {
             CallAction::OfferNotice {
                 call_id, is_video, ..
             } => {
-                self.0.entry(call_id.clone()).or_insert(Ringing {
+                self.ringing.entry(call_id.clone()).or_insert(Ringing {
                     peer,
                     group: None,
                     video: *is_video,
@@ -156,7 +168,7 @@ impl CallFollower {
                 None
             }
             CallAction::Accept { call_id, .. } => {
-                if let Some(ringing) = self.0.get_mut(call_id) {
+                if let Some(ringing) = self.ringing.get_mut(call_id) {
                     ringing.outcome = Some(CallOutcome::Answered);
                 }
                 None
@@ -168,7 +180,7 @@ impl CallFollower {
                 reason: None,
                 ..
             } => {
-                if let Some(ringing) = self.0.get_mut(call_id) {
+                if let Some(ringing) = self.ringing.get_mut(call_id) {
                     ringing.outcome = Some(CallOutcome::Declined);
                 }
                 None
@@ -179,8 +191,12 @@ impl CallFollower {
                 duration,
                 ..
             } => {
-                let ringing = self.0.remove(call_id)?;
-                let outcome = match (ringing.outcome, reason.as_deref()) {
+                let ringing = self.ringing.remove(call_id)?;
+                let answered_here = self
+                    .answered
+                    .contains(call_id)
+                    .then_some(CallOutcome::Answered);
+                let outcome = match (ringing.outcome.or(answered_here), reason.as_deref()) {
                     (Some(outcome), _) => outcome,
                     (None, Some("accepted_elsewhere")) => CallOutcome::Answered,
                     (None, Some("rejected_elsewhere")) => CallOutcome::Declined,
@@ -296,7 +312,7 @@ mod tests {
 
     #[test]
     fn a_call_answered_on_the_phone_keeps_its_length() {
-        let mut follower = CallFollower::default();
+        let mut follower = CallFollower::new(AnsweredHere::default());
         assert_eq!(follower.hear(&offer()), Vec::new());
         assert_eq!(
             ended(
@@ -308,8 +324,20 @@ mod tests {
     }
 
     #[test]
+    fn a_call_answered_here_keeps_its_length() {
+        let answered = AnsweredHere::default();
+        let mut follower = CallFollower::new(answered.clone());
+        follower.hear(&offer());
+        answered.insert("CALL1");
+        assert_eq!(
+            ended(&mut follower, &terminate(None, Some(42))),
+            Some((CallOutcome::Answered, Some(42)))
+        );
+    }
+
+    #[test]
     fn a_call_nobody_picked_up_is_missed_without_a_length() {
-        let mut follower = CallFollower::default();
+        let mut follower = CallFollower::new(AnsweredHere::default());
         follower.hear(&offer());
         assert_eq!(
             ended(&mut follower, &terminate(Some("timeout"), Some(30))),
@@ -321,7 +349,7 @@ mod tests {
 
     #[test]
     fn a_declined_call_is_declined() {
-        let mut follower = CallFollower::default();
+        let mut follower = CallFollower::new(AnsweredHere::default());
         follower.hear(&offer());
         follower.hear(&stanza(CallAction::Reject {
             call_id: "CALL1".into(),

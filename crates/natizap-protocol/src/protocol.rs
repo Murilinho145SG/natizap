@@ -20,6 +20,7 @@ use crate::answer::{self, Answer};
 use crate::content::Extra;
 use crate::fanout::Fanout;
 use crate::group::{self, GroupInfo};
+use crate::live_call::AnsweredHere;
 use crate::media::{self, Media, MediaOrigin, Received};
 use crate::outgoing::{self, Forward, Outgoing, SentMedia};
 use crate::profile::{self, Profile};
@@ -55,6 +56,8 @@ pub struct Protocol {
     store_path: PathBuf,
     fanout: Fanout,
     pub(crate) connection: Connection,
+    /// Calls answered on this device, for the followers of calls to know.
+    pub(crate) answered: AnsweredHere,
     client: Task<()>,
     /// The phone unlinked this device, so the stored keys are dead.
     unlinked: bool,
@@ -122,6 +125,7 @@ impl Protocol {
             store_path,
             fanout,
             connection,
+            answered: AnsweredHere::default(),
             client,
             unlinked: false,
             _tasks: [unlinks, catch_up],

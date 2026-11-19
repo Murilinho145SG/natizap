@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use chrono::Local;
 use natizap_protocol::whatsapp_rust::prelude::Event;
-use natizap_protocol::{Account, Anchor, ChatId, ContentKind, Unread};
+use natizap_protocol::{Account, Anchor, ChatId, ContentKind, Ringing, Unread};
 
 use super::{Input, OpenChat, Output, Pinned, SHOWN_MESSAGES};
 use crate::items::{Members, items, summary};
@@ -24,6 +24,7 @@ pub(super) async fn sync(
     inputs: async_channel::Receiver<Input>,
     outputs: async_channel::Sender<Output>,
     account: Account,
+    ringing: Ringing,
 ) {
     let Some(mut store) = open_store(&store_path) else {
         return;
@@ -36,7 +37,7 @@ pub(super) async fn sync(
     let mut names = Arc::default();
     // Chats whose missing media was asked for, once per launch.
     let mut asked: HashSet<ChatId> = HashSet::new();
-    let mut translating = Sync::default();
+    let mut translating = Sync::new(ringing);
 
     while let Ok(input) = inputs.recv().await {
         let mut refresh = false;

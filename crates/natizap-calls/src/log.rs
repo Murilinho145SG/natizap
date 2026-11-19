@@ -42,6 +42,7 @@ impl CallLog {
     /// through `protocol`.
     pub fn new(protocol: &Entity<Protocol>, path: PathBuf, cx: &mut Context<Self>) -> Self {
         let events = protocol.read(cx).subscribe(CallFollower::EVENTS);
+        let mut follower = protocol.read(cx).call_follower();
         let (inputs_tx, inputs) = async_channel::unbounded();
         let forward_tx = inputs_tx.clone();
         let forward = cx.background_spawn(async move {
@@ -64,7 +65,6 @@ impl CallLog {
                     return;
                 }
             };
-            let mut follower = CallFollower::default();
             loop {
                 match store.recent() {
                     Ok(calls) => {

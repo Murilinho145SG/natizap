@@ -17,6 +17,7 @@ mod content;
 mod fanout;
 mod group;
 mod link;
+mod live_call;
 mod markup;
 mod media;
 mod outgoing;
@@ -41,6 +42,9 @@ pub use chat_actions::ChatAction;
 pub use content::{Card, Content, ContentKind, Extra, Forwarding, Poll, Quote};
 pub use group::{GroupInfo, Member, Role};
 pub use link::LinkPreview;
+pub use live_call::{
+    CallEnd, CallProgress, LiveCall, Ring, RingChange, Rings, VOICE_FRAME, VOICE_RATE, Voice,
+};
 pub use markup::{LinkKind, Mark, Marked};
 pub use media::{HdThumbnail, Media, MediaOrigin, Received};
 pub use outgoing::{Forward, Outgoing, SentMedia};

@@ -7,6 +7,7 @@ use whatsapp_rust::prelude::{Event, EventKind};
 use whatsapp_rust::wacore::types::call::CallAction;
 
 use crate::ChatId;
+use crate::live_call::AnsweredHere;
 
 /// A call that rang on the account's devices and that nobody answered.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -33,10 +34,21 @@ struct Ring {
 
 /// Follows the calls ringing on the account, telling which end missed.
 /// Feed it every event of [`Ringing::EVENTS`].
-#[derive(Debug, Default)]
-pub struct Ringing(HashMap<String, Ring>);
+/// Made by [`Protocol::ringing`](crate::Protocol::ringing).
+#[derive(Debug)]
+pub struct Ringing {
+    rings: HashMap<String, Ring>,
+    answered: AnsweredHere,
+}
 
 impl Ringing {
+    pub(crate) fn new(answered: AnsweredHere) -> Self {
+        Self {
+            rings: HashMap::new(),
+            answered,
+        }
+    }
+
     /// The events a call is followed through.
     pub const EVENTS: &[EventKind] = &[EventKind::IncomingCall, EventKind::MissedCall];
 
@@ -64,13 +76,13 @@ impl Ringing {
                                 video: *is_video,
                             },
                         };
-                        self.0.insert(call_id.clone(), ring);
+                        self.rings.insert(call_id.clone(), ring);
                         None
                     }
                     CallAction::OfferNotice {
                         call_id, is_video, ..
                     } => {
-                        self.0.entry(call_id.clone()).or_insert(Ring {
+                        self.rings.entry(call_id.clone()).or_insert(Ring {
                             chat: caller,
                             caller: None,
                             video: *is_video,
@@ -78,13 +90,16 @@ impl Ringing {
                         None
                     }
                     CallAction::Accept { call_id, .. } | CallAction::Reject { call_id, .. } => {
-                        self.0.remove(call_id);
+                        self.rings.remove(call_id);
                         None
                     }
                     CallAction::Terminate {
                         call_id, reason, ..
                     } => {
-                        let ring = self.0.remove(call_id)?;
+                        let ring = self.rings.remove(call_id)?;
+                        if self.answered.contains(call_id) {
+                            return None;
+                        }
                         // How WhatsApp Web files a call that ended before
                         // anyone answered; `accepted_elsewhere` and
                         // `rejected_elsewhere` mean another device did.
@@ -165,7 +180,7 @@ mod tests {
 
     #[test]
     fn a_call_that_stops_ringing_unanswered_is_missed() {
-        let mut ringing = Ringing::default();
+        let mut ringing = Ringing::new(AnsweredHere::default());
         assert_eq!(ringing.hear(&offer(true)), None);
         let missed = ringing.hear(&terminate(Some("timeout")));
         assert_eq!(
@@ -180,14 +195,26 @@ mod tests {
 
     #[test]
     fn a_call_answered_elsewhere_is_not_missed() {
-        let mut ringing = Ringing::default();
+        let mut ringing = Ringing::new(AnsweredHere::default());
         ringing.hear(&offer(false));
         assert_eq!(ringing.hear(&terminate(Some("accepted_elsewhere"))), None);
     }
 
     #[test]
+    fn a_call_answered_here_is_not_missed() {
+        let answered = AnsweredHere::default();
+        let mut ringing = Ringing::new(answered.clone());
+        ringing.hear(&offer(false));
+        answered.insert("CALL1");
+        assert_eq!(ringing.hear(&terminate(None)), None);
+    }
+
+    #[test]
     fn a_call_ending_without_ringing_here_is_not_missed() {
         // natizap's own outgoing calls, or ones it joined after the offer.
-        assert_eq!(Ringing::default().hear(&terminate(None)), None);
+        assert_eq!(
+            Ringing::new(AnsweredHere::default()).hear(&terminate(None)),
+            None
+        );
     }
 }

@@ -19,12 +19,16 @@ const MESSAGE_EVENTS: &[EventKind] = &[
 
 /// Translates protocol events, following calls between them to mark the
 /// ones nobody answered.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(crate) struct Sync {
     ringing: Ringing,
 }
 
 impl Sync {
+    pub(crate) fn new(ringing: Ringing) -> Self {
+        Self { ringing }
+    }
+
     /// Every event kind [`Sync::changes`] reads.
     pub(crate) fn events() -> Vec<EventKind> {
         MESSAGE_EVENTS

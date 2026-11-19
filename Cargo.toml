@@ -22,13 +22,15 @@ gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "482e7652
     "x11",
 ] }
 gpui_tokio = { git = "https://github.com/zed-industries/zed", rev = "482e76524bd33d8cbdfc352f1fef3eefbf2fad92" }
-# Default features minus `simd` (nightly-only) and `signal` (the GUI owns shutdown).
+# Default features minus `simd` (nightly-only) and `signal` (the GUI owns shutdown),
+# plus calls with the pure-Rust MLOW voice codec (`voip-mlow`).
 whatsapp-rust = { version = "0.7", default-features = false, features = [
     "sqlite-storage",
     "tokio-native",
     "tokio-runtime",
     "tokio-transport",
     "ureq-client",
+    "voip-mlow",
 ] }
 
 anyhow = "1"
