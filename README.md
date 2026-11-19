@@ -9,7 +9,7 @@
 
 <p align="center">
   <a href="LICENSE"><img alt="License: AGPL-3.0-or-later" src="https://img.shields.io/badge/license-AGPL--3.0--or--later-ff7a1a"></a>
-  <img alt="Platforms: Linux and Windows" src="https://img.shields.io/badge/platforms-Linux%20%7C%20Windows-1a1d22">
+  <img alt="Platforms: Linux, Windows and macOS" src="https://img.shields.io/badge/platforms-Linux%20%7C%20Windows%20%7C%20macOS-1a1d22">
   <img alt="Status: early development" src="https://img.shields.io/badge/status-early%20development-1a1d22">
 </p>
 
@@ -73,7 +73,7 @@ risk.
 ## Installing
 
 Every [release](https://github.com/Murilinho145SG/natizap/releases) has
-builds for x86-64 (Intel and AMD) and ARM64:
+builds for x86-64 (Intel and AMD) and ARM64 (Apple Silicon on a Mac):
 
 | System                      | x86-64                                   | ARM64                                     |
 | --------------------------- | ---------------------------------------- | ----------------------------------------- |
@@ -84,13 +84,19 @@ builds for x86-64 (Intel and AMD) and ARM64:
 | Any Linux, unpacked by hand | `natizap-<version>-x86_64-linux.tar.gz`  | `natizap-<version>-aarch64-linux.tar.gz`  |
 | Windows 10 and 11           | `natizap-<version>-x86_64-setup.exe`     | `natizap-<version>-arm64-setup.exe`       |
 | Windows, without installing | `natizap-<version>-x86_64-windows.zip`   | `natizap-<version>-arm64-windows.zip`     |
+| macOS 11 and later          | `natizap-<version>-x86_64-macos.dmg`     | `natizap-<version>-aarch64-macos.dmg`     |
+
+On a Mac, open the `.dmg` and drag natizap onto Applications. natizap is
+not signed with an Apple Developer ID yet, so the first time you open it
+macOS refuses: go to System Settings → Privacy & Security and choose
+**Open Anyway**. It opens normally from then on.
 
 natizap keeps itself up to date: when a new release is out it downloads it
 in the background, checks it against the release's `SHA256SUMS`, and offers
 to restart into it from the title bar. Packages are installed through your
 package manager (it asks for your password); the AppImage and the Windows
-installer update in place. The archive and zip only tell you a release is
-out.
+installer update in place. The archive, the zip and the Mac app only tell
+you a release is out.
 
 ## Building
 
@@ -101,6 +107,9 @@ and `libclang`, plus the usual GPUI dependencies. On Debian or Ubuntu:
 sudo apt install nasm libclang-dev
 cargo run --release
 ```
+
+On a Mac, Xcode brings `libclang` and the Metal compiler GPUI needs;
+`brew install nasm` adds the rest.
 
 If `LIBCLANG_PATH` points at a cross-compiling clang (embedded toolchains often
 export one), FFmpeg's bindings are generated for the wrong target and the
