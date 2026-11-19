@@ -139,6 +139,12 @@ impl MessageLog {
         if then != Then::Keep && self.failed.fetches.remove(&fetch.message_id) {
             self.fetching.remove(&fetch.message_id);
         }
+        // Asking the phone to upload an expired file again is what a tap
+        // does; done for every old attachment a chat shows, it floods
+        // WhatsApp, which then refuses everything for a while.
+        if then == Then::Keep && fetch.media.link_expired() {
+            return;
+        }
         if let Some(waiting) = self.fetching.get_mut(&fetch.message_id) {
             if then != Then::Keep {
                 waiting.push(then);
