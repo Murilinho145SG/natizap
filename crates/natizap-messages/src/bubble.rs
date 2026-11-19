@@ -28,7 +28,7 @@ mod actions;
 mod pictures;
 
 use actions::{hover_actions, quick_reactions, reaction_chips};
-use pictures::{picture_bubble, sticker_bubble};
+use pictures::{album_bubble, picture_bubble, sticker_bubble};
 
 /// How attachments show in this draw: the voice note playing, and the
 /// downloads under way and how far along each is, by message id.
@@ -348,6 +348,9 @@ fn shape(
         .media
         .as_ref()
         .filter(|media| matches!(media.fetch.kind, ContentKind::Photo | ContentKind::Video));
+    if let Some(media) = picture.filter(|_| !bubble.album.is_empty()) {
+        return album_bubble(bubble, media, meta, view, focus, shown);
+    }
     if let Some(media) = picture {
         return picture_bubble(
             bubble,

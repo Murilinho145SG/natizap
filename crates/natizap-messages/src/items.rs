@@ -40,6 +40,9 @@ pub(crate) struct Bubble {
     pub(crate) body: Body,
     /// The attachment, shown above the text.
     pub(crate) media: Option<MediaView>,
+    /// The photos and videos sent right after `media`, when it heads an
+    /// album: they show with it as one grid.
+    pub(crate) album: Vec<MediaView>,
     /// The message it replies to.
     pub(crate) quote: Option<QuotePreview>,
     /// What to quote when replying to it.
@@ -137,6 +140,14 @@ pub(crate) struct Text {
     pub(crate) marks: Arc<[(Range<usize>, Mark)]>,
 }
 
+impl Bubble {
+    /// Whether message `id` shows in this bubble: it is the bubble's own,
+    /// or a picture folded into its album.
+    pub(crate) fn holds(&self, id: &str) -> bool {
+        self.id.as_ref() == id || self.album.iter().any(|media| media.fetch.message_id == id)
+    }
+}
+
 impl Text {
     fn parse(source: &str) -> Self {
         let marked = Marked::parse(source);
@@ -164,11 +175,20 @@ pub(crate) fn items(
         .collect();
     let mut items = Vec::with_capacity(messages.len() + 8);
     let mut previous: Option<(&Message, NaiveDate)> = None;
-    for message in messages {
+    let mut folded = vec![false; messages.len()];
+    for run in album::albums(messages) {
+        folded[run.start + 1..run.end].fill(true);
+    }
+    for (message, folded) in messages.iter().zip(folded) {
         let Some(sent) = Local.timestamp_opt(message.sent_at, 0).single() else {
             continue;
         };
         let day = sent.date_naive();
+        if folded && let Some(Item::Bubble(album)) = items.last_mut() {
+            album::fold(album, message, sent);
+            previous = Some((message, day));
+            continue;
+        }
         let new_day = previous.is_none_or(|(_, previous_day)| previous_day != day);
         if new_day {
             items.push(Item::Day(day_label(day, now).into()));
@@ -237,6 +257,7 @@ fn bubble(
             }
         },
         media: media_view(message),
+        album: Vec::new(),
         quote,
         reactions: Vec::new(),
         my_reaction: None,
@@ -474,6 +495,8 @@ fn day_label(day: NaiveDate, now: DateTime<Local>) -> String {
         _ => day.format("%-d %B %Y").to_string(),
     }
 }
+
+mod album;
 
 #[cfg(test)]
 mod tests;

@@ -1,11 +1,11 @@
 //! Bubbles that are mostly a picture: photos and videos filling their
-//! bubble, and stickers with no bubble at all.
+//! bubble, albums of them in a grid, and stickers with no bubble at all.
 
 use gpui::prelude::*;
-use gpui::{Div, WeakEntity, div, px, rgb, rgba};
+use gpui::{Div, FontWeight, WeakEntity, div, px, rgb, rgba};
 use natizap_ui::theme::Theme;
 
-use super::{author, forwarded, frame, jump_to_quoted};
+use super::{Attachments, author, forwarded, frame, jump_to_quoted};
 use crate::items::{Body, Bubble, MediaView};
 use crate::media_view::render_media;
 use crate::rich_text::{TextFocus, rich_text, selectable};
@@ -66,15 +66,102 @@ pub(super) fn picture_bubble(
     downloading: Option<f32>,
     theme: Theme,
 ) -> Div {
+    let picture = div()
+        .relative()
+        .child(render_media(media, view, downloading, theme));
+    framed(bubble, picture, media.size.0, meta, view, focus, theme)
+}
+
+/// A side of an album's square tile.
+const TILE: f32 = 148.0;
+/// The room between an album's tiles.
+const TILE_GAP: f32 = 3.0;
+/// An album shows this many tiles; the last one counts the rest.
+const TILES_SHOWN: usize = 4;
+
+/// Photos and videos sent together, as the phone shows them: a grid of
+/// two by two, the last tile saying how many more there are. Each tile
+/// opens its own picture in the carousel, which goes on to the others.
+pub(super) fn album_bubble(
+    bubble: &Bubble,
+    first: &MediaView,
+    meta: Div,
+    view: &WeakEntity<ConversationView>,
+    focus: &TextFocus,
+    shown: &Attachments,
+) -> Div {
+    let theme = shown.theme;
+    let pictures: Vec<&MediaView> = std::iter::once(first).chain(&bubble.album).collect();
+    let more = pictures.len().saturating_sub(TILES_SHOWN);
+    let tile = |index: usize, media: &MediaView| {
+        let square = MediaView {
+            size: (TILE, TILE),
+            ..media.clone()
+        };
+        div()
+            .id(("album-tile", index))
+            .relative()
+            .size(px(TILE))
+            .child(render_media(&square, view, shown.progress(media), theme))
+            .when(index + 1 == TILES_SHOWN && more > 0, |tile| {
+                // Over the picture, which still takes the click.
+                tile.child(
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .rounded(px(11.0))
+                        .bg(rgba(theme.scrim))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .text_size(px(26.0))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(rgb(theme.text))
+                        .child(format!("+{more}")),
+                )
+            })
+    };
+    let grid = div()
+        .relative()
+        .flex()
+        .flex_wrap()
+        .gap(px(TILE_GAP))
+        .w(px(2.0 * TILE + TILE_GAP))
+        .children(
+            pictures
+                .iter()
+                .take(TILES_SHOWN)
+                .enumerate()
+                .map(|(index, media)| tile(index, media)),
+        );
+    framed(
+        bubble,
+        grid,
+        2.0 * TILE + TILE_GAP,
+        meta,
+        view,
+        focus,
+        theme,
+    )
+}
+
+/// `picture`, `width` wide, in its bubble with the author, the quote and
+/// the caption; the time sits on the picture, or beside the caption.
+fn framed(
+    bubble: &Bubble,
+    picture: Div,
+    width: f32,
+    meta: Div,
+    view: &WeakEntity<ConversationView>,
+    focus: &TextFocus,
+    theme: Theme,
+) -> Div {
     let caption = match &bubble.body {
         Body::Content {
             text: Some(text), ..
         } => Some(text),
         _ => None,
     };
-    let picture = div()
-        .relative()
-        .child(render_media(media, view, downloading, theme));
     let (picture, caption) = match caption {
         Some(text) => {
             let (shown, hits) = rich_text(&bubble.id, text, view, focus, theme);
@@ -114,7 +201,7 @@ pub(super) fn picture_bubble(
     // the window: a caption measured against anything wider wraps into
     // more lines than were laid out and spills out of the bubble.
     frame(bubble, theme)
-        .w(px(media.size.0 + 2.0 * PICTURE_PADDING))
+        .w(px(width + 2.0 * PICTURE_PADDING))
         .max_w_full()
         .p(px(PICTURE_PADDING))
         .gap_1()

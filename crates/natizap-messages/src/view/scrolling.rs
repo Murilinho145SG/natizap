@@ -94,5 +94,5 @@ impl ConversationView {
 fn position(items: &[Item], id: &str) -> Option<usize> {
     items
         .iter()
-        .position(|item| matches!(item, Item::Bubble(bubble) if bubble.id.as_ref() == id))
+        .position(|item| matches!(item, Item::Bubble(bubble) if bubble.holds(id)))
 }

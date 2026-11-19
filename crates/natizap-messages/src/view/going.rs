@@ -85,13 +85,18 @@ impl ConversationView {
             .read(cx)
             .items()
             .iter()
-            .position(|item| matches!(item, Item::Bubble(bubble) if bubble.id.as_ref() == id))
+            .position(|item| matches!(item, Item::Bubble(bubble) if bubble.holds(id)))
     }
 
     /// Scrolls to the message at `index` and lights it up for a moment.
     fn reveal(&mut self, index: usize, id: &str, cx: &mut Context<Self>) {
         self.messages.scroll_to_reveal_item(index);
-        self.flash = Some((SharedString::from(id.to_owned()), Instant::now()));
+        // A picture folded into an album lights its album up.
+        let lit = match self.log.read(cx).items().get(index) {
+            Some(Item::Bubble(bubble)) => bubble.id.clone(),
+            _ => SharedString::from(id.to_owned()),
+        };
+        self.flash = Some((lit, Instant::now()));
         cx.notify();
     }
 }

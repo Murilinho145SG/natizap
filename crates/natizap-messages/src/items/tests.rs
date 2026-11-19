@@ -179,3 +179,74 @@ fn separates_days_and_groups_bursts_by_sender_and_time() {
         ]
     );
 }
+
+/// A photo sent `seconds` after 10:00 on the 16th, with `caption`.
+fn photo(seconds: i64, caption: Option<&str>) -> Message {
+    let mut photo = message(at(16, 10, 0) + seconds, true, None);
+    photo.kind = ContentKind::Photo;
+    photo.text = caption.map(str::to_owned);
+    photo.media = Some(natizap_protocol::Media::default());
+    photo
+}
+
+/// Each bubble as how many pictures it shows, and its caption.
+fn pictures(messages: &[Message]) -> Vec<(usize, Option<String>)> {
+    let Some(now) = Local.with_ymd_and_hms(2026, 11, 16, 18, 0, 0).single() else {
+        panic!("test date must exist in the local zone");
+    };
+    let addons = Addons {
+        reactions: &HashMap::new(),
+        votes: &HashMap::new(),
+    };
+    items(messages, &addons, "Ana", &Members::default(), now)
+        .iter()
+        .filter_map(|item| match item {
+            Item::Bubble(bubble) => Some(bubble),
+            Item::Day(_) => None,
+        })
+        .map(|bubble| {
+            let caption = match &bubble.body {
+                Body::Content { text, .. } => text.as_ref().map(|text| text.text.to_string()),
+                _ => None,
+            };
+            (
+                usize::from(bubble.media.is_some()) + bubble.album.len(),
+                caption,
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn folds_four_or_more_pictures_sent_together_into_one_album() {
+    let burst: Vec<Message> = (0..5)
+        .map(|index| photo(index * 2, (index == 4).then_some("trip")))
+        .collect();
+    assert_eq!(pictures(&burst), [(5, Some("trip".to_owned()))]);
+
+    let few: Vec<Message> = (0..3).map(|index| photo(index, None)).collect();
+    assert_eq!(pictures(&few), [(1, None), (1, None), (1, None)]);
+}
+
+#[test]
+fn a_caption_or_a_pause_ends_an_album() {
+    let messages = [
+        photo(0, None),
+        photo(1, Some("first")),
+        photo(2, None),
+        photo(3, None),
+        photo(4, None),
+        photo(5, None),
+        // Over a minute later: a picture of its own.
+        photo(200, None),
+    ];
+    assert_eq!(
+        pictures(&messages),
+        [
+            (1, None),
+            (1, Some("first".to_owned())),
+            (4, None),
+            (1, None)
+        ]
+    );
+}
