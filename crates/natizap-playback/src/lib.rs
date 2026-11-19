@@ -21,6 +21,7 @@ mod feed;
 mod h264;
 mod inset;
 mod opus;
+mod pipeline;
 mod poster;
 mod probe;
 mod record;
@@ -45,7 +46,9 @@ pub use poster::{MediaFileError, save_poster, still_jpeg};
 pub use probe::{Probe, probe};
 pub use record::{Heard, RecordError, Recorder, Recording, save as save_recording};
 pub use remote_video::{AccessUnits, VideoError, decode_video};
-pub use screen_share::ScreenShare;
+pub use screen_share::{
+    ScreenShare, ShareSource, SourceId, SourceKind, natizap_asks, share_sources,
+};
 pub use speed::Speed;
 
 use decode::{Command, Shared};

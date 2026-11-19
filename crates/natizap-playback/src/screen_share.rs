@@ -1,16 +1,77 @@
 //! Sharing the screen in a call: its pictures are scaled, encoded as
 //! H.264 for the call and shown to the user, as the camera's are.
 //!
-//! On Linux the desktop portal asks the user what to share, which on
-//! Wayland is the only way an app may see the screen, and the pictures
-//! come over `PipeWire`. On Windows and macOS, FFmpeg's own screen inputs
-//! capture the whole desktop (GDI) or the main screen (`AVFoundation`,
-//! which asks the user's leave to record the screen the first time).
+//! On Linux the desktop's own dialog asks the user what to share
+//! (`portal`). Windows and macOS have none, so natizap lists the screens
+//! and windows for its own dialog to ask (`desktop`), and captures the one
+//! chosen.
 
-use crate::camera::Running;
+use crate::Picture;
 use crate::feed::VideoFeed;
 use crate::inset::Inset;
+use crate::pipeline::Running;
 use crate::remote_video::VideoError;
+
+#[cfg(not(target_os = "linux"))]
+mod desktop;
+#[cfg(target_os = "linux")]
+mod portal;
+
+/// A screen or a window the user may share.
+#[derive(Debug, Clone)]
+pub struct ShareSource {
+    /// What to hand [`ScreenShare::start`] to share it.
+    pub id: SourceId,
+    /// The screen's or the window's name.
+    pub name: String,
+    /// The app a window belongs to.
+    pub app: Option<String>,
+    /// A small picture of it, as it is now.
+    pub thumbnail: Option<Picture>,
+}
+
+/// Which screen or window to share.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct SourceId {
+    kind: SourceKind,
+    id: u32,
+}
+
+impl SourceId {
+    /// Whether it is a screen or a window.
+    #[must_use]
+    pub fn kind(self) -> SourceKind {
+        self.kind
+    }
+}
+
+/// A whole screen, or one window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SourceKind {
+    /// A whole screen.
+    Screen,
+    /// One window.
+    Window,
+}
+
+/// Whether natizap asks the user what to share, from
+/// [`share_sources`]; where it does not (Linux), the desktop asks, as
+/// [`ScreenShare::start`] runs.
+#[must_use]
+pub fn natizap_asks() -> bool {
+    cfg!(not(target_os = "linux"))
+}
+
+/// What the user may share, where natizap asks which: every screen, the
+/// main one first, then every window but natizap's own and those
+/// minimized. Takes a picture of each: run it off the UI thread.
+#[must_use]
+pub fn share_sources() -> Vec<ShareSource> {
+    #[cfg(target_os = "linux")]
+    return Vec::new();
+    #[cfg(not(target_os = "linux"))]
+    desktop::sources()
+}
 
 /// The screen shared in a call, until dropped or until the user stops it
 /// from the desktop.
@@ -20,20 +81,33 @@ pub struct ScreenShare {
 }
 
 impl ScreenShare {
-    /// Shares the screen, with the camera `inset` lends in its corner. The
-    /// receiver gives the call one Annex-B access unit per picture, up to
-    /// fifteen a second; it closes when the sharing stops. On Linux it
-    /// first asks the user what to share, blocking until they choose: run
-    /// it off the UI thread.
+    /// Shares `source`, one of [`share_sources`], with the camera `inset`
+    /// lends in its corner; where the desktop asks the user what to share
+    /// (Linux), `source` is none, and this blocks until they choose: run
+    /// it off the UI thread. The receiver gives the call one Annex-B
+    /// access unit per picture, up to fifteen a second; it closes when the
+    /// sharing stops.
     ///
     /// # Errors
     ///
-    /// Fails when the user declines, or when the screen cannot be captured.
-    pub fn start(inset: Inset) -> Result<(Self, async_channel::Receiver<Vec<u8>>), VideoError> {
+    /// Fails when the user declines, or when the source cannot be
+    /// captured.
+    pub fn start(
+        source: Option<SourceId>,
+        inset: Inset,
+    ) -> Result<(Self, async_channel::Receiver<Vec<u8>>), VideoError> {
         #[cfg(target_os = "linux")]
-        let (running, units) = linux::start(inset)?;
+        let (running, units) = {
+            // The desktop's dialog chooses instead.
+            let _ = source;
+            portal::start(inset)?
+        };
         #[cfg(not(target_os = "linux"))]
-        let (running, units) = desktop::start(inset)?;
+        let (running, units) = {
+            let source =
+                source.ok_or_else(|| VideoError::Screen("nothing was chosen to share".into()))?;
+            chosen::start(source, inset)?
+        };
         Ok((Self { running }, units))
     }
 
@@ -49,369 +123,53 @@ impl ScreenShare {
     }
 }
 
+/// Capturing the source the user chose in natizap's dialog.
 #[cfg(not(target_os = "linux"))]
-mod desktop {
-    use crate::camera::{Role, Running, capture};
-    use crate::h264::FRAME_RATE;
-    use crate::inset::Inset;
-    use crate::remote_video::VideoError;
-
-    pub(super) fn start(
-        inset: Inset,
-    ) -> Result<(Running, async_channel::Receiver<Vec<u8>>), VideoError> {
-        let rate = ("framerate", FRAME_RATE.to_string());
-        let (input, options) = if cfg!(target_os = "macos") {
-            // AVFoundation lists screens after the cameras, by these names.
-            (
-                ("avfoundation", "Capture screen 0:none".to_owned()),
-                vec![rate, ("capture_cursor", "1".to_owned())],
-            )
-        } else {
-            (
-                ("gdigrab", "desktop".to_owned()),
-                vec![rate, ("draw_mouse", "1".to_owned())],
-            )
-        };
-        capture(input, options, Role::Screen, inset)
-    }
-}
-
-#[cfg(target_os = "linux")]
-mod linux {
-    use std::os::fd::OwnedFd;
+mod chosen {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
-    use std::time::{Duration, Instant};
+    use std::time::Duration;
 
-    use ashpd::desktop::CreateSessionOptions;
-    use ashpd::desktop::PersistMode;
-    use ashpd::desktop::screencast::{
-        CursorMode, OpenPipeWireRemoteOptions, Screencast, SelectSourcesOptions, SourceType,
-        StartCastOptions,
-    };
     use ffmpeg::format::Pixel;
-    use ffmpeg::util::frame;
     use ffmpeg_next as ffmpeg;
-    use pipewire as pw;
-    use pw::spa;
-    use pw::spa::param::video::{VideoFormat, VideoInfoRaw};
-    use pw::spa::pod::Pod;
 
-    use crate::camera::{Running, Scalers};
-    use crate::feed::{FeedWriter, feed};
-    use crate::h264::{FRAME_RATE, H264Encoder, Source};
-    use crate::inset::{Corner, Inset};
+    use super::{SourceId, desktop};
+    use crate::h264::FRAME_RATE;
+    use crate::inset::Inset;
+    use crate::pipeline::{Role, Running, packed, pipeline};
     use crate::remote_video::VideoError;
 
-    /// Access units waiting for the call before new ones are dropped.
-    const BACKLOG: usize = 4;
-
     pub(super) fn start(
+        source: SourceId,
         inset: Inset,
     ) -> Result<(Running, async_channel::Receiver<Vec<u8>>), VideoError> {
-        let (fd, node) = futures::executor::block_on(choose())
-            .map_err(|error| VideoError::Screen(error.to_string()))?;
-        let (units, received) = async_channel::bounded(BACKLOG);
-        let (writer, preview) = feed();
-        let keyframe = Arc::new(AtomicBool::new(true));
-        let (stop, stopped) = pw::channel::channel();
-        let wanting = Arc::clone(&keyframe);
-        // A plain thread: PipeWire's loop blocks while it runs.
+        let (seed, ends) = pipeline(Role::Screen, inset);
+        let stop = Arc::new(AtomicBool::new(false));
+        let stopping = Arc::clone(&stop);
+        // A plain thread: each capture blocks.
         std::thread::Builder::new()
             .name("natizap-screen".into())
             .spawn(move || {
-                if let Err(error) = capture(fd, node, (units, writer, inset), &wanting, stopped) {
+                let mut pipeline = seed.build();
+                let every = Duration::from_secs(1) / FRAME_RATE;
+                let recorded = desktop::record(source, every, &stopping, |image| {
+                    let (width, height) = image.dimensions();
+                    if let Some(picture) = packed(
+                        image.as_raw(),
+                        Pixel::RGBA,
+                        width,
+                        height,
+                        width as usize * 4,
+                    ) {
+                        pipeline.take(&picture);
+                    }
+                    !pipeline.closed()
+                });
+                if let Err(error) = recorded {
                     tracing::warn!(%error, "the screen stopped being shared");
                 }
             })
             .map_err(|error| VideoError::Thread(error.to_string()))?;
-        let running = Running::new(keyframe, preview, move || {
-            // The thread may have stopped already, when the user stopped
-            // sharing from the desktop: nothing is left to tell then.
-            let _ = stop.send(());
-        });
-        Ok((running, received))
-    }
-
-    /// Asks the desktop what to share: the `PipeWire` connection to it and
-    /// the node the pictures come from.
-    async fn choose() -> ashpd::Result<(OwnedFd, u32)> {
-        let portal = Screencast::new().await?;
-        let session = portal
-            .create_session(CreateSessionOptions::default())
-            .await?;
-        portal
-            .select_sources(
-                &session,
-                SelectSourcesOptions::default()
-                    .set_cursor_mode(CursorMode::EMBEDDED)
-                    .set_sources(SourceType::MONITOR | SourceType::WINDOW)
-                    .set_multiple(false)
-                    .set_persist_mode(PersistMode::DoNot),
-            )
-            .await?
-            .response()?;
-        let streams = portal
-            .start(&session, None, StartCastOptions::default())
-            .await?
-            .response()?;
-        let node = streams
-            .streams()
-            .first()
-            .map(ashpd::desktop::screencast::Stream::pipe_wire_node_id)
-            .ok_or(ashpd::Error::NoResponse)?;
-        let fd = portal
-            .open_pipe_wire_remote(&session, OpenPipeWireRemoteOptions::default())
-            .await?;
-        Ok((fd, node))
-    }
-
-    /// What the stream's callbacks share.
-    struct Pictures {
-        format: VideoInfoRaw,
-        encoder: Option<H264Encoder>,
-        scalers: Scalers,
-        units: async_channel::Sender<Vec<u8>>,
-        writer: FeedWriter,
-        inset: Inset,
-        corner: Corner,
-        keyframe: Arc<AtomicBool>,
-        last: Option<Instant>,
-    }
-
-    /// Reads the shared screen's pictures until stopped, or until the
-    /// desktop stops the sharing.
-    fn capture(
-        fd: OwnedFd,
-        node: u32,
-        (units, writer, inset): (async_channel::Sender<Vec<u8>>, FeedWriter, Inset),
-        keyframe: &Arc<AtomicBool>,
-        stopped: pw::channel::Receiver<()>,
-    ) -> Result<(), pw::Error> {
-        pw::init();
-        let main = pw::main_loop::MainLoopRc::new(None)?;
-        let context = pw::context::ContextRc::new(&main, None)?;
-        let core = context.connect_fd_rc(fd, None)?;
-        let quitting = main.clone();
-        let _stopper = stopped.attach(main.loop_(), move |()| quitting.quit());
-        let stream = pw::stream::StreamBox::new(
-            &core,
-            "natizap-screen",
-            pw::properties::properties! {
-                *pw::keys::MEDIA_TYPE => "Video",
-                *pw::keys::MEDIA_CATEGORY => "Capture",
-                *pw::keys::MEDIA_ROLE => "Screen",
-            },
-        )?;
-        let pictures = Pictures {
-            format: VideoInfoRaw::default(),
-            encoder: H264Encoder::new(Source::Screen)
-                .inspect_err(|error| tracing::warn!(%error, "no H.264 encoder for the screen"))
-                .ok(),
-            scalers: Scalers::new(Source::Screen.width(), false),
-            units,
-            writer,
-            inset,
-            corner: Corner::default(),
-            keyframe: Arc::clone(keyframe),
-            last: None,
-        };
-        let ending = main.clone();
-        let _listener = stream
-            .add_local_listener_with_user_data(pictures)
-            .state_changed(move |_, _, _, now| {
-                if matches!(
-                    now,
-                    pw::stream::StreamState::Error(_) | pw::stream::StreamState::Unconnected
-                ) {
-                    ending.quit();
-                }
-            })
-            .param_changed(|_, pictures, id, param| {
-                if let Some(param) = param
-                    && id == spa::param::ParamType::Format.as_raw()
-                    && pictures.format.parse(param).is_err()
-                {
-                    tracing::warn!("the screen's picture format could not be read");
-                }
-            })
-            .process(|stream, pictures| {
-                if let Some(mut buffer) = stream.dequeue_buffer() {
-                    pictures.take(&mut buffer);
-                }
-            })
-            .register()?;
-        let formats = formats();
-        let Some(format) = Pod::from_bytes(&formats) else {
-            return Err(pw::Error::CreationFailed);
-        };
-        stream.connect(
-            spa::utils::Direction::Input,
-            Some(node),
-            pw::stream::StreamFlags::AUTOCONNECT | pw::stream::StreamFlags::MAP_BUFFERS,
-            &mut [format],
-        )?;
-        main.run();
-        Ok(())
-    }
-
-    impl Pictures {
-        /// Sends the picture in `buffer`, unless it comes sooner than the
-        /// call's cadence.
-        fn take(&mut self, buffer: &mut pw::buffer::Buffer<'_>) {
-            let every = Duration::from_secs(1) / FRAME_RATE;
-            if self
-                .last
-                .is_some_and(|last| last.elapsed() < every.mul_f32(0.9))
-            {
-                return;
-            }
-            let Some(pixel) = pixel(self.format.format()) else {
-                return;
-            };
-            let size = self.format.size();
-            let Some(data) = buffer.datas_mut().first_mut() else {
-                return;
-            };
-            let stride = usize::try_from(data.chunk().stride()).unwrap_or(0);
-            let Some(bytes) = data.data() else {
-                return;
-            };
-            let Some(picture) = picture(bytes, pixel, size.width, size.height, stride) else {
-                return;
-            };
-            self.last = Some(Instant::now());
-            let Ok((mut sent, shown)) = self.scalers.convert(&picture) else {
-                return;
-            };
-            self.writer.show(shown);
-            let Some(encoder) = self.encoder.as_mut() else {
-                return;
-            };
-            self.corner.draw(&self.inset, &mut sent);
-            match encoder.encode(&sent, self.keyframe.swap(false, Ordering::Relaxed)) {
-                // Full means the call is behind: this picture is lost.
-                Ok(unit) => drop(self.units.try_send(unit)),
-                Err(error) => tracing::debug!(%error, "could not encode the screen"),
-            }
-        }
-    }
-
-    /// FFmpeg's name for the packed formats the screen is asked in.
-    fn pixel(format: VideoFormat) -> Option<Pixel> {
-        match format {
-            VideoFormat::BGRx => Some(Pixel::BGRZ),
-            VideoFormat::BGRA => Some(Pixel::BGRA),
-            VideoFormat::RGBx => Some(Pixel::RGBZ),
-            VideoFormat::RGBA => Some(Pixel::RGBA),
-            _ => None,
-        }
-    }
-
-    /// `bytes`, rows `stride` apart, as a frame FFmpeg can scale.
-    fn picture(
-        bytes: &[u8],
-        pixel: Pixel,
-        width: u32,
-        height: u32,
-        stride: usize,
-    ) -> Option<frame::Video> {
-        let row = width as usize * 4;
-        if width == 0 || height == 0 || stride < row || bytes.len() < stride * height as usize {
-            return None;
-        }
-        let mut picture = frame::Video::new(pixel, width, height);
-        let into = picture.stride(0);
-        let data = picture.data_mut(0);
-        for (index, from) in bytes.chunks(stride).take(height as usize).enumerate() {
-            data[index * into..index * into + row].copy_from_slice(&from[..row]);
-        }
-        Some(picture)
-    }
-
-    /// The formats asked of the screen: packed 8-bit colour at any size.
-    fn formats() -> Vec<u8> {
-        use spa::param::format::{FormatProperties, MediaSubtype, MediaType};
-        let object = spa::pod::object!(
-            spa::utils::SpaTypes::ObjectParamFormat,
-            spa::param::ParamType::EnumFormat,
-            spa::pod::property!(FormatProperties::MediaType, Id, MediaType::Video),
-            spa::pod::property!(FormatProperties::MediaSubtype, Id, MediaSubtype::Raw),
-            spa::pod::property!(
-                FormatProperties::VideoFormat,
-                Choice,
-                Enum,
-                Id,
-                VideoFormat::BGRx,
-                VideoFormat::BGRx,
-                VideoFormat::BGRA,
-                VideoFormat::RGBx,
-                VideoFormat::RGBA
-            ),
-            spa::pod::property!(
-                FormatProperties::VideoSize,
-                Choice,
-                Range,
-                Rectangle,
-                spa::utils::Rectangle {
-                    width: 1280,
-                    height: 720
-                },
-                spa::utils::Rectangle {
-                    width: 1,
-                    height: 1
-                },
-                spa::utils::Rectangle {
-                    width: 8192,
-                    height: 8192
-                }
-            ),
-            spa::pod::property!(
-                FormatProperties::VideoFramerate,
-                Choice,
-                Range,
-                Fraction,
-                spa::utils::Fraction {
-                    num: FRAME_RATE,
-                    denom: 1
-                },
-                spa::utils::Fraction { num: 0, denom: 1 },
-                spa::utils::Fraction { num: 60, denom: 1 }
-            ),
-        );
-        spa::pod::serialize::PodSerializer::serialize(
-            std::io::Cursor::new(Vec::new()),
-            &spa::pod::Value::Object(object),
-        )
-        .map_or_else(|_| Vec::new(), |(cursor, _)| cursor.into_inner())
-    }
-
-    #[cfg(test)]
-    mod tests {
-        use ffmpeg::format::Pixel;
-        use ffmpeg_next as ffmpeg;
-
-        use super::picture;
-
-        #[test]
-        fn a_padded_screen_buffer_becomes_a_picture() -> Result<(), &'static str> {
-            // Two rows of two pixels, each row padded to 12 bytes.
-            let bytes = [
-                1, 2, 3, 4, 5, 6, 7, 8, 0, 0, 0, 0, 9, 9, 9, 9, 8, 8, 8, 8, 0, 0, 0, 0,
-            ];
-            let shown = picture(&bytes, Pixel::BGRZ, 2, 2, 12).ok_or("no picture")?;
-            let stride = shown.stride(0);
-            assert_eq!(&shown.data(0)[..8], &[1, 2, 3, 4, 5, 6, 7, 8]);
-            assert_eq!(
-                &shown.data(0)[stride..stride + 8],
-                &[9, 9, 9, 9, 8, 8, 8, 8]
-            );
-            Ok(())
-        }
-
-        #[test]
-        fn a_short_buffer_is_no_picture() {
-            assert!(picture(&[0; 10], Pixel::BGRZ, 2, 2, 8).is_none());
-        }
+        Ok(ends.running(move || stop.store(true, Ordering::Relaxed)))
     }
 }

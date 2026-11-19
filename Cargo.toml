@@ -69,6 +69,7 @@ openh264 = "0.9"
 # browsers and OBS read them; FFmpeg has no PipeWire input.
 ashpd = { version = "0.14", default-features = false, features = ["async-io", "screencast"] }
 pipewire = "0.10"
+xcap = { version = "0.9", default-features = false }
 # Cleans a call's microphone: echo cancelling (AEC3), noise suppression and
 # gain control, WebRTC's audio processing ported to Rust.
 sonora = "0.3"

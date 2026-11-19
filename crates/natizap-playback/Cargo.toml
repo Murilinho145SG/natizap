@@ -22,5 +22,8 @@ tracing.workspace = true
 ashpd.workspace = true
 pipewire.workspace = true
 
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+xcap.workspace = true
+
 [lints]
 workspace = true
