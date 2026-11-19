@@ -16,6 +16,7 @@ mod person_menu;
 mod picker;
 mod pointer;
 mod quality;
+mod ring_card;
 mod ringtone;
 mod screen;
 mod settings;
@@ -25,7 +26,7 @@ mod tiles;
 mod volume;
 mod window;
 
-pub use bar::{CallBar, CallPoppedOut, RingCard};
+pub use bar::{CallBar, CallPoppedOut};
 pub use desk::{
     CallDesk, CallLayout, CallRang, CallShown, CameraState, DeviceKind, Phase, ShareChoice,
     ShareChoices, Sharing, VideoShown,
@@ -37,6 +38,7 @@ pub use pane::{CallBackRequested, CallChatRequested, CallsPane};
 pub use panel::VideoPanel;
 pub use picker::SharePicker;
 pub use quality::Quality;
+pub use ring_card::RingCard;
 pub use ringtone::Ringtone;
 pub use settings::CallSettings;
 pub use stage::CallStage;
