@@ -46,17 +46,6 @@ pub(crate) fn changes(event: &Event) -> Vec<Change> {
                 })
                 .collect()
         }
-        // This account watched a status on another of its devices.
-        Event::Receipt(receipt)
-            if receipt.source.chat.is_status_broadcast()
-                && matches!(receipt.r#type, ReceiptType::ReadSelf | ReceiptType::PlayedSelf) =>
-        {
-            receipt
-                .message_ids
-                .iter()
-                .map(|id| Change::SeenElsewhere { id: id.clone() })
-                .collect()
-        }
         _ => Vec::new(),
     }
 }

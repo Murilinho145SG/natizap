@@ -580,6 +580,9 @@ async fn run(
         .map_err(StartError::Client)?;
 
     connection.set(Some(bot.client()));
+    // Raw stanzas are what tells which chat the account read on its other
+    // devices (see `read_elsewhere`); the client forwards them while held.
+    let _raw_nodes = bot.client().acquire_raw_node_forwarding();
     bot.run().await;
     connection.set(None);
     Ok(())

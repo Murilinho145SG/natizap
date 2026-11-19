@@ -168,6 +168,18 @@ impl ChatList {
                 }
             }
         });
+        // Read on the phone: what arrived meanwhile is not new any more.
+        let reads = protocol.read(cx).reads_elsewhere(cx);
+        let reads_tx = inputs_tx.clone();
+        cx.background_spawn(async move {
+            while let Ok(read) = reads.recv().await {
+                let change = ChatChange::Read(read.chat, true);
+                if reads_tx.send(Input::Change(change)).await.is_err() {
+                    break;
+                }
+            }
+        })
+        .detach();
         let (snapshots_tx, snapshots) = async_channel::unbounded();
         let sync = cx.background_spawn(sync(cache_path, inputs, snapshots_tx));
         let apply = cx.spawn(async move |this, cx| {

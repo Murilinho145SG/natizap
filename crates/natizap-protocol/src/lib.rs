@@ -22,6 +22,7 @@ mod own;
 mod polls;
 mod profile;
 mod protocol;
+mod read_elsewhere;
 mod status;
 mod stickers;
 
@@ -41,5 +42,6 @@ pub use own::Me;
 pub use polls::{Account, SealedVote};
 pub use profile::Profile;
 pub use protocol::{Protocol, StartError};
+pub use read_elsewhere::ReadElsewhere;
 pub use stickers::Sticker;
 pub use whatsapp_rust;

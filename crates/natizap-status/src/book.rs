@@ -90,6 +90,23 @@ impl StatusBook {
                 }
             }
         });
+        // Watched on the phone.
+        let reads = protocol.read(cx).reads_elsewhere(cx);
+        let reads_tx = inputs_tx.clone();
+        cx.background_spawn(async move {
+            while let Ok(read) = reads.recv().await {
+                if read.chat.is_conversation() {
+                    continue;
+                }
+                for id in read.ids {
+                    let seen = Input::Change(Change::SeenElsewhere { id });
+                    if reads_tx.send(seen).await.is_err() {
+                        return;
+                    }
+                }
+            }
+        })
+        .detach();
         let (snapshots_tx, snapshots) = async_channel::unbounded();
         let work = cx.background_spawn(work(path, inputs, snapshots_tx));
         let apply = cx.spawn(async move |this, cx| {
