@@ -5,6 +5,7 @@ use std::collections::HashSet;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use gpui::{App, AppContext as _, Task};
+use whatsapp_rust::RawNodeLease;
 use whatsapp_rust::prelude::{Event, EventKind};
 use whatsapp_rust::voip::CallHandle;
 use whatsapp_rust::voip::audio::{WA_FRAME_SAMPLES, WA_SAMPLE_RATE};
@@ -154,6 +155,8 @@ pub enum CallProgress {
     VideoRequested(VideoRequest),
     /// The other end lost pictures and needs a keyframe to go on.
     KeyframeWanted,
+    /// The other end turned their microphone off (`false`) or back on.
+    PeerMicrophone(bool),
     /// The call is over.
     Ended(CallEnd),
 }
@@ -263,7 +266,7 @@ impl Protocol {
             Ok(to) => to,
             Err(error) => return Task::ready(Err(error)),
         };
-        let signals = self.subscribe(&[EventKind::IncomingCall]);
+        let signals = self.subscribe(&[EventKind::IncomingCall, EventKind::RawNode]);
         let opus = voice.opus.clone();
         let video = video.map(|video| video.endpoints(cx));
         let started = self.connection.run(cx, move |client| async move {
@@ -273,9 +276,11 @@ impl Protocol {
                 Some((camera, screen)) => call.video(camera, screen),
                 None => call,
             };
-            call.start()
+            let handle = call
+                .start()
                 .await
-                .map_err(|error| ActionError::refused(&error))
+                .map_err(|error| ActionError::refused(&error))?;
+            Ok((handle, client.acquire_raw_node_forwarding()))
         });
         follow(started, signals, opus, false, cx)
     }
@@ -289,7 +294,7 @@ impl Protocol {
         video: Option<Video>,
         cx: &App,
     ) -> Task<Result<LiveCall, ActionError>> {
-        let signals = self.subscribe(&[EventKind::IncomingCall]);
+        let signals = self.subscribe(&[EventKind::IncomingCall, EventKind::RawNode]);
         let opus = voice.opus.clone();
         // Before answering: the caller may hang up before the answer
         // returns, and that call was not missed either.
@@ -315,7 +320,8 @@ impl Protocol {
             if started.is_err() {
                 answered.forget(&id);
             }
-            started.map_err(|error| ActionError::refused(&error))
+            let handle = started.map_err(|error| ActionError::refused(&error))?;
+            Ok((handle, client.acquire_raw_node_forwarding()))
         });
         follow(started, signals, opus, true, cx)
     }
@@ -355,9 +361,11 @@ impl Protocol {
 }
 
 /// Once `started` gives a call, follows it through `signals`, its media's
-/// events and its end.
+/// events and its end. `started` also gives what has the client hand over
+/// the raw signaling the call's watch reads the other end's microphone
+/// from, kept for as long as the watch runs.
 fn follow(
-    started: Task<Result<CallHandle, ActionError>>,
+    started: Task<Result<(CallHandle, RawNodeLease), ActionError>>,
     signals: async_channel::Receiver<Arc<Event>>,
     opus: async_channel::Sender<Vec<u8>>,
     answered: bool,
@@ -365,11 +373,15 @@ fn follow(
 ) -> Task<Result<LiveCall, ActionError>> {
     let executor = cx.background_executor().clone();
     cx.background_spawn(async move {
-        let handle = started.await?;
+        let (handle, raw) = started.await?;
         let (tell, progress) = async_channel::unbounded();
         let watch = Watch::new(handle.call_id(), answered);
+        let watching = watch.run(handle.clone(), signals, opus, tell);
         executor
-            .spawn(watch.run(handle.clone(), signals, opus, tell))
+            .spawn(async move {
+                watching.await;
+                drop(raw);
+            })
             .detach();
         Ok(LiveCall { handle, progress })
     })

@@ -8,6 +8,7 @@ use futures::StreamExt as _;
 use whatsapp_rust::prelude::Event;
 use whatsapp_rust::voip::{CallEvent, CallHandle, VideoState, depacketize_opus_from_mlow};
 use whatsapp_rust::wacore::types::call::CallAction;
+use whatsapp_rust::wacore_binary::NodeRef;
 
 use crate::call_video::VideoRequest;
 use crate::live_call::{CallEnd, CallProgress};
@@ -116,15 +117,15 @@ impl Watch {
 
     fn hear(&mut self, heard: &Heard) -> Option<CallProgress> {
         match heard {
-            Heard::Signal(event) => {
-                let Event::IncomingCall(call) = event.as_ref() else {
-                    return None;
-                };
-                if call.action.call_id() != self.id {
-                    return None;
+            Heard::Signal(event) => match event.as_ref() {
+                Event::IncomingCall(call) if call.action.call_id() == self.id => {
+                    self.signal(&call.action)
                 }
-                self.signal(&call.action)
-            }
+                Event::RawNode(node) => {
+                    peer_microphone(node.get(), &self.id).map(CallProgress::PeerMicrophone)
+                }
+                _ => None,
+            },
             Heard::Media(event) => {
                 match event {
                     CallEvent::RelayAllocated => return Some(CallProgress::Connected),
@@ -230,6 +231,25 @@ fn standard_opus(packet: &[u8]) -> Option<Vec<u8>> {
     let mut packet = packet.to_vec();
     depacketize_opus_from_mlow(&mut packet).ok()?;
     Some(packet)
+}
+
+/// Whether the other end's microphone is on, when `node` is call `id`'s
+/// `<call>` carrying their `<mute_v2 mute-state>`: WhatsApp's library
+/// sends this side's but does not read the other end's, so the call's raw
+/// signaling is read for it.
+fn peer_microphone(node: &NodeRef<'_>, id: &str) -> Option<bool> {
+    if node.tag.as_ref() != "call" {
+        return None;
+    }
+    let mute = node.get_optional_child("mute_v2")?;
+    if mute.get_attr("call-id")?.as_str() != id {
+        return None;
+    }
+    match mute.get_attr("mute-state")?.as_str().as_ref() {
+        "1" => Some(false),
+        "0" => Some(true),
+        _ => None,
+    }
 }
 
 #[cfg(test)]
@@ -414,5 +434,19 @@ mod tests {
             watch.hear(&Heard::Ended),
             Some(CallProgress::Ended(CallEnd::Failed(_)))
         ));
+    }
+
+    #[test]
+    fn hears_the_other_end_turn_their_microphone_off_and_on() {
+        use whatsapp_rust::wacore::stanza::call::build_mute_v2;
+        let stanza = |call: &str, muted: bool| build_mute_v2(call, &peer(), &peer(), "w1", muted);
+        let off = stanza("CALL1", true);
+        assert_eq!(peer_microphone(&off.as_node_ref(), "CALL1"), Some(false));
+        let on = stanza("CALL1", false);
+        assert_eq!(peer_microphone(&on.as_node_ref(), "CALL1"), Some(true));
+        // Another call's, or no call's at all, says nothing of this one.
+        assert_eq!(peer_microphone(&off.as_node_ref(), "CALL2"), None);
+        let other = whatsapp_rust::wacore_binary::builder::NodeBuilder::new("message").build();
+        assert_eq!(peer_microphone(&other.as_node_ref(), "CALL1"), None);
     }
 }
