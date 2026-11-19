@@ -425,17 +425,17 @@ fn keeps_each_voters_latest_vote_on_a_poll() -> rusqlite::Result<()> {
     ])?;
 
     let mut votes = store.votes(&[poll])?.remove("poll").unwrap_or_default();
-    votes.sort_by_key(|vote| vote.mine);
+    votes.sort_by_key(Vote::mine);
     assert_eq!(
         votes,
         [
             Vote {
                 options: vec!["Sushi".into()],
-                mine: false
+                voter: Some(ChatId::new("2@lid")),
             },
             Vote {
                 options: vec!["Sushi".into()],
-                mine: true
+                voter: None,
             },
         ]
     );

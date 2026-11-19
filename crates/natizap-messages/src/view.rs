@@ -42,6 +42,7 @@ mod stickers;
 mod tray;
 mod viewer;
 mod voice_notes;
+mod votes;
 
 use arrivals::Arrivals;
 pub use attach::ContactsRequested;
@@ -87,6 +88,8 @@ pub struct ConversationView {
     attach_at: Option<Point<Pixels>>,
     /// A poll being written.
     poll_draft: Option<Entity<PollComposer>>,
+    /// The poll bubble whose votes show, by id.
+    votes_shown: Option<SharedString>,
     /// Text selected in a message.
     selection: Option<Selection>,
     /// The link the pointer rests on.
@@ -238,6 +241,7 @@ impl ConversationView {
             reaction_picker: None,
             attach_at: None,
             poll_draft: None,
+            votes_shown: None,
             selection: None,
             hovered_link: None,
             arrivals: Arrivals::default(),
@@ -533,6 +537,7 @@ impl Render for ConversationView {
             .children(self.reaction_picker(cx))
             .children(self.attach_menu(cx))
             .children(self.poll_dialog(window, cx))
+            .children(self.votes_dialog(window, cx))
             .children(self.browsing.clone())
             .children(self.picture_viewer(window, cx))
             .children(self.carousel_view(window, cx))

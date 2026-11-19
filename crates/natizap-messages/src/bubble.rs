@@ -18,6 +18,7 @@ use crate::extra_view::{render_buttons, render_extra};
 use crate::items::{Body, Bubble, Item, MediaView, QuotePreview};
 use crate::media_view::render_media;
 use crate::message::Delivery;
+use crate::poll_view::Faces;
 use crate::quote::{name_and_phone, quoted};
 use crate::rich_text::{TextFocus, rich_text, selectable};
 use crate::view::{ConversationView, ProfileRequested};
@@ -34,6 +35,8 @@ use pictures::{picture_bubble, sticker_bubble};
 pub(crate) struct Attachments {
     pub(crate) voice: VoiceUi,
     pub(crate) downloads: HashMap<String, f32>,
+    /// The pictures of people who voted on polls.
+    pub(crate) faces: Faces,
 }
 
 impl Attachments {
@@ -294,11 +297,9 @@ fn shape(
             .flex()
             .flex_col()
             .gap_0p5()
-            .children(
-                extra
-                    .as_ref()
-                    .and_then(|extra| render_extra(&bubble.id, extra, bubble.poll.as_ref(), view)),
-            )
+            .children(extra.as_ref().and_then(|extra| {
+                render_extra(&bubble.id, extra, bubble.poll.as_ref(), &shown.faces, view)
+            }))
             .children(media.map(|media| {
                 div()
                     .text_size(px(12.5))

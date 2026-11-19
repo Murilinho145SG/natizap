@@ -14,8 +14,15 @@ use crate::message::{Message, MessageChange};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Vote {
     pub(crate) options: Vec<String>,
+    /// Who cast it; `None` for this account.
+    pub(crate) voter: Option<ChatId>,
+}
+
+impl Vote {
     /// Whether this account cast it.
-    pub(crate) mine: bool,
+    pub(crate) fn mine(&self) -> bool {
+        self.voter.is_none()
+    }
 }
 
 /// Keeps `voter`'s vote on `poll_id` (`None` is this account), unless the
@@ -68,7 +75,7 @@ impl MessageStore {
                 row.get::<_, String>(0)?,
                 Vote {
                     options: options.lines().map(str::to_owned).collect(),
-                    mine: cast_by.is_empty(),
+                    voter: (!cast_by.is_empty()).then(|| ChatId::new(&cast_by)),
                 },
             ))
         })?;

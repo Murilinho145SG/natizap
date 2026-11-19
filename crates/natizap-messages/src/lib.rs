@@ -20,6 +20,7 @@ mod message;
 mod overview;
 mod poll;
 mod poll_composer;
+mod poll_view;
 mod presence;
 mod preview;
 mod quote;

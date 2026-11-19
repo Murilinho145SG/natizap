@@ -184,6 +184,7 @@ pub(crate) fn items(
         bubble.poll = PollState::of(
             message,
             addons.votes.get(&message.id).map_or(&[], Vec::as_slice),
+            |voter| senders.name_of(voter),
         );
         if let Some(reactions) = addons.reactions.get(&message.id) {
             bubble.my_reaction = reactions

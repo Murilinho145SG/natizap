@@ -57,6 +57,42 @@ impl<'a> Senders<'a> {
     }
 }
 
+impl Senders<'_> {
+    /// What `person` is called, as their messages would name them.
+    pub(crate) fn name_of(&self, person: &ChatId) -> SharedString {
+        let phone_address = self.members.phones.get(person).unwrap_or(person);
+        let known = self
+            .members
+            .names
+            .get(person)
+            .or_else(|| self.members.names.get(phone_address));
+        let saved = known.and_then(|known| known.saved.as_deref());
+        let chosen = self
+            .names
+            .get(person)
+            .copied()
+            .or_else(|| known.and_then(|known| known.chosen.as_deref()));
+        shown_name(saved, chosen, phone_address.phone_number(), person)
+            .0
+            .into()
+    }
+}
+
+/// As on the phone: the address book's name, else the one the person
+/// chose, marked with `~` and shown with their `phone`, else the number.
+fn shown_name(
+    saved: Option<&str>,
+    chosen: Option<&str>,
+    phone: Option<String>,
+    id: &ChatId,
+) -> (String, Option<String>) {
+    match (saved, chosen) {
+        (Some(saved), _) => (saved.to_owned(), None),
+        (None, Some(chosen)) => (format!("~ {chosen}"), phone),
+        (None, None) => (phone.unwrap_or_else(|| id.as_str().to_owned()), None),
+    }
+}
+
 impl Author {
     /// The author of `message`, sent by `sender` in a group.
     pub(crate) fn of(message: &Message, sender: &ChatId, senders: &Senders<'_>) -> Self {
@@ -79,11 +115,7 @@ impl Author {
             .as_deref()
             .or_else(|| senders.names.get(sender).copied())
             .or_else(|| known.and_then(|known| known.chosen.as_deref()));
-        let (name, phone) = match (saved, chosen) {
-            (Some(saved), _) => (saved.to_owned(), None),
-            (None, Some(chosen)) => (format!("~ {chosen}"), phone),
-            (None, None) => (phone.unwrap_or_else(|| sender.as_str().to_owned()), None),
-        };
+        let (name, phone) = shown_name(saved, chosen, phone, sender);
         Self {
             id: sender.clone(),
             profile: phone_address.clone(),

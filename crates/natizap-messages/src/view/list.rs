@@ -13,9 +13,36 @@ use natizap_ui::scrollbar;
 use super::{ARRIVAL_RISE, CENTERED_WIDTH, ConversationView};
 use crate::bubble::{Attachments, LIT_FOR, render_item};
 use crate::items::Item;
+use crate::poll_view::Faces;
 use crate::rich_text::TextFocus;
 
 impl ConversationView {
+    /// The pictures of everyone who voted on the polls on screen, for the
+    /// faces under their options.
+    fn voter_faces(&mut self, cx: &mut Context<Self>) -> Faces {
+        let voters: HashSet<ChatId> = self
+            .log
+            .read(cx)
+            .items()
+            .iter()
+            .filter_map(|item| match item {
+                Item::Bubble(bubble) => bubble.poll.as_ref(),
+                Item::Day(_) => None,
+            })
+            .flat_map(|poll| poll.chosen_by.iter().flatten())
+            .filter_map(|voter| voter.id.clone())
+            .collect();
+        voters
+            .into_iter()
+            .filter_map(|id| {
+                let picture = self
+                    .pictures
+                    .update(cx, |pictures, cx| pictures.picture(&id, cx))?;
+                Some((id, picture))
+            })
+            .collect()
+    }
+
     /// The messages of the open chat `chat`, which rise in as a whole when
     /// the chat opens.
     pub(super) fn message_list(
@@ -24,6 +51,7 @@ impl ConversationView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnimationElement<Div> {
+        let faces = self.voter_faces(cx);
         let log = self.log.read(cx);
         let items = log.items().clone();
         let pictures = self.pictures.clone();
@@ -37,6 +65,7 @@ impl ConversationView {
         let shown = Attachments {
             voice: self.voices.ui(),
             downloads: log.downloads(),
+            faces,
         };
         // Downloads move on between draws; their bars follow.
         if !shown.downloads.is_empty() {

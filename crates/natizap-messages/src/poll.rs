@@ -4,6 +4,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use gpui::SharedString;
 use natizap_protocol::{ChatId, Extra};
 
 use crate::message::{Message, Reaction};
@@ -18,11 +19,19 @@ pub(crate) struct Addons<'a> {
     pub(crate) votes: &'a HashMap<String, Vec<Vote>>,
 }
 
+/// Someone who voted on a poll, as the poll shows them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Voter {
+    /// Their address, for their picture; `None` for this account.
+    pub(crate) id: Option<ChatId>,
+    pub(crate) name: SharedString,
+}
+
 /// A poll as its bubble shows it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PollState {
-    /// How many chose each option, in the poll's order.
-    pub(crate) counts: Vec<usize>,
+    /// Who chose each option, in the poll's order.
+    pub(crate) chosen_by: Vec<Vec<Voter>>,
     /// The options this account chose.
     pub(crate) mine: Vec<String>,
     /// How many people voted.
@@ -43,24 +52,33 @@ pub(crate) struct Ballot {
 }
 
 impl PollState {
-    /// The standing of `message`, if it is a poll, given its `votes`.
-    pub(crate) fn of(message: &Message, votes: &[Vote]) -> Option<Self> {
+    /// The standing of `message`, if it is a poll, given its `votes`;
+    /// `name` says what each voter is called.
+    pub(crate) fn of(
+        message: &Message,
+        votes: &[Vote],
+        name: impl Fn(&ChatId) -> SharedString,
+    ) -> Option<Self> {
         let Some(Extra::Poll(poll)) = &message.extra else {
             return None;
         };
-        let counts = poll
+        let chosen_by = poll
             .options
             .iter()
             .map(|option| {
                 votes
                     .iter()
                     .filter(|vote| vote.options.contains(option))
-                    .count()
+                    .map(|vote| Voter {
+                        id: vote.voter.clone(),
+                        name: vote.voter.as_ref().map_or_else(|| "You".into(), &name),
+                    })
+                    .collect()
             })
             .collect();
         let mine = votes
             .iter()
-            .find(|vote| vote.mine)
+            .find(|vote| vote.mine())
             .map_or_else(Vec::new, |vote| vote.options.clone());
         let ballot = message.secret.as_deref().map(|secret| Ballot {
             chat: message.chat.clone(),
@@ -74,11 +92,16 @@ impl PollState {
             secret: secret.into(),
         });
         Some(Self {
-            counts,
+            chosen_by,
             mine,
             voters: votes.len(),
             ballot,
         })
+    }
+
+    /// How many chose each option, in the poll's order.
+    pub(crate) fn counts(&self) -> impl Iterator<Item = usize> + '_ {
+        self.chosen_by.iter().map(Vec::len)
     }
 
     /// What this account chooses after clicking `option`: on a poll with one
@@ -113,7 +136,7 @@ mod tests {
 
     fn state(mine: &[&str]) -> PollState {
         PollState {
-            counts: Vec::new(),
+            chosen_by: Vec::new(),
             mine: mine.iter().map(|&option| option.to_owned()).collect(),
             voters: 0,
             ballot: None,
