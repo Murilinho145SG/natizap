@@ -243,6 +243,7 @@ fn bubble(
         poll: None,
         sender,
         reply: Reply {
+            from_status: false,
             id: message.id.clone(),
             // In 1:1 chats only the other person can be the sender.
             sender: (!message.from_me).then(|| {

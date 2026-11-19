@@ -121,6 +121,9 @@ pub struct Reply {
     pub sender: Option<ChatId>,
     /// Its text, shown inside the reply on every device.
     pub text: String,
+    /// It is a status update: the reply goes to its poster's chat, quoting
+    /// it from their status.
+    pub from_status: bool,
 }
 
 pub(crate) async fn send_text(
@@ -428,6 +431,10 @@ pub(crate) fn reply_context(client: &Client, reply: Reply) -> Result<wa::Context
         stanza_id: Some(reply.id),
         participant: participant.map(|jid| jid.to_string()),
         quoted_message: MessageField::some(wa::Message::text(reply.text)),
+        // A status is quoted from the status chat, not the reply's own.
+        remote_jid: reply
+            .from_status
+            .then(|| Jid::status_broadcast().to_string()),
         ..Default::default()
     })
 }

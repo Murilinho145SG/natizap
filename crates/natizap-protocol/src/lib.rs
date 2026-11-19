@@ -21,6 +21,7 @@ mod own;
 mod polls;
 mod profile;
 mod protocol;
+mod status;
 mod stickers;
 
 pub use actions::{ActionError, Anchor, Disappearing, PinFor, Reply, Sent, Unread};

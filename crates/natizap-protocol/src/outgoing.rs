@@ -87,6 +87,29 @@ pub(crate) async fn send(
     reply: Option<Reply>,
 ) -> Result<SentMedia, ActionError> {
     let rejected = |error: &dyn std::fmt::Display| ActionError::Rejected(error.to_string());
+    let (kind, caption) = (outgoing.kind, outgoing.caption.take());
+    let (media, fresh) = upload(&client, outgoing).await?;
+    let mut message = media_message(kind, &media, caption, Some(fresh));
+    if let Some(reply) = reply {
+        message.set_context_info(reply_context(&client, reply)?);
+    }
+    let sent = client
+        .send_message(to, message)
+        .await
+        .map_err(|error| rejected(&error))?;
+    Ok(SentMedia {
+        id: sent.message_id,
+        media,
+    })
+}
+
+/// Uploads `outgoing`'s file, encrypted, to WhatsApp's servers: what a
+/// message pointing at it needs.
+pub(crate) async fn upload(
+    client: &Client,
+    mut outgoing: Outgoing,
+) -> Result<(Media, Fresh), ActionError> {
+    let rejected = |error: &dyn std::fmt::Display| ActionError::Rejected(error.to_string());
     let media_type = match outgoing.kind {
         ContentKind::Photo => MediaType::Image,
         ContentKind::Video => MediaType::Video,
@@ -121,18 +144,7 @@ pub(crate) async fn send(
         timestamp: upload.media_key_timestamp,
         sidecar: upload.streaming_sidecar,
     };
-    let mut message = media_message(outgoing.kind, &media, outgoing.caption, Some(fresh));
-    if let Some(reply) = reply {
-        message.set_context_info(reply_context(&client, reply)?);
-    }
-    let sent = client
-        .send_message(to, message)
-        .await
-        .map_err(|error| rejected(&error))?;
-    Ok(SentMedia {
-        id: sent.message_id,
-        media,
-    })
+    Ok((media, fresh))
 }
 
 /// What only a fresh upload knows; a forwarded file goes without.
