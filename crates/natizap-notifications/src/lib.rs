@@ -5,7 +5,7 @@
 //!
 //! [`Notifier`] hears new messages itself; the binary tells it what is on
 //! screen ([`Notifier::set_focused`], [`Notifier::set_open`]), which chats
-//! are muted ([`Notifier::set_muted`]) and what chats and people are
+//! stay silent ([`Notifier::set_silent`]) and what chats and people are
 //! called ([`Notifier::set_titles`], [`Notifier::set_names`]).
 //! [`NotificationSettings`] is the settings page that changes its
 //! [`Preferences`].
@@ -178,9 +178,10 @@ impl Notifier {
         self.quiet.open = addresses;
     }
 
-    /// Every address of every muted chat.
-    pub fn set_muted(&mut self, addresses: HashSet<ChatId>) {
-        self.quiet.muted = addresses;
+    /// Every address of every chat that stays silent: muted, or archived,
+    /// as the phone keeps archived chats out of sight.
+    pub fn set_silent(&mut self, addresses: HashSet<ChatId>) {
+        self.quiet.silent = addresses;
     }
 
     /// Each chat's title, by every address it is known under.
@@ -201,7 +202,7 @@ impl Notifier {
                 group = arrival.group,
                 offline = arrival.offline,
                 focused = self.quiet.focused,
-                muted = self.quiet.is_muted(arrival),
+                silent = self.quiet.is_silent(arrival),
                 open = self.quiet.is_open(arrival),
                 tone = ?self.quiet.tone_for(arrival, self.preferences),
                 popup = self.quiet.shows(arrival, self.preferences),

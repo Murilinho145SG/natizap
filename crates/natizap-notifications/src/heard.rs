@@ -62,16 +62,18 @@ fn arrival(inbound: &InboundMessage) -> Option<Arrival> {
     })
 }
 
-/// What is on screen and what is muted.
+/// What is on screen, and the chats that stay silent.
 #[derive(Debug, Default)]
 pub(crate) struct Quiet {
     pub(crate) focused: bool,
     pub(crate) open: HashSet<ChatId>,
-    pub(crate) muted: HashSet<ChatId>,
+    /// Every address of the chats muted or archived: an archived chat
+    /// stays out of sight, as the phone keeps it.
+    pub(crate) silent: HashSet<ChatId>,
 }
 
 impl Quiet {
-    /// The tone `arrival` chimes with, if any: never in a muted chat or
+    /// The tone `arrival` chimes with, if any: never in a silent chat or
     /// the chat the user is looking at, and in other chats while natizap
     /// is in use only when `preferences` say so.
     pub(crate) fn tone_for(&self, arrival: &Arrival, preferences: Preferences) -> Option<Tone> {
@@ -81,19 +83,19 @@ impl Quiet {
             preferences.messages
         };
         let silenced = !alert.sound
-            || self.is_muted(arrival)
+            || self.is_silent(arrival)
             || self.focused && (self.is_open(arrival) || !preferences.other_chats);
         (!silenced).then_some(alert.tone)
     }
 
     /// Whether `arrival` shows in the system's notifications: only while
-    /// natizap is in the background, never for muted chats.
+    /// natizap is in the background, never for silent chats.
     pub(crate) fn shows(&self, arrival: &Arrival, preferences: Preferences) -> bool {
-        preferences.popups && !self.focused && !self.is_muted(arrival)
+        preferences.popups && !self.focused && !self.is_silent(arrival)
     }
 
-    pub(crate) fn is_muted(&self, arrival: &Arrival) -> bool {
-        arrival.chat.iter().any(|id| self.muted.contains(id))
+    pub(crate) fn is_silent(&self, arrival: &Arrival) -> bool {
+        arrival.chat.iter().any(|id| self.silent.contains(id))
     }
 
     pub(crate) fn is_open(&self, arrival: &Arrival) -> bool {
@@ -125,11 +127,11 @@ pub(crate) mod tests {
         }
     }
 
-    fn quiet(focused: bool, open: &[&str], muted: &[&str]) -> Quiet {
+    fn quiet(focused: bool, open: &[&str], silent: &[&str]) -> Quiet {
         Quiet {
             focused,
             open: open.iter().copied().map(ChatId::new).collect(),
-            muted: muted
+            silent: silent
                 .iter()
                 .copied()
                 .map(ChatId::new)

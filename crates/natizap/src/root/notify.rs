@@ -1,4 +1,4 @@
-//! Tells the notifier what the user is looking at, which chats are muted
+//! Tells the notifier what the user is looking at, which chats stay silent
 //! and what chats and people are called, and opens the chat a notification
 //! is about once the shell has shown the window.
 
@@ -14,8 +14,8 @@ use natizap_protocol::ChatId;
 use super::Root;
 
 impl Root {
-    /// Keeps `notifier` told of the window's focus, the open chat, the muted
-    /// chats and everyone's names.
+    /// Keeps `notifier` told of the window's focus, the open chat, the
+    /// chats muted or archived, and everyone's names.
     pub(super) fn feed_notifier(
         notifier: &Entity<Notifier>,
         chats: &Entity<ChatList>,
@@ -49,14 +49,20 @@ impl Root {
         cx.observe(chats, move |_, chats, cx| {
             let chats = chats.read(cx);
             let rows = || chats.rows().iter().chain(chats.archived().iter());
-            let muted: HashSet<ChatId> =
-                rows().filter(|row| row.muted).flat_map(addresses).collect();
+            // Archived chats stay silent, as the phone keeps them.
+            let silent: HashSet<ChatId> = chats
+                .rows()
+                .iter()
+                .filter(|row| row.muted)
+                .chain(chats.archived().iter())
+                .flat_map(addresses)
+                .collect();
             let titles: HashMap<ChatId, SharedString> = rows()
                 .flat_map(|row| addresses(row).map(|id| (id, row.title.clone())))
                 .collect();
             let names = Arc::clone(chats.names());
             directory.update(cx, |notifier, _| {
-                notifier.set_muted(muted);
+                notifier.set_silent(silent);
                 notifier.set_titles(titles);
                 notifier.set_names(names);
             });

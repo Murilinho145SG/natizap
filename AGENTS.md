@@ -96,8 +96,8 @@ answers by showing the contacts' `ProfilePanel` beside it. The panel emits
 answers with `ConversationView::show_tile`, `ConversationView::browse_media`
 and `ConversationView::browse_starred`. `Notifier` hears
 new messages itself; the binary tells it whether the window is focused,
-which chat `MessageLog` has open and which chats `ChatList` has muted, and
-it chimes for messages anywhere else. While the window is in the
+which chat `MessageLog` has open and which chats `ChatList` has muted or
+archived, and it chimes for messages anywhere else. While the window is in the
 background it also posts system notifications; clicking one emits
 `NotificationOpened`, which the binary answers by opening that chat. The
 chat list emits `QueryChanged` as its search field is typed in; the binary
