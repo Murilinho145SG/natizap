@@ -77,6 +77,9 @@ pub struct StatusViewer {
     started: Instant,
     /// Since when it is held, if it is.
     held: Option<Instant>,
+    /// Since when the space bar paused it; it stays held until the space
+    /// bar is pressed again, whatever else lets go.
+    paused: Option<Instant>,
     /// When the pointer went down on the stage.
     pressed: Option<Instant>,
     player: Option<(String, AnyView)>,
@@ -159,6 +162,7 @@ impl StatusViewer {
             at_post: 0,
             started: Instant::now(),
             held: None,
+            paused: None,
             pressed: None,
             player: None,
             asked: None,
@@ -205,6 +209,7 @@ impl StatusViewer {
     fn showing(&mut self, cx: &mut Context<Self>) {
         self.started = Instant::now();
         self.held = None;
+        self.paused = None;
         self.player = None;
         self.viewers_open = false;
         let Some(post) = self.post(cx) else {
@@ -284,7 +289,7 @@ impl StatusViewer {
     fn hold(&mut self, held: bool) {
         match (held, self.held) {
             (true, None) => self.held = Some(Instant::now()),
-            (false, Some(since)) => {
+            (false, Some(since)) if self.paused.is_none() => {
                 self.started += since.elapsed();
                 self.held = None;
             }
@@ -368,6 +373,21 @@ impl Render for StatusViewer {
             .id("status-viewer")
             .track_focus(&self.focus)
             .on_key_down(cx.listener(|this, event, _, cx| this.on_key(event, cx)))
+            // Before a video's player, which pauses itself on the same key
+            // and keeps it from reaching here.
+            .capture_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
+                if event.keystroke.key == "space"
+                    && !this.reply.focus_handle(cx).is_focused(window)
+                {
+                    if this.paused.take().is_some() {
+                        this.hold(false);
+                    } else {
+                        this.hold(true);
+                        this.paused = Some(Instant::now());
+                    }
+                    cx.notify();
+                }
+            }))
             .w(viewport.width)
             .h(viewport.height)
             .flex()
