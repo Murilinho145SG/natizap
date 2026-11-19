@@ -9,7 +9,7 @@ use natizap_protocol::{ChatId, ContentKind, Extra, Forwarding, Mark, Marked, Rep
 
 pub(crate) use crate::authors::Members;
 use crate::authors::Tint;
-use crate::authors::{Author, Senders};
+use crate::authors::{Author, Mentioned, Senders};
 use crate::media::Fetch;
 use crate::message::{Delivery, Message, Reaction};
 use crate::poll::{Addons, PollState};
@@ -135,9 +135,15 @@ pub(crate) struct QuotePreview {
 
 /// Message text with its markup read: what to show and how to style it.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[expect(
+    clippy::struct_field_names,
+    reason = "`text` is the string shown; the other fields describe stretches of it"
+)]
 pub(crate) struct Text {
     pub(crate) text: SharedString,
     pub(crate) marks: Arc<[(Range<usize>, Mark)]>,
+    /// Whom each mention in `text` names.
+    pub(crate) mentions: Arc<[(Range<usize>, Mentioned)]>,
 }
 
 impl Bubble {
@@ -152,10 +158,15 @@ impl Text {
     /// `source`'s markup read, its mentions naming whom `senders` knows.
     fn parse(source: &str, senders: &Senders<'_>) -> Self {
         let mut marked = Marked::parse(source);
-        marked.name_mentions(|digits| senders.mentioned(digits));
+        let mentions = marked
+            .name_mentions(|digits| senders.mentioned(digits).name)
+            .into_iter()
+            .map(|(range, digits)| (range, senders.mentioned(&digits)))
+            .collect();
         Self {
             text: marked.text.into(),
             marks: marked.marks.into(),
+            mentions,
         }
     }
 }

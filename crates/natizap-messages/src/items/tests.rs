@@ -276,11 +276,27 @@ fn shows_whom_a_mention_names() {
     let shown = items(&[mention], &addons, "Group", &members, now);
     let text = shown.iter().find_map(|item| match item {
         Item::Bubble(bubble) => match &bubble.body {
-            Body::Content { text, .. } => text.as_ref().map(|text| text.text.to_string()),
+            Body::Content { text, .. } => text.clone(),
             _ => None,
         },
         Item::Day(_) => None,
     });
+    let Some(text) = text else {
+        panic!("the mention's bubble shows its text");
+    };
     // A LID nobody here knows keeps its digits.
-    assert_eq!(text.as_deref(), Some("@Ana and @424242 come"));
+    assert_eq!(text.text.as_ref(), "@Ana and @424242 come");
+    // Each mention opens its person's profile, by number when known.
+    let opened: Vec<(&str, &str)> = text
+        .mentions
+        .iter()
+        .map(|(range, mentioned)| (&text.text[range.clone()], mentioned.profile.as_str()))
+        .collect();
+    assert_eq!(
+        opened,
+        [
+            ("@Ana", "5511912345678@s.whatsapp.net"),
+            ("@424242", "424242@lid")
+        ]
+    );
 }

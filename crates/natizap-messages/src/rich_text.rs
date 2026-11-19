@@ -16,7 +16,7 @@ use natizap_ui::theme::{MONO_FONT, Theme, base_font};
 
 use crate::items::Text;
 use crate::text_search::{Case, occurrences};
-use crate::view::{ChatRequested, ConversationView};
+use crate::view::{ChatRequested, ConversationView, ProfileRequested};
 
 /// Text selected in one stretch of a message, by dragging over it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -241,17 +241,7 @@ impl Shown<'_> {
             current,
         };
         let runs = runs(shown.len(), &marks, &lit, theme);
-        let links: Vec<(Range<usize>, LinkKind)> = marks
-            .iter()
-            .filter_map(|(range, mark)| match mark {
-                Mark::Link(kind) => Some((range.clone(), *kind)),
-                _ => None,
-            })
-            .collect();
-        let targets: Vec<(LinkKind, String)> = links
-            .iter()
-            .map(|(range, kind)| (*kind, kind.target(&shown[range.clone()])))
-            .collect();
+        let (ranges, targets) = targets(text, &shown, &marks, start..end);
         let view = self.view.clone();
         let styled = StyledText::new(shown.clone()).with_runs(runs);
         let hit = TextHit {
@@ -259,14 +249,19 @@ impl Shown<'_> {
             layout: styled.layout().clone(),
             text: shown,
         };
-        let ranges: Vec<Range<usize>> = links.into_iter().map(|(range, _)| range).collect();
         let (hover_view, hover_key, hover_ranges) = (view.clone(), key.clone(), ranges.clone());
         let element = InteractiveText::new(ElementId::Name(key), styled)
-            .on_click(ranges, move |clicked, _: &mut Window, cx: &mut App| {
-                if let Some((kind, target)) = targets.get(clicked) {
-                    open(*kind, target, &view, cx);
-                }
-            })
+            .on_click(
+                ranges,
+                move |clicked, _: &mut Window, cx: &mut App| match targets.get(clicked) {
+                    Some(Target::Link(kind, target)) => open(*kind, target, &view, cx),
+                    Some(Target::Profile(request)) => {
+                        let request = request.clone();
+                        let _ = view.update(cx, |_, cx| cx.emit(request));
+                    }
+                    None => {}
+                },
+            )
             .on_hover(move |index, _, _, cx| {
                 let link = index.and_then(|index| {
                     hover_ranges
@@ -282,6 +277,54 @@ impl Shown<'_> {
             });
         Some((element, hit))
     }
+}
+
+/// What can be clicked in `shown`, the stretch `within` of `text` with its
+/// `marks`: its links and mentions, where each stands in `shown`.
+fn targets(
+    text: &Text,
+    shown: &str,
+    marks: &[(Range<usize>, Mark)],
+    within: Range<usize>,
+) -> (Vec<Range<usize>>, Vec<Target>) {
+    let (start, end) = (within.start, within.end);
+    let mut targets: Vec<(Range<usize>, Target)> = marks
+        .iter()
+        .filter_map(|(range, mark)| match mark {
+            Mark::Link(kind) => Some((
+                range.clone(),
+                Target::Link(*kind, kind.target(&shown[range.clone()])),
+            )),
+            _ => None,
+        })
+        .collect();
+    targets.extend(
+        text.mentions
+            .iter()
+            .filter(|(range, _)| start <= range.start && range.end <= end)
+            .map(|(range, mentioned)| {
+                let local = range.start - start..range.end - start;
+                let request = ProfileRequested {
+                    chat: mentioned.profile.clone(),
+                    title: shown[local.start + 1..local.end]
+                        .trim_start_matches('~')
+                        .trim()
+                        .to_owned()
+                        .into(),
+                    verified: false,
+                };
+                (local, Target::Profile(request))
+            }),
+    );
+    targets.into_iter().unzip()
+}
+
+/// What clicking a stretch of text does.
+enum Target {
+    /// Opens a link, written as its address.
+    Link(LinkKind, String),
+    /// Shows the profile of someone mentioned.
+    Profile(ProfileRequested),
 }
 
 fn open(kind: LinkKind, target: &str, view: &WeakEntity<ConversationView>, cx: &mut App) {

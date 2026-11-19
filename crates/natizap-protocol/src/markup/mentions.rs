@@ -23,17 +23,20 @@ pub(super) fn mention(chars: &[(usize, char)], start: usize) -> Option<usize> {
 
 impl Marked {
     /// Shows each mention as `@` and the name `name` gives for its digits;
-    /// mentions it knows no name for keep their digits.
-    pub fn name_mentions(&mut self, name: impl Fn(&str) -> Option<String>) {
-        let mentions: Vec<Range<usize>> = self
-            .marks
+    /// mentions it knows no name for keep their digits. Returns where each
+    /// mention now stands, and the digits it was written with.
+    pub fn name_mentions(
+        &mut self,
+        name: impl Fn(&str) -> Option<String>,
+    ) -> Vec<(Range<usize>, String)> {
+        let mentions: Vec<Range<usize>> = self.mentions().collect();
+        let digits: Vec<String> = mentions
             .iter()
-            .filter(|(_, mark)| *mark == Mark::Mention)
-            .map(|(range, _)| range.clone())
+            .map(|range| self.text[range.start + 1..range.end].to_owned())
             .collect();
         // From the end, so the ranges still to rename stay where they are.
-        for range in mentions.into_iter().rev() {
-            let Some(shown) = name(&self.text[range.start + 1..range.end]) else {
+        for (range, digits) in mentions.into_iter().zip(&digits).rev() {
+            let Some(shown) = name(digits) else {
                 continue;
             };
             let shown = format!("@{shown}");
@@ -50,6 +53,14 @@ impl Marked {
                 *marked = shift(marked.start)..shift(marked.end);
             }
         }
+        self.mentions().zip(digits).collect()
+    }
+
+    fn mentions(&self) -> impl Iterator<Item = Range<usize>> + use<'_> {
+        self.marks
+            .iter()
+            .filter(|(_, mark)| *mark == Mark::Mention)
+            .map(|(range, _)| range.clone())
     }
 }
 
@@ -60,9 +71,17 @@ mod tests {
     #[test]
     fn finds_mentions_and_shows_the_names_known() {
         let mut marked = Marked::parse("*@5511912345678 and @99887766* see a@b.com @12");
-        marked.name_mentions(|digits| (digits == "5511912345678").then(|| "Ana".to_owned()));
+        let mentions =
+            marked.name_mentions(|digits| (digits == "5511912345678").then(|| "Ana".to_owned()));
 
         assert_eq!(marked.text, "@Ana and @99887766 see a@b.com @12");
+        assert_eq!(
+            mentions,
+            [
+                (0..4, "5511912345678".to_owned()),
+                (9..18, "99887766".to_owned())
+            ]
+        );
         let shown: Vec<(&str, Mark)> = marked
             .marks
             .iter()

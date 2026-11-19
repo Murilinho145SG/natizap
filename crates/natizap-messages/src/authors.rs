@@ -107,25 +107,51 @@ impl Senders<'_> {
     }
 }
 
+/// Someone a message mentions.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Mentioned {
+    /// Where their profile is asked for: their phone-number address when
+    /// known, as for authors.
+    pub(crate) profile: ChatId,
+    /// The address book's name, else the one they chose, else their
+    /// number; `None` for a LID nobody here knows.
+    pub(crate) name: Option<String>,
+}
+
 impl Senders<'_> {
-    /// Who a mention's `digits` name, as the mention shows them: the
-    /// address book's name, else the one they chose, else their number.
-    /// `None` for a LID nobody here knows.
-    pub(crate) fn mentioned(&self, digits: &str) -> Option<String> {
-        ["lid", "s.whatsapp.net"].into_iter().find_map(|server| {
-            let person = ChatId::new(&format!("{digits}@{server}"));
+    /// Who a mention's `digits` name.
+    pub(crate) fn mentioned(&self, digits: &str) -> Mentioned {
+        let lid = ChatId::new(&format!("{digits}@lid"));
+        let named = [
+            lid.clone(),
+            ChatId::new(&format!("{digits}@s.whatsapp.net")),
+        ]
+        .into_iter()
+        .find_map(|person| {
             let phone = self.members.phones.get(&person).unwrap_or(&person);
             let known = [&person, phone]
                 .into_iter()
                 .find_map(|address| self.members.names.get(address));
-            known
+            let name = known
                 .and_then(|known| known.saved.clone())
                 .or_else(|| self.names.get(&person).map(|&chosen| chosen.to_owned()))
                 .or_else(|| known.and_then(|known| known.chosen.clone()))
-                // Only a number its country's plan knows comes back spaced
-                // out: unknown digits may be a LID, and stay digits.
-                .or_else(|| phone.phone_number().filter(|shown| shown.contains(' ')))
-        })
+                // Only a number its country's plan knows comes back
+                // spaced out: unknown digits may be a LID, and stay
+                // digits.
+                .or_else(|| phone.phone_number().filter(|shown| shown.contains(' ')))?;
+            Some((phone.clone(), name))
+        });
+        match named {
+            Some((profile, name)) => Mentioned {
+                profile,
+                name: Some(name),
+            },
+            None => Mentioned {
+                profile: lid,
+                name: None,
+            },
+        }
     }
 }
 
