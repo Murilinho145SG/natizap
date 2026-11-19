@@ -25,6 +25,9 @@ const MAX_WIDTH: u32 = 1920;
 const FRAMES_AHEAD: usize = 12;
 /// Decoded sound kept ahead of the sound card.
 const AUDIO_AHEAD_SECONDS: f32 = 1.0;
+/// Below this much queued sound, the file is read on even with the
+/// pictures full, so the sound card (which drives the clock) gets fed.
+const AUDIO_LOW_SECONDS: f32 = 0.25;
 /// How long to wait when the buffers are full or playback is paused.
 const IDLE: Duration = Duration::from_millis(5);
 
@@ -94,42 +97,47 @@ fn play(path: &Path, shared: &Shared, commands: &Receiver<Command>) -> Result<()
 
     let mut input_done = false;
     let mut skip_before = Duration::ZERO;
+    // Video packets read while the pictures were full. Files can hold
+    // half a second of video before their first sound; stopping there
+    // would leave the clock, which waits for sound, at zero for good.
+    // Kept compressed, they cost little.
+    let mut held: VecDeque<ffmpeg::Packet> = VecDeque::new();
+    let mut video_finished = video.is_none();
     loop {
-        let seek_to = match commands.try_recv() {
-            Ok(Command::Pause(paused)) => {
-                shared.clock.set_paused(paused);
-                if let Some(audio) = &audio {
-                    audio.output.set_paused(paused);
-                }
-                None
-            }
-            Ok(Command::Seek(to)) => Some(to),
-            Ok(Command::Speed(speed)) => {
-                // Sound already queued was stretched for the old speed, so
-                // restart from where playback is now.
-                let now = shared.clock.position();
-                shared.clock.set_speed(speed.factor());
-                if let Some(audio) = &mut audio {
-                    audio.set_speed(speed)?;
-                }
-                Some(now)
-            }
-            Err(TryRecvError::Disconnected) => return Ok(()),
-            Err(TryRecvError::Empty) => None,
+        let seek_to = match steer(commands, shared, audio.as_mut())? {
+            Steer::Stop => return Ok(()),
+            Steer::Seek(to) => Some(to),
+            Steer::Go => None,
         };
         if let Some(to) = seek_to {
             seek(&mut input, video.as_mut(), audio.as_mut(), shared, to)?;
+            held.clear();
             skip_before = to;
             input_done = false;
+            video_finished = video.is_none();
             continue;
         }
 
         let pictures_full = shared.pictures().len() >= FRAMES_AHEAD;
-        let audio_full = audio
-            .as_ref()
-            .is_some_and(|a| a.output.queued_seconds() >= AUDIO_AHEAD_SECONDS);
-        if input_done || pictures_full || audio_full {
+        if let Some(video) = video.as_mut().filter(|_| !pictures_full) {
+            if let Some(packet) = held.pop_front() {
+                video.decoder.send_packet(&packet)?;
+                video.drain(shared, skip_before)?;
+                continue;
+            }
+            if input_done && !video_finished {
+                video.decoder.send_eof()?;
+                video.drain(shared, skip_before)?;
+                video_finished = true;
+                continue;
+            }
+        }
+        let queued = audio.as_ref().map(|a| a.output.queued_seconds());
+        let audio_full = queued.is_some_and(|queued| queued >= AUDIO_AHEAD_SECONDS);
+        let audio_starved = queued.is_some_and(|queued| queued < AUDIO_LOW_SECONDS);
+        if input_done || audio_full || (pictures_full && !audio_starved) {
             if input_done
+                && video_finished
                 && shared.pictures().is_empty()
                 && audio
                     .as_ref()
@@ -145,10 +153,6 @@ fn play(path: &Path, shared: &Shared, commands: &Receiver<Command>) -> Result<()
         match packet.read(&mut input) {
             Ok(()) => {}
             Err(ffmpeg::Error::Eof) => {
-                if let Some(video) = &mut video {
-                    video.decoder.send_eof()?;
-                    video.drain(shared, skip_before)?;
-                }
                 if let Some(audio) = &mut audio {
                     audio.finish(skip_before)?;
                 }
@@ -158,13 +162,54 @@ fn play(path: &Path, shared: &Shared, commands: &Receiver<Command>) -> Result<()
             Err(error) => return Err(error.into()),
         }
         if let Some(video) = video.as_mut().filter(|v| v.index == packet.stream()) {
-            video.decoder.send_packet(&packet)?;
-            video.drain(shared, skip_before)?;
+            if pictures_full || !held.is_empty() {
+                held.push_back(packet);
+            } else {
+                video.decoder.send_packet(&packet)?;
+                video.drain(shared, skip_before)?;
+            }
         } else if let Some(audio) = audio.as_mut().filter(|a| a.index == packet.stream()) {
             audio.decoder.send_packet(&packet)?;
             audio.drain(skip_before)?;
         }
     }
+}
+
+/// What a command from the UI asks of the decode loop.
+enum Steer {
+    Stop,
+    Seek(Duration),
+    Go,
+}
+
+/// Applies the next command from the UI, if any.
+fn steer(
+    commands: &Receiver<Command>,
+    shared: &Shared,
+    audio: Option<&mut AudioTrack>,
+) -> Result<Steer, PlaybackError> {
+    Ok(match commands.try_recv() {
+        Ok(Command::Pause(paused)) => {
+            shared.clock.set_paused(paused);
+            if let Some(audio) = audio {
+                audio.output.set_paused(paused);
+            }
+            Steer::Go
+        }
+        Ok(Command::Seek(to)) => Steer::Seek(to),
+        Ok(Command::Speed(speed)) => {
+            // Sound already queued was stretched for the old speed, so
+            // restart from where playback is now.
+            let now = shared.clock.position();
+            shared.clock.set_speed(speed.factor());
+            if let Some(audio) = audio {
+                audio.set_speed(speed)?;
+            }
+            Steer::Seek(now)
+        }
+        Err(TryRecvError::Disconnected) => Steer::Stop,
+        Err(TryRecvError::Empty) => Steer::Go,
+    })
 }
 
 /// Restarts decoding at `to`, dropping everything decoded for before it.
