@@ -132,7 +132,8 @@ impl ThemeSettings {
             )
             .child(
                 div()
-                    .truncate()
+                    // Ports carry long names, such as Catppuccin Macchiato.
+                    .line_clamp(2)
                     .text_size(px(12.5))
                     .text_color(rgb(if chosen { theme.text } else { theme.muted }))
                     .child(choice.name.clone()),

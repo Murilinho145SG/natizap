@@ -227,8 +227,12 @@ Keep this table current when a crate is added, renamed or removed.
 - The native themes (`theme::NATIVE`) start with Graphite, natizap's own:
   near-black surfaces (`deep`, `panel`, `pane`, `raised`, `line`) with a
   single orange accent (`accent`) reserved for unread counts and primary
-  actions. `mint` and `alert` only signal state. Every native theme keeps
-  text readable on its surfaces; a test checks the contrast.
+  actions. `mint` and `alert` only signal state. After natizap's own come
+  ports of well-known palettes (Catppuccin, Dracula, GitHub, Nord, …),
+  dark ones in `theme/dark.rs` and light ones in `theme/light.rs`, true to
+  the original except where a colour would not read. Every native theme
+  keeps text, names, links and code readable on its surfaces; a test
+  checks the contrast.
 - Floating surfaces (bubbles, menus, the composer field) are glass:
   `Theme::glass` gives them a faint rim (`edge`) and a soft shadow.
   There is no backdrop blur: GPUI cannot blur behind an element, and GNOME

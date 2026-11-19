@@ -5,6 +5,17 @@
 
 use gpui::{App, Global, Styled};
 
+mod dark;
+mod light;
+
+pub use dark::{
+    CATPPUCCIN_FRAPPE, CATPPUCCIN_MACCHIATO, CATPPUCCIN_MOCHA, DRACULA, GITHUB_DARK, GRAPHITE,
+    GRUVBOX_DARK, MIDNIGHT, MONOKAI, NORD, OLED, ONE_DARK, ROSE_PINE, SOLARIZED_DARK, TOKYO_NIGHT,
+};
+pub use light::{
+    CATPPUCCIN_LATTE, GITHUB_LIGHT, GRUVBOX_LIGHT, LIGHT, ROSE_PINE_DAWN, SOLARIZED_LIGHT,
+};
+
 /// Every colour the app draws with. Copied freely: it is a handful of
 /// numbers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -90,136 +101,30 @@ impl ActiveTheme for App {
     }
 }
 
-/// Near-black graphite with a single orange accent: natizap's own look.
-pub const GRAPHITE: Theme = Theme {
-    deep: 0x09_0a_0c,
-    panel: 0x0f_11_14,
-    pane: 0x0c_0e_11,
-    raised: 0x1a_1d_22,
-    line: 0x24_28_2e,
-    text: 0xec_ee_f1,
-    muted: 0x8b_91_9a,
-    accent: 0xff_7a_1a,
-    accent_ink: 0x16_0b_03,
-    mint: 0x5f_cf_9f,
-    alert: 0xd0_4f_45,
-    outgoing: 0x26_1d_17,
-    scrim: 0x00_00_00_80,
-    edge: 0xff_ff_ff_14,
-    thumb: 0xff_ff_ff_26,
-    thumb_active: 0xff_ff_ff_4d,
-    hover: 0xff_ff_ff_0d,
-    selection: 0xff_7a_1a_59,
-    link: 0xff_a8_6b,
-    code_keyword: 0xff_9e_5e,
-    code_string: 0xa8_d1_8a,
-    code_number: 0xe6_c0_7b,
-    code_type: 0x8f_b4_d6,
-    code_call: 0xc7_9b_d0,
-    name_tints: [
-        0xe0_b4_6a, 0x6f_d1_c0, 0xc7_9b_d0, 0x8f_b4_d6, 0xe3_9a_a8, 0xb4_c9_7a,
-    ],
-};
-
-/// Blue-black night with a cool blue accent.
-pub const MIDNIGHT: Theme = Theme {
-    deep: 0x06_09_10,
-    panel: 0x0b_10_1a,
-    pane: 0x09_0d_17,
-    raised: 0x15_1c_2a,
-    line: 0x1e_27_37,
-    text: 0xe7_ec_f5,
-    muted: 0x86_91_a7,
-    accent: 0x4c_8d_ff,
-    accent_ink: 0x03_0d_1f,
-    mint: 0x5f_cf_9f,
-    alert: 0xe0_5a_55,
-    outgoing: 0x14_23_3f,
-    scrim: 0x00_00_00_80,
-    edge: 0xff_ff_ff_14,
-    thumb: 0xff_ff_ff_26,
-    thumb_active: 0xff_ff_ff_4d,
-    hover: 0xff_ff_ff_0d,
-    selection: 0x4c_8d_ff_59,
-    link: 0x8f_b8_ff,
-    code_keyword: 0x8f_b8_ff,
-    code_string: 0xa8_d1_8a,
-    code_number: 0xe6_c0_7b,
-    code_type: 0x7f_d4_d0,
-    code_call: 0xc7_9b_d0,
-    name_tints: [
-        0xe0_b4_6a, 0x6f_d1_c0, 0xc7_9b_d0, 0x8f_b4_d6, 0xe3_9a_a8, 0xb4_c9_7a,
-    ],
-};
-
-/// True black for OLED screens, with the orange accent.
-pub const OLED: Theme = Theme {
-    deep: 0x00_00_00,
-    panel: 0x00_00_00,
-    pane: 0x00_00_00,
-    raised: 0x12_12_12,
-    line: 0x1c_1c_1c,
-    text: 0xee_ee_ee,
-    muted: 0x88_88_88,
-    accent: 0xff_7a_1a,
-    accent_ink: 0x16_0b_03,
-    mint: 0x5f_cf_9f,
-    alert: 0xd0_4f_45,
-    outgoing: 0x1f_16_0f,
-    scrim: 0x00_00_00_99,
-    edge: 0xff_ff_ff_1a,
-    thumb: 0xff_ff_ff_26,
-    thumb_active: 0xff_ff_ff_4d,
-    hover: 0xff_ff_ff_0f,
-    selection: 0xff_7a_1a_59,
-    link: 0xff_a8_6b,
-    code_keyword: 0xff_9e_5e,
-    code_string: 0xa8_d1_8a,
-    code_number: 0xe6_c0_7b,
-    code_type: 0x8f_b4_d6,
-    code_call: 0xc7_9b_d0,
-    name_tints: [
-        0xe0_b4_6a, 0x6f_d1_c0, 0xc7_9b_d0, 0x8f_b4_d6, 0xe3_9a_a8, 0xb4_c9_7a,
-    ],
-};
-
-/// Light paper with the orange accent, deepened to read on white.
-pub const LIGHT: Theme = Theme {
-    deep: 0xe6_e8_ec,
-    panel: 0xf5_f6_f8,
-    pane: 0xff_ff_ff,
-    raised: 0xea_ec_f0,
-    line: 0xdc_df_e5,
-    text: 0x15_17_1a,
-    muted: 0x67_6e_7a,
-    accent: 0xe8_62_05,
-    accent_ink: 0xff_ff_ff,
-    mint: 0x1a_8f_5f,
-    alert: 0xc2_37_2c,
-    outgoing: 0xfd_e6_d3,
-    scrim: 0x00_00_00_66,
-    edge: 0x00_00_00_1a,
-    thumb: 0x00_00_00_26,
-    thumb_active: 0x00_00_00_4d,
-    hover: 0x00_00_00_0a,
-    selection: 0xe8_62_05_40,
-    link: 0xc4_4f_05,
-    code_keyword: 0xb1_42_0c,
-    code_string: 0x3a_77_28,
-    code_number: 0x95_66_00,
-    code_type: 0x2a_5b_88,
-    code_call: 0x7a_3a_8c,
-    name_tints: [
-        0x9a_62_00, 0x16_7f_70, 0x7e_3f_8a, 0x2b_5f_92, 0xa8_3a_55, 0x4f_76_1c,
-    ],
-};
-
-/// The themes natizap comes with, by name, its own first.
-pub const NATIVE: [(&str, Theme); 4] = [
+/// The themes natizap comes with, by name: its own first, then the ports,
+/// families together.
+pub const NATIVE: [(&str, Theme); 21] = [
     ("Graphite", GRAPHITE),
     ("Midnight", MIDNIGHT),
     ("OLED", OLED),
     ("Light", LIGHT),
+    ("Catppuccin Latte", CATPPUCCIN_LATTE),
+    ("Catppuccin Frappé", CATPPUCCIN_FRAPPE),
+    ("Catppuccin Macchiato", CATPPUCCIN_MACCHIATO),
+    ("Catppuccin Mocha", CATPPUCCIN_MOCHA),
+    ("Dracula", DRACULA),
+    ("GitHub Dark", GITHUB_DARK),
+    ("GitHub Light", GITHUB_LIGHT),
+    ("Gruvbox Dark", GRUVBOX_DARK),
+    ("Gruvbox Light", GRUVBOX_LIGHT),
+    ("Monokai", MONOKAI),
+    ("Nord", NORD),
+    ("One Dark", ONE_DARK),
+    ("Rosé Pine", ROSE_PINE),
+    ("Rosé Pine Dawn", ROSE_PINE_DAWN),
+    ("Solarized Dark", SOLARIZED_DARK),
+    ("Solarized Light", SOLARIZED_LIGHT),
+    ("Tokyo Night", TOKYO_NIGHT),
 ];
 
 /// Avatar backgrounds; muted so names stay the brightest thing in a row.
@@ -301,6 +206,21 @@ mod tests {
                 contrast(theme.text, theme.outgoing) >= 7.0,
                 "{name}: sent messages"
             );
+            // Names, links and code sit on others' bubbles.
+            let tinted = [
+                theme.link,
+                theme.code_keyword,
+                theme.code_string,
+                theme.code_number,
+                theme.code_type,
+                theme.code_call,
+            ];
+            for color in tinted.into_iter().chain(theme.name_tints) {
+                assert!(
+                    contrast(color, theme.raised) >= 3.0,
+                    "{name}: {color:06x} on bubbles"
+                );
+            }
         }
     }
 }
