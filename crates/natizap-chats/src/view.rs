@@ -1,8 +1,9 @@
 use chrono::{DateTime, Datelike as _, Local, TimeZone as _};
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, AnyView, Context, Div, Entity, EventEmitter, FontWeight, SharedString, Stateful,
-    UniformListScrollHandle, Window, div, px, relative, rgb, svg, uniform_list,
+    AnyElement, AnyView, Context, Div, Entity, EventEmitter, FontWeight, MouseButton,
+    MouseDownEvent, SharedString, Stateful, UniformListScrollHandle, Window, div, px, relative,
+    rgb, svg, uniform_list,
 };
 use natizap_ui::theme::{ActiveTheme as _, DISPLAY_FONT, Theme};
 use natizap_ui::{
@@ -18,8 +19,11 @@ use natizap_protocol::{ChatId, ContentKind};
 use crate::filters::{Filter, chips, narrowed, search_field};
 use crate::list::{ChatList, ChatRow};
 
+mod menu;
 mod searching;
 
+pub use menu::ChatForgotten;
+use menu::ChatPopup;
 pub use searching::QueryChanged;
 
 const ROW_HEIGHT: f32 = 68.0;
@@ -46,6 +50,8 @@ pub struct ChatListView {
     message_results: Option<AnyView>,
     /// Who has a status, and whether it holds something unseen.
     rings: HashMap<ChatId, bool>,
+    /// A chat's right-click menu or one of its questions, when open.
+    popup: Option<ChatPopup>,
 }
 
 /// The user picked a chat in the list.
@@ -54,6 +60,7 @@ pub struct ChatSelected(pub ChatRow);
 
 impl EventEmitter<ChatSelected> for ChatListView {}
 impl EventEmitter<QueryChanged> for ChatListView {}
+impl EventEmitter<ChatForgotten> for ChatListView {}
 
 /// The user clicked the ringed avatar of someone with a status.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -91,6 +98,7 @@ impl ChatListView {
             query: String::new(),
             message_results: None,
             rings: HashMap::new(),
+            popup: None,
         }
     }
 
@@ -207,6 +215,7 @@ impl Render for ChatListView {
                     .child(div().mx_5().my_1().child(separator(theme)))
             })
             .child(body)
+            .children(self.popup(cx))
     }
 }
 
@@ -227,8 +236,13 @@ impl ChatListView {
                 rows[range]
                     .iter()
                     .map(|row| {
-                        let selected = this.selected.as_ref() == Some(&row.id);
+                        let selected = this.selected.as_ref() == Some(&row.id)
+                            || matches!(
+                                &this.popup,
+                                Some(ChatPopup::Menu(chat, _)) if *chat == row.id
+                            );
                         let clicked = row.clone();
+                        let pressed = row.id.clone();
                         // Only rows on screen ask, so pictures load as the
                         // list scrolls.
                         let picture = this
@@ -259,7 +273,13 @@ impl ChatListView {
                                 .when(selected, |row| row.bg(rgb(theme.raised)))
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     this.select(clicked.clone(), cx);
-                                })),
+                                }))
+                                .on_mouse_down(
+                                    MouseButton::Right,
+                                    cx.listener(move |this, event: &MouseDownEvent, _, cx| {
+                                        this.open_menu(pressed.clone(), event.position, cx);
+                                    }),
+                                ),
                         )
                     })
                     .collect::<Vec<_>>()

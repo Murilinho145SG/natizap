@@ -327,6 +327,17 @@ impl MessageLog {
         cx.notify();
     }
 
+    /// Forgets the messages filed under `addresses`, as the user cleared
+    /// their chat (starred ones stay) or deleted it.
+    pub fn forget(&self, addresses: &[ChatId], deleted: bool) {
+        for chat in addresses {
+            self.send_input(Input::from(MessageChange::Forgotten {
+                chat: chat.clone(),
+                keep_starred: !deleted,
+            }));
+        }
+    }
+
     /// Records that the open chat's notifications were silenced or not.
     pub fn set_muted(&mut self, muted: bool, cx: &mut Context<Self>) {
         if let Some(open) = &mut self.open {

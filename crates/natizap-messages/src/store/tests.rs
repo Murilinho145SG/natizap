@@ -554,3 +554,38 @@ fn a_star_that_arrives_before_its_message_reaches_it() -> rusqlite::Result<()> {
     assert!(store.latest(std::slice::from_ref(&chat), 1)?[0].starred);
     Ok(())
 }
+
+#[test]
+fn clearing_a_chat_keeps_its_starred_messages_and_deleting_it_does_not() -> rusqlite::Result<()> {
+    let mut store = MessageStore::in_memory()?;
+    let chat = ChatId::new("1@lid");
+    store.apply(&[
+        MessageChange::Received(message("1@lid", "a", 10, "plain")),
+        MessageChange::Received(message("1@lid", "b", 20, "starred")),
+        MessageChange::Received(message("2@lid", "c", 30, "other chat")),
+        MessageChange::Starred {
+            message_id: "b".into(),
+            starred: true,
+        },
+    ])?;
+
+    store.apply(&[MessageChange::Forgotten {
+        chat: chat.clone(),
+        keep_starred: true,
+    }])?;
+    assert_eq!(
+        texts(&store.latest(std::slice::from_ref(&chat), 10)?),
+        [Some("starred")]
+    );
+
+    store.apply(&[MessageChange::Forgotten {
+        chat: chat.clone(),
+        keep_starred: false,
+    }])?;
+    assert_eq!(store.latest(std::slice::from_ref(&chat), 10)?.len(), 0);
+    assert_eq!(
+        texts(&store.latest(&[ChatId::new("2@lid")], 10)?),
+        [Some("other chat")]
+    );
+    Ok(())
+}

@@ -132,7 +132,7 @@ struct Snapshot {
 }
 
 /// Requests to the sync worker, alongside protocol events.
-enum Input {
+pub(crate) enum Input {
     Event(Arc<Event>),
     Open(Option<ChatId>),
     Change(ChatChange),
@@ -145,7 +145,7 @@ enum Input {
 /// the list changes.
 #[derive(Debug)]
 pub struct ChatList {
-    protocol: Entity<Protocol>,
+    pub(crate) protocol: Entity<Protocol>,
     /// Chats already asked whether they are businesses.
     asked: HashSet<ChatId>,
     /// Whether a question is in flight.
@@ -153,8 +153,10 @@ pub struct ChatList {
     snapshot: Snapshot,
     /// Who is typing or recording, in every chat.
     pub(crate) typing: Typing,
+    /// Everyone this account blocked, by every address they go by.
+    pub(crate) blocked: HashSet<ChatId>,
     inputs: async_channel::Sender<Input>,
-    _tasks: [Task<()>; 4],
+    _tasks: [Task<()>; 5],
 }
 
 impl ChatList {
@@ -201,14 +203,16 @@ impl ChatList {
             }
         });
         let typing = Self::follow_typing(protocol, cx);
+        let blocks = Self::follow_connections(protocol, cx);
         Self {
             protocol: protocol.clone(),
             asked: HashSet::new(),
             asking: false,
             snapshot: Snapshot::default(),
             typing: Typing::default(),
+            blocked: HashSet::new(),
             inputs: inputs_tx,
-            _tasks: [forward, sync, apply, typing],
+            _tasks: [forward, sync, apply, typing, blocks],
         }
     }
 
@@ -384,7 +388,7 @@ impl ChatList {
         .detach();
     }
 
-    fn send(&self, input: Input) {
+    pub(crate) fn send(&self, input: Input) {
         // The channel is unbounded and the worker lives as long as `self`.
         if self.inputs.try_send(input).is_err() {
             tracing::error!("chat list worker stopped");
@@ -479,7 +483,7 @@ fn snapshot(book: &ChatBook, names: &Arc<HashMap<ChatId, PersonName>>) -> Snapsh
     }
 }
 
-fn unix_now() -> i64 {
+pub(crate) fn unix_now() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |elapsed| {

@@ -174,6 +174,9 @@ pub(crate) enum MessageChange {
         /// When it was cast, in Unix milliseconds.
         cast_at: i64,
     },
+    /// The user cleared or deleted the chat: its messages go, starred ones
+    /// aside when `keep_starred`.
+    Forgotten { chat: ChatId, keep_starred: bool },
     /// A vote arrived still sealed; it is opened with its poll's secret
     /// before it is kept.
     VoteArrived(SealedVote),
@@ -197,7 +200,8 @@ impl MessageChange {
             | Self::Removed { chat, .. }
             | Self::Accepted { chat, .. }
             | Self::Rejected { chat, .. }
-            | Self::Reacted { chat, .. } => Some(chat),
+            | Self::Reacted { chat, .. }
+            | Self::Forgotten { chat, .. } => Some(chat),
             Self::Progressed { .. }
             | Self::MediaSaved { .. }
             | Self::PosterSaved { .. }

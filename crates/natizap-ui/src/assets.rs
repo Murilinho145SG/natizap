@@ -54,6 +54,8 @@ icons! {
     Back => "back.svg",
     /// Notifications and how they sound.
     Bell => "bell.svg",
+    /// Block someone, or unblock them.
+    Block => "block.svg",
     /// Sent.
     Check => "check.svg",
     /// Delivered, or read when tinted.
@@ -76,6 +78,8 @@ icons! {
     CallMissed => "call-missed.svg",
     /// A conversation.
     Chats => "chats.svg",
+    /// Clear a chat's messages, keeping the chat.
+    Clear => "clear.svg",
     /// Close the window.
     Close => "close.svg",
     /// A person, e.g. a shared contact.
@@ -142,6 +146,8 @@ icons! {
     Tray => "tray.svg",
     /// Delete.
     Trash => "trash.svg",
+    /// Mark a chat as unread.
+    Unread => "unread.svg",
     /// A business WhatsApp vouches for.
     Verified => "verified.svg",
     /// A video.

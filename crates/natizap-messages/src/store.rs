@@ -157,14 +157,7 @@ impl MessageStore {
                     )?
                     .execute(params![chat.as_str(), id])?;
                 }
-                MessageChange::Removed { chat, id } => {
-                    tx.prepare_cached("DELETE FROM messages WHERE chat = ?1 AND id = ?2")?
-                        .execute(params![chat.as_str(), id])?;
-                    tx.prepare_cached("DELETE FROM reactions WHERE message_id = ?1")?
-                        .execute(params![id])?;
-                    tx.prepare_cached("DELETE FROM votes WHERE poll_id = ?1")?
-                        .execute(params![id])?;
-                }
+                MessageChange::Removed { chat, id } => forget::remove(&tx, chat, id)?,
                 MessageChange::Accepted {
                     chat,
                     local_id,
@@ -229,6 +222,9 @@ impl MessageStore {
                     options,
                     cast_at,
                 } => votes::record(&tx, poll_id, voter.as_ref(), options, *cast_at)?,
+                MessageChange::Forgotten { chat, keep_starred } => {
+                    forget::forget(&tx, chat, *keep_starred)?;
+                }
                 // Opened into `Voted` by `open_votes` before it is kept.
                 MessageChange::VoteArrived(_) => {}
                 MessageChange::Rejected { chat, local_id } => {
@@ -544,6 +540,7 @@ mod votes;
 
 pub(crate) use votes::Vote;
 mod backlog;
+mod forget;
 mod library;
 mod rows;
 mod search;

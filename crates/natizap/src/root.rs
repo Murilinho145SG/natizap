@@ -31,6 +31,7 @@ use opening::Opening;
 
 mod calls;
 mod layout;
+mod list_menu;
 mod notify;
 mod opening;
 mod profiles;
@@ -171,6 +172,7 @@ impl Root {
         Self::open_numbers(&conversation, cx);
         Self::share_names(&chats, messages, cx);
         Self::follow_chat_menu(&conversation, cx);
+        Self::follow_list_menu(&chat_list, &chats, messages, cx);
         Self::share_contacts(&conversation, messages, &chats, pictures, window, cx);
         Self::feed_notifier(&notifier, &chats, messages, window, cx);
         Self::share_stickers(&stickers, &conversation, messages, cx);
@@ -263,11 +265,7 @@ impl Root {
     /// Closes the open chat, or mutes it, when its header menu says so.
     fn follow_chat_menu(conversation: &Entity<ConversationView>, cx: &mut Context<Self>) {
         cx.subscribe(conversation, |root, _, _: &ChatClosed, cx| {
-            root.profile = None;
-            root.chats.read(cx).open(None);
-            root.messages.update(cx, MessageLog::close);
-            root.chat_list.update(cx, |list, cx| list.show(None, cx));
-            cx.notify();
+            root.close_chat(cx);
         })
         .detach();
         cx.subscribe(conversation, |root, _, MuteRequested(muted), cx| {
@@ -284,6 +282,15 @@ impl Root {
                 .update(cx, |log, cx| log.set_muted(*muted, cx));
         })
         .detach();
+    }
+
+    /// Closes the open chat, leaving none on screen.
+    fn close_chat(&mut self, cx: &mut Context<Self>) {
+        self.profile = None;
+        self.chats.read(cx).open(None);
+        self.messages.update(cx, MessageLog::close);
+        self.chat_list.update(cx, |list, cx| list.show(None, cx));
+        cx.notify();
     }
 
     /// Hands the names the chat list knows to the conversation, to name

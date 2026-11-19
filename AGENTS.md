@@ -80,7 +80,10 @@ again. Each store keeps an append-only `MIGRATIONS` list.
 Features talk to each other only through the binary: the chat list emits
 `ChatSelected`, the binary opens that chat in `MessageLog` and tells
 `ChatList` it is on screen; `MessageLog` emits `MessageSent`, which the
-binary forwards to the chat list's preview. Photos and videos open in the
+binary forwards to the chat list's preview. A right click on a chat in the list
+archives, mutes, pins, marks it read or blocks through `ChatList`
+itself; clearing or deleting it emits `ChatForgotten`, which the binary
+answers with `MessageLog::forget`, closing the chat if it was open. Photos and videos open in the
 conversation's carousel; when it lands on a video, `ConversationView` emits
 `PlayRequested`, which the binary answers with a `PlayerView` handed back
 through `ConversationView::show_player`. Voice notes and audio files play

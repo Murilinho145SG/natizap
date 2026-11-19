@@ -4,6 +4,7 @@
 //! [`ChatList`] keeps the chats in sync with WhatsApp and cached on disk;
 //! [`ChatListView`] renders them.
 
+mod actions;
 mod book;
 mod filters;
 mod list;
@@ -15,4 +16,4 @@ mod view;
 
 pub use list::{ChatList, ChatRow};
 pub use picker::{ChatPicker, ChatsPicked, PickerDismissed};
-pub use view::{ChatListView, ChatSelected, QueryChanged, StatusRequested};
+pub use view::{ChatForgotten, ChatListView, ChatSelected, QueryChanged, StatusRequested};
