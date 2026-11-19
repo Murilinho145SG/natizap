@@ -48,12 +48,17 @@ emojis = "0.9"
 ffmpeg-next = { version = "9.1", default-features = false, features = [
     "build",
     "codec",
+    # The camera, for video calls.
+    "device",
     "filter",
     "format",
     "software-resampling",
     "software-scaling",
 ] }
 futures = "0.3"
+# Encodes a call's camera as H.264 (Constrained Baseline, what WhatsApp
+# sends), built from Cisco's source: FFmpeg has no H.264 encoder of its own.
+openh264 = "0.9"
 # The tray icon on Linux: a StatusNotifierItem over D-Bus, in pure Rust.
 ksni = { version = "0.3", default-features = false, features = ["tokio"] }
 # Must match the version GPUI uses for RenderImage frames.

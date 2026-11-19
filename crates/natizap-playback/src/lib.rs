@@ -7,18 +7,22 @@
 //! [`save_poster`] and [`still_jpeg`] take a still from a video,
 //! [`probe`] reads how long a file plays and how big its pictures are,
 //! [`Recorder`] records voice notes, [`Clip`] plays short sounds held in
-//! memory and [`CallAudio`] carries a call's sound to and from the sound
-//! card.
+//! memory, [`CallAudio`] carries a call's sound to and from the sound
+//! card, and [`Camera`] and [`decode_video`] its video.
 
 mod audio;
 mod call_audio;
+mod camera;
 mod clip;
 mod clock;
 mod decode;
+mod feed;
+mod h264;
 mod opus;
 mod poster;
 mod probe;
 mod record;
+mod remote_video;
 mod resample;
 mod speed;
 mod turn;
@@ -28,10 +32,13 @@ use std::sync::{Arc, mpsc};
 use std::time::Duration;
 
 pub use call_audio::{CallAudio, CallAudioError, CallFormat, CallPorts};
+pub use camera::Camera;
 pub use clip::{Clip, ClipError};
+pub use feed::VideoFeed;
 pub use poster::{MediaFileError, save_poster, still_jpeg};
 pub use probe::{Probe, probe};
 pub use record::{Heard, RecordError, Recorder, Recording, save as save_recording};
+pub use remote_video::{AccessUnits, VideoError, decode_video};
 pub use speed::Speed;
 
 use decode::{Command, Shared};

@@ -39,7 +39,7 @@ impl Turn {
         clippy::cast_possible_truncation,
         reason = "a rounded count of quarter turns, from a real rotation"
     )]
-    fn nearest(degrees: f64) -> Self {
+    pub(crate) fn nearest(degrees: f64) -> Self {
         match ((degrees / 90.0).round() as i64).rem_euclid(4) {
             1 => Self::Clockwise,
             2 => Self::Half,
