@@ -56,6 +56,8 @@ pub struct StatusBook {
     /// Posts whose file could not be downloaded this run, by id, so they
     /// do not keep the others waiting.
     failed: HashSet<String>,
+    /// The post on screen, downloaded before the others.
+    wanted: Option<String>,
     /// What people are called, by every address they go by.
     titles: HashMap<ChatId, SharedString>,
     /// Who this account's own posts go to.
@@ -131,6 +133,7 @@ impl StatusBook {
             media_dir,
             fetching: HashSet::new(),
             failed: HashSet::new(),
+            wanted: None,
             titles: HashMap::new(),
             audience: Vec::new(),
             _tasks: [forward, work, apply],
@@ -312,19 +315,34 @@ impl StatusBook {
         }
     }
 
-    /// Downloads the next photo or video not downloaded yet, one at a time.
+    /// Downloads `post`'s photo or video next, as it is on screen; one
+    /// that failed is tried again, as a tap does on the phone.
+    pub fn want(&mut self, post: &Post, cx: &mut Context<Self>) {
+        if post.file.is_none() && post.media.is_some() {
+            self.failed.remove(&post.id);
+            self.wanted = Some(post.id.clone());
+            self.fetch_next(cx);
+        }
+    }
+
+    /// Downloads the next photo or video not downloaded yet, one at a time,
+    /// the one on screen first.
     fn fetch_next(&mut self, cx: &mut Context<Self>) {
         if !self.fetching.is_empty() {
             return;
         }
-        let Some(post) = self
-            .snapshot
-            .posts
-            .iter()
-            .rev()
-            .find(|post| {
-                post.file.is_none() && post.media.is_some() && !self.failed.contains(&post.id)
-            })
+        let missing = |post: &&Post| {
+            post.file.is_none() && post.media.is_some() && !self.failed.contains(&post.id)
+        };
+        let wanted = self.wanted.as_ref().and_then(|wanted| {
+            self.snapshot
+                .posts
+                .iter()
+                .filter(missing)
+                .find(|post| post.id == *wanted)
+        });
+        let Some(post) = wanted
+            .or_else(|| self.snapshot.posts.iter().rev().find(missing))
             .cloned()
         else {
             return;

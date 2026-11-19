@@ -141,7 +141,12 @@ impl StatusViewer {
             }
         })
         .detach();
-        cx.observe(&book, |_, _, cx| cx.notify()).detach();
+        // A video downloaded while on screen starts playing.
+        cx.observe(&book, |viewer, _, cx| {
+            viewer.ask_player(cx);
+            cx.notify();
+        })
+        .detach();
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
         let mut viewer = Self {
@@ -172,6 +177,8 @@ impl StatusViewer {
     pub fn show_player(&mut self, id: &str, player: AnyView, cx: &mut Context<Self>) {
         if self.post(cx).is_some_and(|post| post.id == id) {
             self.player = Some((id.to_owned(), player));
+            // Its clock starts with the video, not with the download.
+            self.started = Instant::now();
             cx.notify();
         }
     }
@@ -202,9 +209,21 @@ impl StatusViewer {
         let Some(post) = self.post(cx) else {
             return;
         };
-        self.book.update(cx, |book, cx| book.mark_seen(&post, cx));
+        self.book.update(cx, |book, cx| {
+            book.mark_seen(&post, cx);
+            book.want(&post, cx);
+        });
+        self.ask_player(cx);
+        cx.notify();
+    }
+
+    /// Asks the app for a player once the video on screen is on disk.
+    fn ask_player(&mut self, cx: &mut Context<Self>) {
+        let Some(post) = self.post(cx) else {
+            return;
+        };
         if post.kind == ContentKind::Video
-            && let Some(file) = post.file.clone()
+            && let Some(file) = post.file
             && self.asked.as_deref() != Some(post.id.as_str())
         {
             self.asked = Some(post.id.clone());
@@ -213,7 +232,6 @@ impl StatusViewer {
                 file,
             });
         }
-        cx.notify();
     }
 
     fn forward(&mut self, cx: &mut Context<Self>) {
@@ -267,6 +285,10 @@ impl StatusViewer {
 
     /// The share of the post on screen already shown, 0 to 1.
     fn progress(&self, post: &Post) -> f32 {
+        let playing = self.player.as_ref().is_some_and(|(id, _)| *id == post.id);
+        if post.kind == ContentKind::Video && !playing {
+            return 0.0;
+        }
         let shown = match self.held {
             Some(since) => since.duration_since(self.started),
             None => self.started.elapsed(),
@@ -406,9 +428,14 @@ impl StatusViewer {
     /// back and anywhere else on.
     fn stage(&self, post: &Post, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let content: AnyElement = match (post.kind, &self.player, &post.file) {
-            (ContentKind::Video, Some((id, player)), _) if *id == post.id => {
-                div().size_full().child(player.clone()).into_any_element()
-            }
+            // The player's own controls take its clicks; taps beside the
+            // video still step through the statuses.
+            (ContentKind::Video, Some((id, player)), _) if *id == post.id => div()
+                .size_full()
+                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .on_mouse_up(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .child(player.clone())
+                .into_any_element(),
             (ContentKind::Text, ..) => text_post(post).into_any_element(),
             (_, _, file) => {
                 let source: Option<ImageSource> = match (post.kind, file) {
