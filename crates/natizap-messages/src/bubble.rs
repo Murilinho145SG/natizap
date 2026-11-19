@@ -187,12 +187,12 @@ fn render_bubble(
 
 /// The bubble itself: author, attachment, quote, content and time.
 /// A business's buttons, which go under the text and time.
-fn buttons_under(bubble: &Bubble) -> Option<Div> {
+fn buttons_under(bubble: &Bubble, view: &WeakEntity<ConversationView>) -> Option<Div> {
     match &bubble.body {
         Body::Content {
             extra: Some(Extra::Buttons(buttons)),
             ..
-        } => Some(render_buttons(&bubble.id, buttons)),
+        } => Some(render_buttons(&bubble.id, buttons, &bubble.reply, view)),
         _ => None,
     }
 }
@@ -309,7 +309,7 @@ fn shape(
                 .child(body.min_w_0().max_w_full())
                 .child(meta.ml_auto().pb(px(1.0))),
         )
-        .children(buttons_under(bubble))
+        .children(buttons_under(bubble, view))
 }
 
 /// A photo or video filling its bubble but for a thin rim, as on the

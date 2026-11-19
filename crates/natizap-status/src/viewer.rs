@@ -376,8 +376,7 @@ impl Render for StatusViewer {
             // Before a video's player, which pauses itself on the same key
             // and keeps it from reaching here.
             .capture_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
-                if event.keystroke.key == "space"
-                    && !this.reply.focus_handle(cx).is_focused(window)
+                if event.keystroke.key == "space" && !this.reply.focus_handle(cx).is_focused(window)
                 {
                     if this.paused.take().is_some() {
                         this.hold(false);

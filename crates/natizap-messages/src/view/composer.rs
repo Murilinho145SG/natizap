@@ -8,7 +8,7 @@ use gpui::{
     ClickEvent, Context, Div, Focusable as _, MouseButton, PathPromptOptions, SharedString,
     Stateful, Window, div, px, rgb, svg,
 };
-use natizap_protocol::ContentKind;
+use natizap_protocol::{Answer, ContentKind, Reply};
 use natizap_ui::motion::{fade_in, rise_in};
 use natizap_ui::theme::{LINE, MUTED, PANEL, RAISED};
 use natizap_ui::{Button, ButtonSize, ButtonVariant, FilesPasted, Icon};
@@ -32,6 +32,21 @@ impl ConversationView {
         self.away_from_end = false;
         self.composer
             .update(cx, |composer, cx| composer.clear(window, cx));
+    }
+
+    /// Taps a business's quick-reply button labelled `label` on
+    /// `offered`, the message it is under.
+    pub(crate) fn answer(
+        &mut self,
+        label: String,
+        answer: Answer,
+        offered: Reply,
+        cx: &mut Context<Self>,
+    ) {
+        self.log
+            .update(cx, |log, cx| log.send_answer(label, answer, offered, cx));
+        self.messages.scroll_to_end();
+        self.away_from_end = false;
     }
 
     /// Shows files and pictures pasted into the composer before sending

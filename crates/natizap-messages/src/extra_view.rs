@@ -5,7 +5,7 @@ use gpui::{
     AnyElement, ClipboardItem, Div, ElementId, FontWeight, SharedString, WeakEntity, div, px, rgb,
     rgba, svg,
 };
-use natizap_protocol::{ButtonAction, Buttons, Card, ChatId, Extra, Poll};
+use natizap_protocol::{ButtonAction, Buttons, Card, ChatId, Extra, Poll, Reply};
 use natizap_ui::theme::{ACCENT, DEEP, HOVER, LINE, LINK, MUTED, TEXT};
 use natizap_ui::{Icon, avatar, progress, separator};
 
@@ -40,9 +40,15 @@ pub(crate) fn render_extra(
 }
 
 /// A business's footer and buttons, under the text and time, one full
-/// row each as the phone draws them. Links, calls and codes act when
-/// clicked; replies and lists only show.
-pub(crate) fn render_buttons(id: &str, buttons: &Buttons) -> Div {
+/// row each as the phone draws them. Links, calls, codes and quick
+/// replies act when clicked, a quick reply answering `offered`, the
+/// message they are under; lists only show.
+pub(crate) fn render_buttons(
+    id: &str,
+    buttons: &Buttons,
+    offered: &Reply,
+    view: &WeakEntity<ConversationView>,
+) -> Div {
     let footer = buttons.footer.clone().map(|footer| {
         div()
             .pb_1()
@@ -56,13 +62,11 @@ pub(crate) fn render_buttons(id: &str, buttons: &Buttons) -> Div {
             ButtonAction::Call(_) => Some(Icon::Call),
             ButtonAction::Copy(_) => Some(Icon::Copy),
             ButtonAction::List => Some(Icon::More),
-            ButtonAction::Reply => None,
+            ButtonAction::Reply(_) => Some(Icon::Reply),
         };
         let action = button.action.clone();
-        let acts = matches!(
-            action,
-            ButtonAction::Url(_) | ButtonAction::Call(_) | ButtonAction::Copy(_)
-        );
+        let acts = !matches!(action, ButtonAction::List);
+        let (label, offered, view) = (button.label.clone(), offered.clone(), view.clone());
         div()
             .id((SharedString::from(format!("{id}-button")), index))
             .w_full()
@@ -82,12 +86,22 @@ pub(crate) fn render_buttons(id: &str, buttons: &Buttons) -> Div {
                 row.cursor_pointer()
                     .hover(|row| row.bg(rgba(HOVER)))
                     .on_click(move |_, _, cx| match &action {
-                        ButtonAction::Url(url) => cx.open_url(url),
+                        ButtonAction::Url(url) => {
+                            tracing::debug!(url, "opening a button's link");
+                            cx.open_url(url);
+                        }
                         ButtonAction::Call(phone) => cx.open_url(&format!("tel:{phone}")),
                         ButtonAction::Copy(code) => {
                             cx.write_to_clipboard(ClipboardItem::new_string(code.clone()));
                         }
-                        ButtonAction::Reply | ButtonAction::List => {}
+                        ButtonAction::Reply(answer) => {
+                            let (label, answer, offered) =
+                                (label.clone(), answer.clone(), offered.clone());
+                            let _ = view.update(cx, |view, cx| {
+                                view.answer(label, answer, offered, cx);
+                            });
+                        }
+                        ButtonAction::List => {}
                     })
             })
     });

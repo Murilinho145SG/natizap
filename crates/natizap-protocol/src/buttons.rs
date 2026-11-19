@@ -5,6 +5,8 @@
 
 use whatsapp_rust::prelude::wa;
 
+use crate::answer::Answer;
+
 /// The buttons under a business's message.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Buttons {
@@ -26,8 +28,8 @@ pub struct Button {
 /// What a button does when tapped.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ButtonAction {
-    /// Answers with its own label, as a quick reply.
-    Reply,
+    /// Answers with its own label, as a quick reply, naming the button.
+    Reply(Answer),
     /// Opens a web page.
     Url(String),
     /// Calls a phone number.
@@ -148,9 +150,13 @@ fn buttons_message(message: &wa::message::ButtonsMessage) -> (Option<String>, Bu
                 return native_flow(flow.name.as_deref(), flow.params_json.as_deref());
             }
             let label = button.button_text.as_option()?.display_text.clone()?;
+            let answer = button
+                .button_id
+                .clone()
+                .map_or(Answer::Unknown, Answer::Button);
             Some(Button {
                 label,
-                action: ButtonAction::Reply,
+                action: ButtonAction::Reply(answer),
             })
         })
         .collect();
@@ -189,7 +195,14 @@ fn hydrated(
         .filter_map(|button| {
             let (label, action) = match button.hydrated_button.as_ref()? {
                 HydratedButton::QuickReplyButton(reply) => {
-                    (reply.display_text.clone()?, ButtonAction::Reply)
+                    let answer = reply
+                        .id
+                        .clone()
+                        .map_or(Answer::Unknown, |id| Answer::Template {
+                            id,
+                            index: button.index.unwrap_or_default(),
+                        });
+                    (reply.display_text.clone()?, ButtonAction::Reply(answer))
                 }
                 HydratedButton::UrlButton(link) => (
                     link.display_text.clone()?,
@@ -257,7 +270,7 @@ fn native_flow(name: Option<&str>, params: Option<&str>) -> Option<Button> {
     };
     let label = field("display_text").or_else(|| field("title"))?;
     let action = match name? {
-        "quick_reply" => ButtonAction::Reply,
+        "quick_reply" => ButtonAction::Reply(field("id").map_or(Answer::Unknown, Answer::Flow)),
         "cta_url" => ButtonAction::Url(field("url")?),
         "cta_call" => ButtonAction::Call(field("phone_number")?),
         "cta_copy" => ButtonAction::Copy(field("copy_code")?),
@@ -295,7 +308,7 @@ mod tests {
             reply,
             Some(Button {
                 label: "Sim".into(),
-                action: ButtonAction::Reply
+                action: ButtonAction::Reply(Answer::Flow("yes".into()))
             })
         );
         let link = native_flow(

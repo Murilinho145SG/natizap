@@ -14,6 +14,7 @@ use crate::ContentKind;
 use crate::actions::{
     self, ActionError, Anchor, Connection, Disappearing, PinFor, Reply, Sent, Unread,
 };
+use crate::answer::{self, Answer};
 use crate::content::Extra;
 use crate::fanout::Fanout;
 use crate::group::{self, GroupInfo};
@@ -165,6 +166,25 @@ impl Protocol {
         };
         self.connection.run(cx, move |client| {
             actions::send_text(client, to, text, reply)
+        })
+    }
+
+    /// Taps `answer`, a quick-reply button labelled `label` on `offered`,
+    /// a business's message in `chat`.
+    pub fn send_answer(
+        &self,
+        chat: &ChatId,
+        label: String,
+        answer: Answer,
+        offered: Reply,
+        cx: &App,
+    ) -> Task<Result<Sent, ActionError>> {
+        let to = match actions::jid(chat) {
+            Ok(to) => to,
+            Err(error) => return Task::ready(Err(error)),
+        };
+        self.connection.run(cx, move |client| {
+            answer::send(client, to, label, answer, offered)
         })
     }
 

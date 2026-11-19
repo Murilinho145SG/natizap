@@ -1,7 +1,7 @@
 //! How a message's shared contacts, poll or buttons are kept in the
 //! `extra` column: one line per entry, fields split by tabs.
 
-use natizap_protocol::{Button, ButtonAction, Buttons, Card, Extra, Poll};
+use natizap_protocol::{Answer, Button, ButtonAction, Buttons, Card, Extra, Poll};
 
 pub(super) fn encode(extra: &Extra) -> String {
     let clean = |field: &str| field.replace(['\t', '\n', '\r'], " ");
@@ -35,15 +35,15 @@ pub(super) fn encode(extra: &Extra) -> String {
         ))
         .chain(buttons.buttons.iter().map(|button| {
             let (kind, target) = match &button.action {
-                ButtonAction::Reply => ("reply", ""),
-                ButtonAction::Url(url) => ("url", url.as_str()),
-                ButtonAction::Call(phone) => ("call", phone.as_str()),
-                ButtonAction::Copy(code) => ("copy", code.as_str()),
-                ButtonAction::List => ("list", ""),
+                ButtonAction::Reply(answer) => ("reply", answer.key()),
+                ButtonAction::Url(url) => ("url", url.clone()),
+                ButtonAction::Call(phone) => ("call", phone.clone()),
+                ButtonAction::Copy(code) => ("copy", code.clone()),
+                ButtonAction::List => ("list", String::new()),
             };
             format!(
                 "button\t{kind}\t{}\t{}",
-                clean(target),
+                clean(&target),
                 clean(&button.label)
             )
         }))
@@ -75,7 +75,7 @@ pub(super) fn decode(stored: &str) -> Option<Extra> {
                     ["button", kind, target, label] => {
                         let target = (*target).to_owned();
                         let action = match *kind {
-                            "reply" => ButtonAction::Reply,
+                            "reply" => ButtonAction::Reply(Answer::from_key(&target)),
                             "url" => ButtonAction::Url(target),
                             "call" => ButtonAction::Call(target),
                             "copy" => ButtonAction::Copy(target),
@@ -144,7 +144,10 @@ mod tests {
             buttons: vec![
                 Button {
                     label: "Sim".into(),
-                    action: ButtonAction::Reply,
+                    action: ButtonAction::Reply(Answer::Template {
+                        id: "yes".into(),
+                        index: 0,
+                    }),
                 },
                 Button {
                     label: "Site".into(),

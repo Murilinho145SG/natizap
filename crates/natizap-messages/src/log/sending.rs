@@ -7,7 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use chrono::Local;
 use gpui::{App, AppContext as _, Context, Entity, Task};
 use natizap_protocol::{
-    ActionError, ChatId, ContentKind, Extra, Forward, Quote, Reply, Sent, Sticker,
+    ActionError, Answer, ChatId, ContentKind, Extra, Forward, Quote, Reply, Sent, Sticker,
 };
 
 use super::{ForwardRequested, Input, MessageLog, MessageSent};
@@ -31,6 +31,34 @@ impl MessageLog {
         });
 
         let sending = self.protocol.read(cx).send_text(&chat, text, reply, cx);
+        self.settle(chat, local_id, sending, cx);
+    }
+
+    /// Answers `offered`, a business's message in the open chat, by tapping
+    /// its quick-reply button `answer`; the label shows as a reply to it.
+    pub fn send_answer(
+        &mut self,
+        label: String,
+        answer: Answer,
+        offered: Reply,
+        cx: &mut Context<Self>,
+    ) {
+        let Some((chat, local_id, sent_at)) = self.next_outgoing() else {
+            return;
+        };
+        let mut message = outgoing_message(&chat, &local_id, sent_at, Some(&offered));
+        message.text = Some(label.clone());
+        self.send_input(Input::from(MessageChange::Sending(message)));
+        cx.emit(MessageSent {
+            chat: chat.clone(),
+            kind: ContentKind::Text,
+            text: label.clone(),
+            sent_at,
+        });
+        let sending = self
+            .protocol
+            .read(cx)
+            .send_answer(&chat, label, answer, offered, cx);
         self.settle(chat, local_id, sending, cx);
     }
 
