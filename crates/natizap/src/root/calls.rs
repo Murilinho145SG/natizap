@@ -4,8 +4,8 @@
 
 use gpui::{AppContext as _, Context, Entity, Window, px, size};
 use natizap_calls::{
-    CallBar, CallChatRequested, CallDesk, CallLog, CallPoppedOut, CallWindow, CallsPane, RingCard,
-    VideoPanel,
+    CallBackRequested, CallBar, CallChatRequested, CallDesk, CallLog, CallPoppedOut, CallWindow,
+    CallsPane, RingCard, VideoPanel,
 };
 use natizap_chats::ChatList;
 use natizap_messages::{CallRequested, ConversationView};
@@ -109,6 +109,11 @@ impl Root {
                 let title = root.calls.read(cx).title(chat);
                 root.place = Place::Chats;
                 root.chat_with(chat, title, cx);
+            })
+            .detach();
+            cx.subscribe(&pane, |root, _, CallBackRequested { peer, video }, cx| {
+                root.desk
+                    .update(cx, |desk, cx| desk.place(peer.clone(), *video, cx));
             })
             .detach();
             self.calls_pane = Some(pane);

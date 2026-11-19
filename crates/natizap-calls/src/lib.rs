@@ -22,7 +22,7 @@ pub use desk::{CallDesk, CallRang, CallShown, CameraState, DeviceKind, Phase, Vi
 pub use group::CallGroup;
 pub use keys::{HangUp, ToggleCamera, ToggleMute, call_keys};
 pub use log::CallLog;
-pub use pane::{CallChatRequested, CallsPane};
+pub use pane::{CallBackRequested, CallChatRequested, CallsPane};
 pub use panel::VideoPanel;
 pub use ringtone::Ringtone;
 pub use settings::CallSettings;

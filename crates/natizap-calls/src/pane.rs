@@ -22,6 +22,15 @@ const AVATAR: f32 = 44.0;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CallChatRequested(pub ChatId);
 
+/// The user asked to call someone back from the history.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CallBackRequested {
+    /// Who to call.
+    pub peer: ChatId,
+    /// With the camera on, as the call being returned was.
+    pub video: bool,
+}
+
 /// The call history, in place of the chat list.
 pub struct CallsPane {
     log: Entity<CallLog>,
@@ -37,6 +46,7 @@ impl std::fmt::Debug for CallsPane {
 }
 
 impl EventEmitter<CallChatRequested> for CallsPane {}
+impl EventEmitter<CallBackRequested> for CallsPane {}
 
 impl CallsPane {
     /// Shows `log`'s calls.
@@ -71,6 +81,7 @@ impl CallsPane {
             title.to_string()
         };
         let (key, opening) = (call.id.clone(), chat.clone());
+        let back = call_back(&call, cx);
         div()
             .flex()
             .flex_col()
@@ -107,6 +118,7 @@ impl CallsPane {
                             )
                             .child(summary(&call, theme)),
                     )
+                    .children(back)
                     .when(count > 1, |row| {
                         row.child(
                             Button::new(SharedString::from(format!("call-more-{}", call.id)))
@@ -142,6 +154,30 @@ impl CallsPane {
                 }))
             })
     }
+}
+
+/// The button that calls `call`'s person back, the way they called; none
+/// for a group call, which is answered on the phone for now.
+fn call_back(call: &CallRecord, cx: &mut Context<CallsPane>) -> Option<Button> {
+    if call.group.is_some() {
+        return None;
+    }
+    let (peer, video) = (call.peer.clone(), call.video);
+    Some(
+        Button::new(SharedString::from(format!("call-back-{}", call.id)))
+            .icon(if video { Icon::Video } else { Icon::Call })
+            .variant(ButtonVariant::Ghost)
+            .round()
+            .tooltip(if video { "Video call" } else { "Voice call" })
+            .on_click(cx.listener(move |_, _, _, cx| {
+                // The row behind opens the chat.
+                cx.stop_propagation();
+                cx.emit(CallBackRequested {
+                    peer: peer.clone(),
+                    video,
+                });
+            })),
+    )
 }
 
 impl Render for CallsPane {
