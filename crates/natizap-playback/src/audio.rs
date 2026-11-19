@@ -1,11 +1,19 @@
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex, PoisonError};
+use std::time::Duration;
 
 use cpal::traits::{DeviceTrait as _, HostTrait as _, StreamTrait as _};
-use cpal::{SampleFormat, Stream, StreamConfig, SupportedStreamConfig, SupportedStreamConfigRange};
+use cpal::{
+    BufferSize, SampleFormat, Stream, StreamConfig, SupportedBufferSize, SupportedStreamConfig,
+    SupportedStreamConfigRange,
+};
 
 use crate::PlaybackError;
 use crate::clock::Clock;
+
+/// How much sound the card takes at a time when playing media: enough to
+/// ride out a busy moment, little enough to keep sound with the pictures.
+const MEDIA_PERIOD: Duration = Duration::from_millis(40);
 
 /// The sound card output: decoded samples queue here and the card's callback
 /// plays them, advancing the clock by what it actually played.
@@ -101,25 +109,40 @@ fn f32_config(device: &cpal::Device) -> Result<StreamConfig, PlaybackError> {
     let supported = device
         .supported_output_configs()
         .map_err(|error| PlaybackError::Audio(error.to_string()))?;
-    closest_f32(&preferred, supported)
+    closest_f32(&preferred, supported, MEDIA_PERIOD)
         .ok_or_else(|| PlaybackError::Audio("the sound card does not take f32 samples".into()))
 }
 
 /// `preferred` if it is in `f32` samples, else the first of `supported`
-/// that is, at the rate closest to `preferred`'s.
+/// that is, at the rate closest to `preferred`'s; with the card asked to
+/// take sound `period` at a time, as near as it allows.
+///
+/// Left to choose, a sound server buffers as much as it likes: `PulseAudio`,
+/// and `PipeWire` speaking its protocol, hold seconds, which a call hears as
+/// delay and a video as sound behind its pictures.
 pub(crate) fn closest_f32(
     preferred: &SupportedStreamConfig,
     mut supported: impl Iterator<Item = SupportedStreamConfigRange>,
+    period: Duration,
 ) -> Option<StreamConfig> {
-    if preferred.sample_format() == SampleFormat::F32 {
-        return Some(preferred.config());
+    let chosen = if preferred.sample_format() == SampleFormat::F32 {
+        *preferred
+    } else {
+        let range = supported.find(|range| range.sample_format() == SampleFormat::F32)?;
+        let rate = preferred
+            .sample_rate()
+            .clamp(range.min_sample_rate(), range.max_sample_rate());
+        range.with_sample_rate(rate)
+    };
+    let mut config = chosen.config();
+    if let SupportedBufferSize::Range { min, max } = *chosen.buffer_size() {
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "a few milliseconds of frames"
+        )]
+        let frames = (f64::from(config.sample_rate) * period.as_secs_f64()) as u32;
+        config.buffer_size = BufferSize::Fixed(frames.clamp(min, max));
     }
-    supported
-        .find(|range| range.sample_format() == SampleFormat::F32)
-        .map(|range| {
-            let rate = preferred
-                .sample_rate()
-                .clamp(range.min_sample_rate(), range.max_sample_rate());
-            range.with_sample_rate(rate).config()
-        })
+    Some(config)
 }

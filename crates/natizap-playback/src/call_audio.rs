@@ -21,8 +21,12 @@ mod sides;
 
 use sides::{Microphone, Speaker, to_i16};
 
-/// Frames waiting for the call before new ones are dropped.
-const MICROPHONE_BACKLOG: usize = 4;
+/// How much sound the card takes at a time in a call: what it holds is
+/// heard as delay.
+const CALL_PERIOD: std::time::Duration = std::time::Duration::from_millis(10);
+/// Frames waiting for the call: past this, the oldest goes, so a call that
+/// starts consuming late does not keep the delay it built up.
+const MICROPHONE_BACKLOG: usize = 2;
 /// Frames from the call waiting for the speaker's callback.
 const SPEAKER_BACKLOG: usize = 8;
 
@@ -240,6 +244,7 @@ fn listen(
     let config = closest_f32(
         &device.default_input_config().map_err(device_error)?,
         device.supported_input_configs().map_err(device_error)?,
+        CALL_PERIOD,
     )
     .ok_or_else(|| CallAudioError::Device("the microphone gives no f32 samples".into()))?;
     tracing::info!(
@@ -270,6 +275,7 @@ fn play(
     let config = closest_f32(
         &device.default_output_config().map_err(device_error)?,
         device.supported_output_configs().map_err(device_error)?,
+        CALL_PERIOD,
     )
     .ok_or_else(|| CallAudioError::Device("the speaker takes no f32 samples".into()))?;
     tracing::info!(

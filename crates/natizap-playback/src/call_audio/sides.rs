@@ -13,12 +13,12 @@ use crate::voice_processing::VoiceProcessing;
 
 /// Sound held back before the speaker starts, and again after it ran
 /// dry, so frames arriving a little late still play smoothly.
-const CUSHION_SECONDS: f32 = 0.1;
+const CUSHION_SECONDS: f32 = 0.06;
 /// The loudest sample of a frame of silence, give or take noise.
 const VOICED: u16 = 300;
 /// Past this much sound waiting, the oldest is dropped: a call that falls
 /// behind catches up instead of answering ever later.
-const MOST_SECONDS: f32 = 0.3;
+const MOST_SECONDS: f32 = 0.2;
 
 /// The microphone's side: the card's samples, mono, at the call's rate,
 /// cut into frames.
@@ -78,12 +78,11 @@ impl Microphone {
         self.pending.extend(self.raw.drain(..whole));
         while self.pending.len() >= self.frame {
             let frame: Vec<i16> = self.pending.drain(..self.frame).map(to_i16).collect();
-            // A full channel means the call is behind: this frame is lost,
-            // as it would be on a bad network.
-            let counter = if self.heard.try_send(frame).is_ok() {
-                &self.meter.sent
-            } else {
-                &self.meter.unsent
+            // A full channel means the call is behind: the oldest frame
+            // goes, not this one, so the delay never builds up.
+            let counter = match self.heard.force_send(frame) {
+                Ok(None) => &self.meter.sent,
+                Ok(Some(_)) | Err(_) => &self.meter.unsent,
             };
             Meter::add(counter, 1);
         }
