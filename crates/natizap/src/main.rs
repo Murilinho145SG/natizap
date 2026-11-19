@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Context as _;
 use gpui::{
-    App, AppContext as _, Bounds, KeyBinding, Pixels, Size, WindowBackgroundAppearance,
+    Action, App, AppContext as _, Bounds, KeyBinding, Pixels, Size, WindowBackgroundAppearance,
     WindowBounds, WindowDecorations, WindowOptions, actions, px, size,
 };
 use natizap_calls::CallLog;
@@ -81,11 +81,7 @@ fn main() -> anyhow::Result<()> {
         // Names natizap in the system's notifications.
         cx.set_app_identity("natizap", "natizap");
         bind_text_input_keys(cx);
-        cx.bind_keys([
-            // `secondary` is Cmd on macOS and Ctrl elsewhere.
-            KeyBinding::new("secondary-alt-g", OpenComponents, None),
-            KeyBinding::new("secondary-r", Restart, None),
-        ]);
+        bind_app_keys(cx);
         cx.set_restart_path(executable.clone());
         cx.on_action(|_: &Restart, cx| cx.restart());
         cx.on_action(|_: &OpenComponents, cx| {
@@ -122,6 +118,25 @@ fn main() -> anyhow::Result<()> {
         cx.activate(true);
     });
     Ok(())
+}
+
+/// natizap's own shortcuts. `secondary` is Cmd on macOS and Ctrl
+/// elsewhere, which only [`KeyBinding::load`] resolves: `KeyBinding::new`
+/// panics on it.
+fn bind_app_keys(cx: &mut App) {
+    let keys: [(&str, Box<dyn Action>); 2] = [
+        ("secondary-alt-g", Box::new(OpenComponents)),
+        ("secondary-r", Box::new(Restart)),
+    ];
+    let bindings: Vec<KeyBinding> = keys
+        .into_iter()
+        .filter_map(|(keys, action)| {
+            KeyBinding::load(keys, action, None, false, None, cx)
+                .inspect_err(|error| tracing::error!(%error, keys, "invalid key binding"))
+                .ok()
+        })
+        .collect();
+    cx.bind_keys(bindings);
 }
 
 /// A natizap window: drawn frame, transparent corners, centered.
