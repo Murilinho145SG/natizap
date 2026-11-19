@@ -30,6 +30,9 @@ pub(super) struct Arrangement {
     pub(super) layout: CallLayout,
     pub(super) docked_height: Pixels,
     pub(super) floating_size: Size<Pixels>,
+    /// The call fills the whole screen. Unlike the rest, it lasts only
+    /// for the call it was chosen in.
+    pub(super) full_screen: bool,
 }
 
 impl Default for Arrangement {
@@ -38,6 +41,7 @@ impl Default for Arrangement {
             layout: CallLayout::Bar,
             docked_height: px(DOCKED_HEIGHT),
             floating_size: size(px(FLOATING_SIZE.0), px(FLOATING_SIZE.1)),
+            full_screen: false,
         }
     }
 }
@@ -52,6 +56,20 @@ impl CallDesk {
     /// Shows the call as `layout` says.
     pub fn set_layout(&mut self, layout: CallLayout, cx: &mut Context<Self>) {
         self.arrangement.layout = layout;
+        cx.notify();
+    }
+
+    /// Whether the call fills the whole screen, in place of the window's
+    /// content.
+    #[must_use]
+    pub fn full_screen(&self) -> bool {
+        self.arrangement.full_screen && self.call.is_some()
+    }
+
+    /// Fills the whole screen with the call, or (`false`) gives the window
+    /// its content back.
+    pub fn set_full_screen(&mut self, full: bool, cx: &mut Context<Self>) {
+        self.arrangement.full_screen = full;
         cx.notify();
     }
 

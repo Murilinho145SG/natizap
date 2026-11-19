@@ -2,7 +2,8 @@
 //! call opening its chat; and the call under way, placed from the open
 //! chat, in its bar or a window of its own.
 
-use gpui::{AppContext as _, Context, Entity, Window, px, size};
+use gpui::prelude::*;
+use gpui::{AnyElement, Context, Entity, Window, div, px, rgb, size};
 use natizap_calls::{
     CallBackRequested, CallBar, CallChatRequested, CallDesk, CallLog, CallPoppedOut, CallStage,
     CallWindow, CallsPane, RingCard, VideoPanel,
@@ -10,6 +11,7 @@ use natizap_calls::{
 use natizap_chats::ChatList;
 use natizap_messages::{CallRequested, ConversationView};
 use natizap_profiles::ProfilePictures;
+use natizap_ui::theme::{ActiveTheme as _, base_font};
 
 use super::{Place, Root};
 
@@ -65,12 +67,46 @@ impl Root {
             root.pop_out_call(cx);
         })
         .detach();
+        // Escape leaves the full screen, as everywhere else.
+        cx.observe_keystrokes(|root, event, _, cx| {
+            if event.keystroke.key == "escape" && root.desk.read(cx).full_screen() {
+                root.desk
+                    .update(cx, |desk, cx| desk.set_full_screen(false, cx));
+            }
+        })
+        .detach();
         CallViews {
             bar,
             card,
             panel,
             stage,
         }
+    }
+
+    /// The call alone, without the window's frame, while it fills the
+    /// screen; the window is made to fill it, or to give it back, as the
+    /// desk asks.
+    pub(super) fn full_screen_call(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        let full = self.desk.read(cx).full_screen();
+        if full != self.full_screen {
+            self.full_screen = full;
+            if window.is_fullscreen() != full {
+                window.toggle_fullscreen();
+            }
+        }
+        full.then(|| {
+            div()
+                .size_full()
+                .font(base_font())
+                .text_color(rgb(cx.theme().text))
+                .child(self.call_views.stage.clone())
+                .child(self.call_views.card.clone())
+                .into_any_element()
+        })
     }
 
     /// Shows the call in its own window, opening it if it is not open.

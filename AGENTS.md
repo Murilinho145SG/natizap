@@ -129,7 +129,9 @@ corner, and places the call as `CallDesk::layout` arranges it: the
 the chat's area, or the `VideoPanel` floating over the window; the bar's
 `CallChatRequested` opens the call's chat, and the bar's, the stage's and
 the panel's `CallPoppedOut` open a `CallWindow`, the call in a window of
-its own. The binary hands the conversation the stickers'
+its own. While `CallDesk::full_screen` holds, the binary
+makes the window fill the screen with the stage alone; Escape gives it
+back. The binary hands the conversation the stickers'
 `StickerPicker` to show from its composer, sends what it emits as
 `StickerPicked` through `MessageLog::send_sticker`, tells the conversation
 which stickers are favorites, and passes its `StickerFavoriteToggled` to

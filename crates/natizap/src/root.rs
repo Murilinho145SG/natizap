@@ -106,6 +106,8 @@ pub(crate) struct Root {
     call_views: CallViews,
     /// The call under way in a window of its own, once moved there.
     call_window: Option<WindowHandle<CallWindow>>,
+    /// Whether the window was last made to fill the screen for the call.
+    full_screen: bool,
     /// A status playing over the window.
     status_viewer: Option<Entity<StatusViewer>>,
     /// Posting a status.
@@ -214,6 +216,7 @@ impl Root {
             desk,
             call_views,
             call_window: None,
+            full_screen: false,
             status_viewer: None,
             status_composer: None,
             notifier,
@@ -473,6 +476,9 @@ impl Root {
 impl Render for Root {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = *cx.theme();
+        if let Some(call) = self.full_screen_call(window, cx) {
+            return call;
+        }
         let title = wordmark(self.session.read(cx).state(), theme)
             .child(div().ml_4().child(self.updater.clone()));
         let opening = self.opening_layer(cx);
@@ -495,6 +501,7 @@ impl Render for Root {
             .font(base_font())
             .text_color(rgb(theme.text))
             .child(window_frame(window, title, content, theme))
+            .into_any_element()
     }
 }
 

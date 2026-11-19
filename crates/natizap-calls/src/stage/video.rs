@@ -3,15 +3,19 @@
 
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, Context, Div, MouseButton, MouseDownEvent, Stateful, Window, div, px, rgb, rgba,
+    AnyElement, Context, Div, MouseButton, MouseDownEvent, Stateful, Window, div, point, px, rgb,
+    rgba,
 };
 use natizap_ui::theme::Theme;
 use natizap_ui::{Button, ButtonVariant, Icon, avatar};
 
-use super::{CallStage, Hold, Home};
+use super::{CallStage, Hold};
 use crate::desk::{CallShown, VideoShown};
 use crate::screen::Painted;
 use crate::tiles::{CONTROLS, GAP, Grab, SMALL, Tile, group_size};
+
+/// How long the small tiles take to glide into their corner.
+const GLIDE_SECONDS: f32 = 0.22;
 
 /// What a stage painted of each tile's video.
 #[derive(Default)]
@@ -97,7 +101,7 @@ impl CallStage {
         }
         stage
             .when(present.len() > 1, |stage| {
-                stage.child(self.view_switch(focused.is_some(), theme, cx))
+                stage.child(Self::view_switch(focused.is_some(), theme, cx))
             })
             .child(
                 div()
@@ -125,12 +129,25 @@ impl CallStage {
     ) -> impl IntoElement + use<> {
         let group = group_size(small.len());
         let stage = self.area.get().size;
-        let mut at = self.arrangement.corner.origin(stage, group);
+        let target = self.arrangement.corner.origin(stage, group);
+        let mut at = target;
         if let Some(Hold::Tile(Grab {
             moved: Some(by), ..
         })) = self.held
         {
             at += by;
+        } else if let Some((from, since)) = self.glide {
+            let done = since.elapsed().as_secs_f32() / GLIDE_SECONDS;
+            if done >= 1.0 {
+                self.glide = None;
+            } else {
+                let eased = 1.0 - (1.0 - done).powi(3);
+                at = point(
+                    from.x + (target.x - from.x) * eased,
+                    from.y + (target.y - from.y) * eased,
+                );
+                window.request_animation_frame();
+            }
         }
         let tiles: Vec<_> = small
             .iter()
@@ -149,7 +166,6 @@ impl CallStage {
 
     /// The button between one tile filling the stage and all side by side.
     fn view_switch(
-        &self,
         focused: bool,
         theme: Theme,
         cx: &mut Context<Self>,
@@ -171,20 +187,14 @@ impl CallStage {
                     cx.notify();
                 }))
         };
-        // The main window's arrangement buttons take the top right; the
-        // call's own window shows who is called at the top left.
-        let place = div()
+        div()
             .absolute()
             .top_2()
+            .left_2()
             .p_1()
             .rounded_full()
-            .bg(rgba(theme.scrim));
-        let place = if self.home == Home::Main {
-            place.left_2()
-        } else {
-            place.right_2()
-        };
-        place.child(button.variant(ButtonVariant::Ghost).round())
+            .bg(rgba(theme.scrim))
+            .child(button.variant(ButtonVariant::Ghost).round())
     }
 
     /// One tile: its picture, or the other end's photo while theirs is
@@ -241,7 +251,7 @@ impl CallStage {
                 .border_1()
                 .border_color(rgba(theme.edge))
                 .shadow_lg()
-                .cursor_pointer()
+                .cursor_grab()
                 .on_mouse_down(
                     MouseButton::Left,
                     cx.listener(move |this, event: &MouseDownEvent, _, cx| {

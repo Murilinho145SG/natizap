@@ -380,6 +380,7 @@ impl CallDesk {
         // One call at a time: the one under way ends, filed as it should.
         self.hang_up(cx);
         self.call = None;
+        self.arrangement.full_screen = false;
         // A video call is answered with the camera on, as the phone does.
         let (video, ends) = if ring.video {
             Self::video_for_call(cx).unzip()

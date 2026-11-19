@@ -8,22 +8,23 @@
 
 use std::cell::Cell;
 use std::rc::Rc;
+use std::time::Instant;
 
 use gpui::prelude::*;
 use gpui::{
-    Bounds, Context, Entity, EventEmitter, FontWeight, MouseButton, MouseDownEvent, Pixels, Point,
-    Window, div, px, rgb, rgba,
+    Bounds, ClickEvent, Context, Entity, EventEmitter, FontWeight, MouseButton, MouseDownEvent,
+    Pixels, Point, Window, div, px, rgb, rgba,
 };
 use natizap_profiles::ProfilePictures;
 use natizap_ui::theme::{ActiveTheme as _, DISPLAY_FONT, Theme};
-use natizap_ui::{Button, ButtonSize, ButtonVariant, Icon, avatar};
+use natizap_ui::{Button, ButtonSize, ButtonVariant, Icon, Menu, avatar};
 
 use crate::bar::{CallPoppedOut, camera_button, mute_button, phase_line, screen_button};
 use crate::desk::{CallDesk, CallLayout, CallShown, Phase};
 use crate::keys::HANG_UP;
 use crate::look::ringed;
 use crate::pointer::{Held, follower};
-use crate::tiles::{Arrangement, Grab};
+use crate::tiles::{Arrangement, Grab, group_size};
 
 mod video;
 
@@ -62,6 +63,11 @@ pub struct CallStage {
     small_count: usize,
     /// What the pointer holds down.
     held: Option<Hold>,
+    /// Where the menu of where the call shows opened, while it is open.
+    layout_menu: Option<Point<Pixels>>,
+    /// The small tiles gliding into their corner: from where they were
+    /// let go, and since when.
+    glide: Option<(Point<Pixels>, Instant)>,
     /// The stage, as last painted.
     area: Rc<Cell<Bounds<Pixels>>>,
     /// The tallest a docked stage may get in the window as last drawn.
@@ -103,6 +109,8 @@ impl CallStage {
             paints: video::Paints::default(),
             arrangement: Arrangement::default(),
             small_count: 0,
+            layout_menu: None,
+            glide: None,
             held: None,
             area: Rc::default(),
             tallest: px(f32::MAX),
@@ -150,10 +158,15 @@ impl CallStage {
 
     /// The call's controls, in a row.
     fn controls(call: &CallShown, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        // On a dark pill, so they read over any picture.
         div()
             .flex()
             .items_center()
             .gap_3()
+            .px_3()
+            .py_2()
+            .rounded_full()
+            .bg(rgba(cx.theme().scrim))
             .child(mute_button(
                 call,
                 ButtonSize::Large,
@@ -182,63 +195,101 @@ impl CallStage {
             )
     }
 
-    /// The buttons that arrange the call in the main window.
-    fn arrangement(layout: CallLayout, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let arrange = |id: &'static str, icon: Icon, tip: &'static str, to: CallLayout| {
-            Button::new(id)
-                .icon(icon)
-                .variant(ButtonVariant::Ghost)
-                .round()
-                .tooltip(tip)
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.desk.update(cx, |desk, cx| desk.set_layout(to, cx));
-                }))
-        };
-        let fill = if layout == CallLayout::Filled {
-            arrange(
-                "call-stage-dock",
-                Icon::Restore,
-                "Show the chat",
-                CallLayout::Docked,
-            )
+    /// The buttons at the stage's top right: where the call shows in the
+    /// main window, its own window, and the whole screen.
+    fn arrangement(&self, full: bool, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let theme = *cx.theme();
+        let main = self.home == Home::Main;
+        let full_screen = if full {
+            Button::new("call-stage-full-screen")
+                .icon(Icon::FullScreenExit)
+                .tooltip("Leave full screen (Esc)")
         } else {
-            arrange(
-                "call-stage-fill",
-                Icon::Maximize,
-                "Fill the chat's area",
-                CallLayout::Filled,
-            )
+            Button::new("call-stage-full-screen")
+                .icon(Icon::FullScreen)
+                .tooltip("Full screen")
         };
+        let full_screen = full_screen
+            .variant(ButtonVariant::Ghost)
+            .round()
+            .on_click(cx.listener(move |this, _, window, cx| {
+                if this.home == Home::Main {
+                    this.desk
+                        .update(cx, |desk, cx| desk.set_full_screen(!full, cx));
+                } else {
+                    window.toggle_fullscreen();
+                }
+            }));
         div()
             .absolute()
             .top_2()
             .right_2()
             .flex()
+            .items_center()
             .gap_1()
             .p_1()
             .rounded_full()
-            .bg(rgba(cx.theme().scrim))
-            .child(fill)
-            .child(arrange(
-                "call-stage-float",
+            .bg(rgba(theme.scrim))
+            .when(main && !full, |row| {
+                row.child(
+                    Button::new("call-stage-layout")
+                        .icon(Icon::Layout)
+                        .variant(ButtonVariant::Ghost)
+                        .round()
+                        .selected(self.layout_menu.is_some())
+                        .tooltip("Where the call shows")
+                        .on_click(cx.listener(|this, event: &ClickEvent, _, cx| {
+                            this.layout_menu = Some(event.position());
+                            cx.notify();
+                        })),
+                )
+                .child(
+                    Button::new("call-stage-pop-out")
+                        .icon(Icon::PopOut)
+                        .variant(ButtonVariant::Ghost)
+                        .round()
+                        .tooltip("Open in its own window")
+                        .on_click(cx.listener(|_, _, _, cx| cx.emit(CallPoppedOut))),
+                )
+                .child(div().w(px(1.0)).h(px(16.0)).mx_1().bg(rgba(theme.edge)))
+            })
+            .child(full_screen)
+    }
+
+    /// The menu of where the call shows in the main window, once its
+    /// button was clicked: every arrangement but the one in use.
+    fn layout_menu(&self, layout: CallLayout, cx: &mut Context<Self>) -> Option<impl IntoElement> {
+        let position = self.layout_menu?;
+        let view = cx.weak_entity();
+        let arrange = move |to: Option<CallLayout>| {
+            let view = view.clone();
+            move |_: &mut Window, cx: &mut gpui::App| {
+                let _ = view.update(cx, |this, cx| {
+                    this.layout_menu = None;
+                    if let Some(to) = to {
+                        this.desk.update(cx, |desk, cx| desk.set_layout(to, cx));
+                    }
+                    cx.notify();
+                });
+            }
+        };
+        let choices = [
+            (CallLayout::Docked, Icon::Restore, "Over the chat"),
+            (CallLayout::Filled, Icon::Maximize, "Fill the chat's area"),
+            (
+                CallLayout::Floating,
                 Icon::Minimize,
                 "Float as a small picture",
-                CallLayout::Floating,
-            ))
-            .child(arrange(
-                "call-stage-hide",
-                Icon::ChevronUp,
-                "Show only the bar",
-                CallLayout::Bar,
-            ))
-            .child(
-                Button::new("call-stage-pop-out")
-                    .icon(Icon::PopOut)
-                    .variant(ButtonVariant::Ghost)
-                    .round()
-                    .tooltip("Open in its own window")
-                    .on_click(cx.listener(|_, _, _, cx| cx.emit(CallPoppedOut))),
-            )
+            ),
+            (CallLayout::Bar, Icon::ChevronUp, "Only the bar"),
+        ];
+        let mut menu = Menu::new();
+        for (to, icon, label) in choices {
+            if to != layout {
+                menu = menu.action(icon, label, arrange(Some(to)));
+            }
+        }
+        Some(menu.on_dismiss(arrange(None)).at(position))
     }
 
     /// A docked stage's foot, dragged to make the stage taller or shorter.
@@ -285,8 +336,15 @@ impl Held for CallStage {
     fn released(&mut self, _: bool, cx: &mut Context<Self>) {
         if let Some(Hold::Tile(grab)) = self.held.take() {
             let stage = self.area.get();
-            match grab.dropped(stage, self.arrangement.corner, self.small_count) {
-                Some(corner) => self.arrangement.corner = corner,
+            let from = self.arrangement.corner;
+            match grab.dropped(stage, from, self.small_count) {
+                Some(corner) => {
+                    // From where they were let go, they glide into place.
+                    let group = group_size(self.small_count);
+                    let left = from.origin(stage.size, group) + grab.moved.unwrap_or_default();
+                    self.glide = Some((left, Instant::now()));
+                    self.arrangement.corner = corner;
+                }
                 None => self.arrangement.focus(grab.tile),
             }
         }
@@ -299,6 +357,7 @@ impl Render for CallStage {
         let theme = *cx.theme();
         let desk = self.desk.read(cx);
         let layout = desk.layout();
+        let full = desk.full_screen();
         let Some(call) = desk.call(cx) else {
             self.paints.clear(window);
             return div().size_full().bg(rgb(theme.pane)).into_any_element();
@@ -333,12 +392,17 @@ impl Render for CallStage {
                 Rc::clone(&self.area),
             ))
             .child(stage)
-            .when(main && !ended, |stage| {
-                stage.child(Self::arrangement(layout, cx))
-            })
-            .when(main && layout == CallLayout::Docked, |stage| {
+            .when(!ended, |stage| stage.child(self.arrangement(full, cx)))
+            .children(self.layout_menu(layout, cx))
+            .when(main && !full && layout == CallLayout::Docked, |stage| {
                 stage.child(Self::foot(theme, cx))
             })
+            // While tiles are dragged, the hand holds them wherever the
+            // pointer goes over the stage.
+            .when(
+                matches!(self.held, Some(Hold::Tile(Grab { moved: Some(_), .. }))),
+                |stage| stage.child(div().absolute().inset_0().cursor_grabbing()),
+            )
             .into_any_element()
     }
 }
