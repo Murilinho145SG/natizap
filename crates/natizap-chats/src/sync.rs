@@ -2,6 +2,8 @@
 
 use natizap_protocol::whatsapp_rust::prelude::{Event, EventKind, MessageExt as _, wa};
 use natizap_protocol::whatsapp_rust::types::events::{InboundMessage, LazyHistorySync};
+use natizap_protocol::whatsapp_rust::types::presence::ReceiptType;
+use natizap_protocol::whatsapp_rust::wacore_binary::JidExt as _;
 use natizap_protocol::{ChatId, Content, ContentKind};
 
 use crate::book::{ChatChange, HistoryChat, Mute, Preview};
@@ -18,6 +20,7 @@ pub(crate) const CHAT_EVENTS: &[EventKind] = &[
     EventKind::DeleteChatUpdate,
     EventKind::ContactUpdate,
     EventKind::PushNameUpdate,
+    EventKind::Receipt,
     EventKind::LoggedOut,
 ];
 
@@ -57,6 +60,14 @@ pub(crate) fn changes(event: &Event) -> Vec<ChatChange> {
                 id(&read.jid),
                 read.action.read.unwrap_or(true),
             )]
+        }
+        // The account read the chat on another device, such as the phone:
+        // what arrived while natizap was closed is not new any more.
+        Event::Receipt(receipt)
+            if matches!(receipt.r#type, ReceiptType::ReadSelf | ReceiptType::PlayedSelf)
+                && !receipt.source.chat.is_status_broadcast() =>
+        {
+            vec![ChatChange::Read(id(&receipt.source.chat), true)]
         }
         Event::ClearChatUpdate(clear) => vec![ChatChange::Cleared(id(&clear.jid))],
         Event::DeleteChatUpdate(delete) => vec![ChatChange::Deleted(id(&delete.jid))],
