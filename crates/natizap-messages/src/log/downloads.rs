@@ -153,7 +153,7 @@ impl MessageLog {
                 .retain(|waiting| waiting.message_id != fetch.message_id);
         }
         if background && !self.fetching.contains_key(&fetch.message_id) {
-            if self.background.running >= BACKGROUND_AT_ONCE {
+            if self.background.running >= BACKGROUND_AT_ONCE || self.background.resting {
                 if !self
                     .background
                     .waiting
@@ -173,6 +173,7 @@ impl MessageLog {
             return;
         }
         self.fetching.insert(fetch.message_id.clone(), vec![then]);
+        let retry = background.then(|| fetch.clone());
         let path = fetch.path_in(&self.media_dir);
         let protocol = self.protocol.read(cx);
         // An expired link cannot serve the file; the phone that sent it is
@@ -189,7 +190,9 @@ impl MessageLog {
         };
         let (message_id, kind) = (fetch.message_id, fetch.kind);
         cx.spawn(async move |this, cx| {
-            let saved = match downloading.await {
+            let downloaded = downloading.await;
+            let busy = matches!(downloaded, Err(ActionError::Busy));
+            let saved = match downloaded {
                 Ok((bytes, direct_path)) => {
                     let path = path.clone();
                     cx.background_spawn(async move { save(&path, &bytes).map(|()| direct_path) })
@@ -198,6 +201,17 @@ impl MessageLog {
                 Err(error) => Err(error.to_string()),
             };
             let _ = this.update(cx, |log, cx| {
+                if background {
+                    log.background.running = log.background.running.saturating_sub(1);
+                }
+                if let Some(retry) = retry.filter(|_| busy) {
+                    // WhatsApp asked to slow down: this one waits its turn
+                    // again, and the rest wait with it.
+                    log.fetching.remove(&message_id);
+                    log.background.waiting.push_front(retry);
+                    log.rest_background(cx);
+                    return;
+                }
                 match saved {
                     Ok(direct_path) => {
                         let waiting = log.fetching.remove(&message_id).unwrap_or_default();
@@ -222,11 +236,34 @@ impl MessageLog {
                     }
                 }
                 if background {
-                    log.background.running = log.background.running.saturating_sub(1);
-                    if let Some(next) = log.background.waiting.pop_front() {
-                        log.fetch(next, Then::Keep, cx);
-                    }
+                    log.next_background(cx);
                 }
+            });
+        })
+        .detach();
+    }
+
+    /// Starts the next attachments waiting, as many as may go at once.
+    fn next_background(&mut self, cx: &mut Context<Self>) {
+        while !self.background.resting && self.background.running < BACKGROUND_AT_ONCE {
+            let Some(next) = self.background.waiting.pop_front() else {
+                return;
+            };
+            self.fetch(next, Then::Keep, cx);
+        }
+    }
+
+    /// Holds the attachments nobody asked for while WhatsApp's rate limit
+    /// lasts.
+    fn rest_background(&mut self, cx: &mut Context<Self>) {
+        if std::mem::replace(&mut self.background.resting, true) {
+            return;
+        }
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(BACKGROUND_REST).await;
+            let _ = this.update(cx, |log, cx| {
+                log.background.resting = false;
+                log.next_background(cx);
             });
         })
         .detach();
@@ -302,12 +339,16 @@ impl MessageLog {
 /// again; a chat's worth of old attachments at once runs into WhatsApp's
 /// rate limit, which then refuses everything for a while.
 const BACKGROUND_AT_ONCE: usize = 2;
+/// How long they wait once WhatsApp says it is asked too often.
+const BACKGROUND_REST: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// Attachments downloading without being asked for, and those waiting.
 #[derive(Debug, Default)]
 pub(super) struct Background {
     running: usize,
     waiting: VecDeque<Fetch>,
+    /// Waiting out WhatsApp's rate limit.
+    resting: bool,
 }
 
 /// Downloads and stills that failed, by message id.

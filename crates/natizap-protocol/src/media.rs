@@ -192,7 +192,7 @@ pub(crate) async fn download(
     client
         .download(&params)
         .await
-        .map_err(|error| ActionError::Rejected(error.to_string()))
+        .map_err(|error| ActionError::refused(&error))
 }
 
 /// Downloads `media` after its link expired: the phone that sent `origin`
