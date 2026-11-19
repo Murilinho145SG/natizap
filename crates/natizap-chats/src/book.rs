@@ -311,9 +311,17 @@ impl ChatBook {
             .filter(|chat| chat.archived == archived)
             .collect();
         chats.sort_by(|a, b| {
+            // Pinned chats keep their places whatever arrives: chats pinned
+            // in the same second, as a restored phone pins them, stay in
+            // one order instead of trading places with each message.
+            let activity = if a.pinned_at.is_some() {
+                std::cmp::Ordering::Equal
+            } else {
+                b.active_at.cmp(&a.active_at)
+            };
             b.pinned_at
                 .cmp(&a.pinned_at)
-                .then(b.active_at.cmp(&a.active_at))
+                .then(activity)
                 .then_with(|| a.id.cmp(&b.id))
         });
         chats
@@ -519,6 +527,27 @@ mod tests {
         assert_eq!(
             order(&book),
             ["c@s.whatsapp.net", "b@s.whatsapp.net", "a@s.whatsapp.net"]
+        );
+    }
+
+    #[test]
+    fn pinned_chats_keep_their_places_when_messages_arrive() {
+        let mut book = ChatBook::default();
+        for chat in ["a@s.whatsapp.net", "b@s.whatsapp.net"] {
+            book.apply(ChatChange::Pinned(id(chat), Some(100)));
+        }
+        book.apply(ChatChange::Message(
+            id("a@s.whatsapp.net"),
+            message("hi", 10, false),
+        ));
+        let before: Vec<String> = order(&book).into_iter().map(str::to_owned).collect();
+        book.apply(ChatChange::Message(
+            id("b@s.whatsapp.net"),
+            message("hi", 20, false),
+        ));
+        assert_eq!(
+            order(&book),
+            before.iter().map(String::as_str).collect::<Vec<_>>()
         );
     }
 
