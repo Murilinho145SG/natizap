@@ -23,6 +23,8 @@ const SPEAKER_BACKLOG: usize = 8;
 /// Sound held back before the speaker starts, and again after it ran
 /// dry, so frames arriving a little late still play smoothly.
 const CUSHION_SECONDS: f32 = 0.1;
+/// The loudest sample of a frame of silence, give or take noise.
+const VOICED: u16 = 300;
 /// Past this much sound waiting, the oldest is dropped: a call that falls
 /// behind catches up instead of answering ever later.
 const MOST_SECONDS: f32 = 0.3;
@@ -74,6 +76,8 @@ struct Meter {
     unsent: AtomicU64,
     /// Frames the call gave the speaker, Opus ones included.
     received: AtomicU64,
+    /// Received frames loud enough to be a voice, not silence.
+    voiced: AtomicU64,
     /// Opus packets decoded.
     opus: AtomicU64,
     /// Samples played that were not silence filling a gap.
@@ -101,6 +105,7 @@ impl Drop for CallAudio {
             sent = read(&meter.sent),
             unsent = read(&meter.unsent),
             received = read(&meter.received),
+            voiced = read(&meter.voiced),
             opus = read(&meter.opus),
             played = read(&meter.played),
             "call sound closed: frames sent and received, Opus packets decoded, samples played"
@@ -360,6 +365,9 @@ impl Speaker {
     fn fill(&mut self, output: &mut [f32]) {
         while let Ok(frame) = self.said.try_recv() {
             Meter::add(&self.meter.received, 1);
+            if frame.iter().any(|sample| sample.unsigned_abs() > VOICED) {
+                Meter::add(&self.meter.voiced, 1);
+            }
             self.converted.clear();
             let samples: Vec<f32> = frame.iter().copied().map(to_f32).collect();
             self.resampler.push(&samples, &mut self.converted);

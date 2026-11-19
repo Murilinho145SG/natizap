@@ -245,6 +245,16 @@ impl Protocol {
         voice: Voice,
         cx: &App,
     ) -> Task<Result<LiveCall, ActionError>> {
+        if let CallAction::Offer { call_creator, .. } = &ring.offer.action {
+            // Which kind of address the call's keys come from, not the address.
+            tracing::info!(
+                server = %call_creator.server,
+                device = call_creator.device,
+                from_server = %ring.offer.from.server,
+                from_device = ring.offer.from.device,
+                "answering a call"
+            );
+        }
         let signals = self.subscribe(&[EventKind::IncomingCall]);
         let opus = voice.opus.clone();
         // Before answering: the caller may hang up before the answer
@@ -374,6 +384,7 @@ impl Watch {
         // What went by, told in the log once the call ends: where a call's
         // voice got lost is otherwise invisible.
         let (mut foreign, mut unwrapped) = (0_u64, 0_u64);
+        let (mut rtcp, mut rtcp_audio, mut reported) = (0_u64, 0_u64, 0_u64);
         while let Some(heard) = heard.next().await {
             match &heard {
                 Heard::Media(CallEvent::ForeignAudio(packet)) => {
@@ -386,7 +397,16 @@ impl Watch {
                     continue;
                 }
                 // Several a second: too many for the log.
-                Heard::Media(CallEvent::RtcpReceived { .. }) | Heard::Signal(_) | Heard::Ended => {}
+                Heard::Media(CallEvent::RtcpReceived {
+                    reports_audio,
+                    report_blocks,
+                    ..
+                }) => {
+                    rtcp += 1;
+                    rtcp_audio += u64::from(*reports_audio);
+                    reported += u64::try_from(report_blocks.len()).unwrap_or(0);
+                }
+                Heard::Signal(_) | Heard::Ended => {}
                 Heard::Media(event) => tracing::info!(call = %self.id, ?event, "call media event"),
             }
             let Some(progress) = self.hear(&heard) else {
@@ -398,7 +418,11 @@ impl Watch {
                     call = %self.id,
                     foreign,
                     unwrapped,
-                    "call ended: Opus packets from the other end, and how many unwrapped"
+                    rtcp,
+                    rtcp_audio,
+                    reported,
+                    "call ended: Opus packets from the other end and how many unwrapped, \
+                     RTCP packets heard, ones about audio, report blocks"
                 );
             }
             // Nobody listening is no reason to stop following: the call
