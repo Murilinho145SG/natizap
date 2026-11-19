@@ -18,7 +18,7 @@ use natizap_profiles::ProfilePictures;
 use natizap_ui::theme::{ActiveTheme as _, DISPLAY_FONT, Theme};
 use natizap_ui::{Button, ButtonSize, ButtonVariant, Icon, avatar};
 
-use crate::bar::{CallPoppedOut, camera_button, mute_button, phase_line};
+use crate::bar::{CallPoppedOut, camera_button, mute_button, phase_line, screen_button};
 use crate::desk::{CallDesk, CallLayout, CallShown, Phase, VideoShown};
 use crate::keys::HANG_UP;
 use crate::look::ringed;
@@ -146,6 +146,11 @@ impl CallStage {
                 call,
                 ButtonSize::Large,
                 cx.listener(|this, _, _, cx| this.desk.update(cx, CallDesk::toggle_camera)),
+            ))
+            .child(screen_button(
+                call,
+                ButtonSize::Large,
+                cx.listener(|this, _, _, cx| this.desk.update(cx, CallDesk::toggle_screen)),
             ))
             .child(
                 Button::new("call-stage-hang-up")

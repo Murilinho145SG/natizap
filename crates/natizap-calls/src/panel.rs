@@ -16,7 +16,7 @@ use natizap_profiles::ProfilePictures;
 use natizap_ui::theme::{ActiveTheme as _, Theme};
 use natizap_ui::{Button, ButtonSize, ButtonVariant, Icon, avatar};
 
-use crate::bar::{CallPoppedOut, camera_button, mute_button};
+use crate::bar::{CallPoppedOut, camera_button, mute_button, screen_button};
 use crate::desk::{CallDesk, CallLayout, CallShown, CameraState, Phase, VideoShown};
 use crate::keys::HANG_UP;
 use crate::look::ringed;
@@ -299,6 +299,11 @@ impl VideoPanel {
                 call,
                 ButtonSize::Small,
                 cx.listener(|panel, _, _, cx| panel.desk.update(cx, CallDesk::toggle_camera)),
+            ))
+            .child(screen_button(
+                call,
+                ButtonSize::Small,
+                cx.listener(|panel, _, _, cx| panel.desk.update(cx, CallDesk::toggle_screen)),
             ))
             .child(
                 Button::new("call-panel-dock")

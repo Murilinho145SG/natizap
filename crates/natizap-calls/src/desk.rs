@@ -21,10 +21,12 @@ use crate::ringtone::{Ringing, Ringtone};
 mod layout;
 mod lifecycle;
 mod ringing;
+mod sharing;
 mod video;
 
 use layout::Arrangement;
 pub use layout::CallLayout;
+pub use sharing::Sharing;
 use video::CallVideo;
 pub use video::CameraState;
 
@@ -102,6 +104,8 @@ pub struct VideoShown {
     /// The user's own newest picture, while the camera is on.
     pub preview: Option<Arc<RenderImage>>,
     pub camera: CameraState,
+    /// Whether the screen is shared, in place of the camera.
+    pub sharing: Sharing,
 }
 
 /// The one call natizap is in, from placing or answering it until shortly
@@ -308,6 +312,7 @@ impl CallDesk {
                     .as_ref()
                     .and_then(|preview| preview.read(cx).image()),
                 camera: video.camera,
+                sharing: video.sharing,
             }),
             video_requested: call.video_request.is_some(),
             quality: call.judged,

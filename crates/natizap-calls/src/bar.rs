@@ -8,7 +8,7 @@ use natizap_ui::motion::rise_in;
 use natizap_ui::theme::{ActiveTheme as _, DISPLAY_FONT, Theme};
 use natizap_ui::{Button, ButtonSize, ButtonVariant, Icon, avatar};
 
-use crate::desk::{CallDesk, CallLayout, CallShown, CameraState, Phase};
+use crate::desk::{CallDesk, CallLayout, CallShown, CameraState, Phase, Sharing};
 use crate::keys::{CAMERA, HANG_UP, MUTE};
 use crate::look::{quality_bars, quality_word, ringed};
 use crate::pane::CallChatRequested;
@@ -100,53 +100,64 @@ impl Render for CallBar {
                             .child(phase_line(&call, theme)),
                     ),
             )
-            .child(
-                div()
-                    .ml_auto()
-                    .flex()
-                    .items_center()
-                    .gap_1()
-                    .when(!ended, |controls| {
-                        controls
-                            .when(call.video_requested, |controls| {
-                                controls.child(video_request(cx))
-                            })
-                            .child(mute_button(
-                                &call,
-                                ButtonSize::Medium,
-                                cx.listener(|bar, _, _, cx| {
-                                    bar.desk.update(cx, CallDesk::toggle_muted);
-                                }),
-                            ))
-                            .child(camera_button(
-                                &call,
-                                ButtonSize::Medium,
-                                cx.listener(|bar, _, _, cx| {
-                                    bar.desk.update(cx, CallDesk::toggle_camera);
-                                }),
-                            ))
-                            .child(show_button(self.desk.read(cx).layout(), cx))
-                            .child(
-                                Button::new("call-pop-out")
-                                    .icon(Icon::PopOut)
-                                    .variant(ButtonVariant::Ghost)
-                                    .round()
-                                    .tooltip("Open in its own window")
-                                    .on_click(cx.listener(|_, _, _, cx| cx.emit(CallPoppedOut))),
-                            )
-                            .child(
-                                Button::new("call-hang-up")
-                                    .icon(Icon::CallEnd)
-                                    .variant(ButtonVariant::Danger)
-                                    .round()
-                                    .tooltip(HANG_UP.tip("Hang up"))
-                                    .on_click(cx.listener(|bar, _, _, cx| {
-                                        bar.desk.update(cx, CallDesk::hang_up);
-                                    })),
-                            )
-                    }),
-            )
+            .when(!ended, |bar| bar.child(self.controls(&call, cx)))
             .into_any_element()
+    }
+}
+
+impl CallBar {
+    /// The call's controls, at the bar's right end.
+    fn controls(&self, call: &CallShown, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let layout = self.desk.read(cx).layout();
+        let call = call.clone();
+        div()
+            .ml_auto()
+            .flex()
+            .items_center()
+            .gap_1()
+            .when(call.video_requested, |controls| {
+                controls.child(video_request(cx))
+            })
+            .child(mute_button(
+                &call,
+                ButtonSize::Medium,
+                cx.listener(|bar, _, _, cx| {
+                    bar.desk.update(cx, CallDesk::toggle_muted);
+                }),
+            ))
+            .child(camera_button(
+                &call,
+                ButtonSize::Medium,
+                cx.listener(|bar, _, _, cx| {
+                    bar.desk.update(cx, CallDesk::toggle_camera);
+                }),
+            ))
+            .child(screen_button(
+                &call,
+                ButtonSize::Medium,
+                cx.listener(|bar, _, _, cx| {
+                    bar.desk.update(cx, CallDesk::toggle_screen);
+                }),
+            ))
+            .child(show_button(layout, cx))
+            .child(
+                Button::new("call-pop-out")
+                    .icon(Icon::PopOut)
+                    .variant(ButtonVariant::Ghost)
+                    .round()
+                    .tooltip("Open in its own window")
+                    .on_click(cx.listener(|_, _, _, cx| cx.emit(CallPoppedOut))),
+            )
+            .child(
+                Button::new("call-hang-up")
+                    .icon(Icon::CallEnd)
+                    .variant(ButtonVariant::Danger)
+                    .round()
+                    .tooltip(HANG_UP.tip("Hang up"))
+                    .on_click(cx.listener(|bar, _, _, cx| {
+                        bar.desk.update(cx, CallDesk::hang_up);
+                    })),
+            )
     }
 }
 
@@ -353,6 +364,36 @@ fn show_button(layout: CallLayout, cx: &mut Context<CallBar>) -> Button {
         .on_click(cx.listener(move |bar, _, _, cx| {
             bar.desk.update(cx, |desk, cx| desk.set_layout(to, cx));
         }))
+}
+
+/// The screen's switch: sharing it needs no camera, and turns a voice
+/// call into a video call.
+pub(crate) fn screen_button(
+    call: &CallShown,
+    size: ButtonSize,
+    on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut gpui::App) + 'static,
+) -> Button {
+    let sharing = call
+        .video
+        .as_ref()
+        .map_or(Sharing::Off, |video| video.sharing);
+    let on = sharing != Sharing::Off;
+    Button::new("call-screen")
+        .icon(Icon::ScreenShare)
+        .variant(if on {
+            ButtonVariant::Secondary
+        } else {
+            ButtonVariant::Ghost
+        })
+        .size(size)
+        .selected(on)
+        .round()
+        .tooltip(match sharing {
+            Sharing::Off => "Share your screen",
+            Sharing::Choosing => "Choosing what to share…",
+            Sharing::On => "Stop sharing your screen",
+        })
+        .on_click(on_click)
 }
 
 /// The camera's switch: turning it on makes a voice call a video call.

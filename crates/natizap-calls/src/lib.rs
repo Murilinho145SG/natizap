@@ -23,7 +23,7 @@ mod window;
 
 pub use bar::{CallBar, CallPoppedOut, RingCard};
 pub use desk::{
-    CallDesk, CallLayout, CallRang, CallShown, CameraState, DeviceKind, Phase, VideoShown,
+    CallDesk, CallLayout, CallRang, CallShown, CameraState, DeviceKind, Phase, Sharing, VideoShown,
 };
 pub use group::CallGroup;
 pub use keys::{HangUp, ToggleCamera, ToggleMute, call_keys};

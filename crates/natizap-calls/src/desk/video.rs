@@ -2,10 +2,11 @@
 //! it is on, and turning a voice call into a video call either way.
 
 use gpui::{AppContext as _, Context, Entity, Task};
-use natizap_playback::{AccessUnits, Camera, VideoError, decode_video};
+use natizap_playback::{AccessUnits, Camera, ScreenShare, VideoError, decode_video};
 use natizap_protocol::Video;
 
 use super::lifecycle::logged;
+use super::sharing::Sharing;
 use super::{CallDesk, Going};
 use crate::screen::Screen;
 
@@ -33,15 +34,22 @@ pub(super) struct CallVideo {
     pub(super) camera: CameraState,
     /// The open camera, while it is on.
     open: Option<Camera>,
-    /// The call's own end of the camera, fed by the camera while it is on.
-    sent: async_channel::Sender<Vec<u8>>,
-    feeding: Option<Task<()>>,
+    /// The call's own end of the pictures sent, fed by the camera or the
+    /// shared screen.
+    pub(super) sent: async_channel::Sender<Vec<u8>>,
+    pub(super) feeding: Option<Task<()>>,
+    /// Whether the screen is shared, in place of the camera.
+    pub(super) sharing: Sharing,
+    /// The screen shared, while it is.
+    pub(super) shared: Option<ScreenShare>,
+    /// The camera was on when sharing began: it comes back after.
+    pub(super) camera_after: bool,
     /// Where the other end's pictures go, to hand the call again when the
     /// camera comes back on.
     screen: AccessUnits,
     /// Whether the call sends the other end pictures: off once the camera
-    /// was turned off, until it comes back on.
-    sending: bool,
+    /// was turned off, until it or the screen comes back on.
+    pub(super) sending: bool,
     /// Whether the other end's camera is on, as they last said.
     pub(super) peer_on: bool,
 }
@@ -61,6 +69,9 @@ impl CallVideo {
                 open: None,
                 sent,
                 feeding: None,
+                sharing: Sharing::Off,
+                shared: None,
+                camera_after: false,
                 screen: screen.clone(),
                 sending: true,
                 peer_on: true,
@@ -74,10 +85,13 @@ impl CallVideo {
         if let Some(camera) = &self.open {
             camera.request_keyframe();
         }
+        if let Some(shared) = &self.shared {
+            shared.request_keyframe();
+        }
     }
 
     /// Fresh ends for the call to send the camera through again.
-    fn fresh_ends(&mut self) -> Video {
+    pub(super) fn fresh_ends(&mut self) -> Video {
         let (sent, camera) = async_channel::bounded(SENT_BACKLOG);
         self.sent = sent;
         Video {
@@ -86,7 +100,7 @@ impl CallVideo {
         }
     }
 
-    fn camera_off(&mut self) {
+    pub(super) fn camera_off(&mut self) {
         self.open = None;
         self.feeding = None;
         self.preview = None;
