@@ -130,7 +130,9 @@ impl Capture {
         ffmpeg::init().map_err(failed)?;
         ffmpeg::device::register_all();
         let format = ffmpeg::device::input::video()
-            .find(|format| format.name() == name)
+            // FFmpeg names some inputs by every alias, comma-separated:
+            // V4L2's is "video4linux2,v4l2".
+            .find(|format| format.name().split(',').any(|alias| alias == name))
             .ok_or_else(|| VideoError::Camera(format!("this build has no {name} input")))?;
         let mut options = Dictionary::new();
         options.set("framerate", &FRAME_RATE.to_string());

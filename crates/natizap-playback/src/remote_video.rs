@@ -62,7 +62,7 @@ fn decode(units: &async_channel::Receiver<(Vec<u8>, u8)>, writer: &FeedWriter) {
         }
     };
     while let Ok((unit, quarters)) = units.recv_blocking() {
-        let turn = Turn::nearest(f64::from(quarters) * 90.0);
+        let turn = upright(quarters);
         match decoder.decode(&unit, turn) {
             Ok(Some(picture)) => writer.show(picture),
             Ok(None) => {}
@@ -71,6 +71,13 @@ fn decode(units: &async_channel::Receiver<(Vec<u8>, u8)>, writer: &FeedWriter) {
             Err(error) => tracing::debug!(%error, "dropped a video access unit"),
         }
     }
+}
+
+/// The turn that shows upright a picture from a phone held `quarters`
+/// quarter turns from upright: WhatsApp counts the phone's turns
+/// clockwise, so the picture turns back the other way.
+fn upright(quarters: u8) -> Turn {
+    Turn::nearest(-f64::from(quarters) * 90.0)
 }
 
 /// FFmpeg's H.264 decoder and the scaler to BGRA it needs for the size it
@@ -144,5 +151,20 @@ impl Decoder {
             });
         }
         Ok(picture)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::upright;
+    use crate::turn::Turn;
+
+    #[test]
+    fn a_phone_turned_one_way_is_turned_back_the_other() {
+        // A phone held upright sends orientation 1 with sideways pictures.
+        assert_eq!(upright(0), Turn::None);
+        assert_eq!(upright(1), Turn::Counterclockwise);
+        assert_eq!(upright(2), Turn::Half);
+        assert_eq!(upright(3), Turn::Clockwise);
     }
 }
