@@ -25,7 +25,7 @@ mod video;
 use video::CallVideo;
 pub use video::CameraState;
 
-use lifecycle::{NewCall, logged};
+use lifecycle::{Begin, NewCall, logged};
 
 /// How long an ended call stays on screen, saying how it ended.
 const ENDED_SHOWN: Duration = Duration::from_millis(2_500);
@@ -333,27 +333,13 @@ impl CallDesk {
         } else {
             (None, None)
         };
-        let (audio, started) = match CallAudio::open(FORMAT, &self.choices.devices) {
-            Ok((audio, ports)) => {
-                let started = self
-                    .protocol
-                    .read(cx)
-                    .place_call(&peer, voice(ports), ends, cx);
-                (Some(audio), Some(started))
-            }
-            Err(error) => {
-                tracing::warn!(%error, "no sound for a call");
-                (None, None)
-            }
-        };
         let call = NewCall {
             peer,
-            incoming: false,
             at,
-            audio,
             video,
+            begin: Begin::Place(ends),
         };
-        self.start(call, started, cx);
+        self.start(call, cx);
     }
 
     /// Answers the call ringing longest. A call under way ends first.
@@ -372,27 +358,13 @@ impl CallDesk {
         } else {
             (None, None)
         };
-        let (audio, started) = match CallAudio::open(FORMAT, &self.choices.devices) {
-            Ok((audio, ports)) => {
-                let started = self
-                    .protocol
-                    .read(cx)
-                    .answer_call(&ring, voice(ports), ends, cx);
-                (Some(audio), Some(started))
-            }
-            Err(error) => {
-                tracing::warn!(%error, "no sound for a call");
-                (None, None)
-            }
-        };
         let call = NewCall {
-            peer: ring.caller,
-            incoming: true,
+            peer: ring.caller.clone(),
             at: ring.at,
-            audio,
             video,
+            begin: Begin::Answer(ring, ends),
         };
-        self.start(call, started, cx);
+        self.start(call, cx);
     }
 
     /// Turns down the call ringing longest.

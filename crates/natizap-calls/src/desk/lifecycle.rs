@@ -4,54 +4,95 @@
 
 use std::time::{Duration, Instant};
 
-use gpui::{AppContext as _, Context, Task};
+use gpui::{App, AppContext as _, Context, Task};
 use natizap_playback::CallAudio;
 use natizap_protocol::{
-    ActionError, CallEnd, CallOutcome, CallProgress, CallRecord, ChatId, LiveCall,
+    ActionError, CallEnd, CallOutcome, CallProgress, CallRecord, ChatId, LiveCall, Protocol, Ring,
+    Video, Voice,
 };
 
-use super::{Call, CallDesk, CallVideo, ENDED_SHOWN, Going, Phase, Reached};
+use super::{Call, CallDesk, CallVideo, ENDED_SHOWN, FORMAT, Going, Phase, Reached, voice};
 use crate::quality::QualityWatch;
 
 /// A call about to start: who with, which way, since when, and what it
 /// sounds and looks like.
 pub(super) struct NewCall {
     pub(super) peer: ChatId,
-    pub(super) incoming: bool,
     /// When it was placed or rang, in Unix seconds.
     pub(super) at: i64,
-    pub(super) audio: Option<CallAudio>,
     pub(super) video: Option<CallVideo>,
+    pub(super) begin: Begin,
+}
+
+/// How a call begins once its sound is open.
+pub(super) enum Begin {
+    /// Calling someone, with video's ends for a video call.
+    Place(Option<Video>),
+    /// Answering a call that rings.
+    Answer(Ring, Option<Video>),
+}
+
+impl Begin {
+    fn incoming(&self) -> bool {
+        matches!(self, Self::Answer(..))
+    }
+
+    /// Asks `protocol` to begin the call with `voice`.
+    fn with(
+        self,
+        peer: &ChatId,
+        voice: Voice,
+        protocol: &Protocol,
+        cx: &App,
+    ) -> Task<Result<LiveCall, ActionError>> {
+        match self {
+            Self::Place(video) => protocol.place_call(peer, voice, video, cx),
+            Self::Answer(ring, video) => protocol.answer_call(&ring, voice, video, cx),
+        }
+    }
 }
 
 impl CallDesk {
-    /// Puts `call` on screen and follows it once `started` gives it.
-    pub(super) fn start(
-        &mut self,
-        call: NewCall,
-        started: Option<Task<Result<LiveCall, ActionError>>>,
-        cx: &mut Context<Self>,
-    ) {
+    /// Puts `call` on screen at once, then opens its sound off the UI
+    /// thread, begins it and follows it.
+    pub(super) fn start(&mut self, call: NewCall, cx: &mut Context<Self>) {
         let NewCall {
             peer,
-            incoming,
             at,
-            audio,
             video,
+            begin,
         } = call;
+        let incoming = begin.incoming();
         self.serial += 1;
         let serial = self.serial;
+        let (devices, calling) = (self.choices.devices.clone(), peer.clone());
         // Detached, not kept with the call: a call hung up before it got
         // going must still be heard getting going, to be ended then.
         cx.spawn(async move |this, cx| {
-            let Some(started) = started else {
-                let _ = this.update(cx, |desk, cx| {
-                    desk.finish(
-                        serial,
-                        &CallEnd::Failed("no microphone or speaker".into()),
-                        cx,
-                    );
-                });
+            // Opening the devices talks to the sound server: not on the UI
+            // thread, where it held the call's screen back.
+            let opened = cx
+                .background_spawn(async move { CallAudio::open(FORMAT, &devices) })
+                .await;
+            let (audio, ports) = match opened {
+                Ok(opened) => opened,
+                Err(error) => {
+                    tracing::warn!(%error, "no sound for a call");
+                    let _ = this.update(cx, |desk, cx| {
+                        desk.finish(serial, &CallEnd::Failed(error.to_string()), cx);
+                    });
+                    return;
+                }
+            };
+            let begun = this.update(cx, |desk, cx| {
+                let call = desk
+                    .current(serial)
+                    .filter(|call| matches!(call.going, Going::Starting))?;
+                call.audio = Some(audio);
+                Some(begin.with(&calling, voice(ports), desk.protocol.read(cx), cx))
+            });
+            // Hung up while the sound opened: nothing to begin.
+            let Ok(Some(started)) = begun else {
                 return;
             };
             let live = match started.await {
@@ -91,7 +132,7 @@ impl CallDesk {
             going: Going::Starting,
             video,
             video_request: None,
-            audio,
+            audio: None,
             at,
             ticking: None,
             quality: QualityWatch::default(),
@@ -262,7 +303,7 @@ fn tick(serial: u64, cx: &Context<CallDesk>) -> Task<()> {
 }
 
 /// Lets `task` finish on its own, logging how it failed.
-pub(super) fn logged(task: Task<Result<(), ActionError>>, failed: &'static str, cx: &gpui::App) {
+pub(super) fn logged(task: Task<Result<(), ActionError>>, failed: &'static str, cx: &App) {
     cx.background_spawn(async move {
         if let Err(error) = task.await {
             tracing::warn!(%error, "{failed}");
