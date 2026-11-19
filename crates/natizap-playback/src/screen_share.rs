@@ -10,6 +10,7 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
 use crate::feed::VideoFeed;
+use crate::inset::Inset;
 use crate::remote_video::VideoError;
 
 /// The screen shared in a call, until dropped or until the user stops it
@@ -28,18 +29,21 @@ impl std::fmt::Debug for ScreenShare {
 }
 
 impl ScreenShare {
-    /// Asks the desktop what to share, and shares it. The receiver gives
-    /// the call one Annex-B access unit per picture, up to fifteen a
-    /// second; it closes when the sharing stops. Blocks while the user
+    /// Asks the desktop what to share, and shares it, with the camera
+    /// `inset` lends in its corner. The receiver gives the call one Annex-B
+    /// access unit per picture, up to fifteen a second; it closes when the
+    /// sharing stops. Blocks while the user
     /// chooses: run it off the UI thread.
     ///
     /// # Errors
     ///
     /// Fails when the user declines, or when the screen cannot be shared
     /// on this system.
-    pub fn start() -> Result<(Self, async_channel::Receiver<Vec<u8>>), VideoError> {
+    pub fn start(inset: Inset) -> Result<(Self, async_channel::Receiver<Vec<u8>>), VideoError> {
         #[cfg(target_os = "linux")]
-        return linux::start();
+        return linux::start(inset);
+        #[cfg(not(target_os = "linux"))]
+        drop(inset);
         #[cfg(not(target_os = "linux"))]
         Err(VideoError::Screen(
             "sharing the screen is not available on this system yet".into(),
@@ -93,12 +97,15 @@ mod linux {
     use crate::camera::Scalers;
     use crate::feed::{FeedWriter, feed};
     use crate::h264::{FRAME_RATE, H264Encoder, Source};
+    use crate::inset::{Corner, Inset};
     use crate::remote_video::VideoError;
 
     /// Access units waiting for the call before new ones are dropped.
     const BACKLOG: usize = 4;
 
-    pub(super) fn start() -> Result<(ScreenShare, async_channel::Receiver<Vec<u8>>), VideoError> {
+    pub(super) fn start(
+        inset: Inset,
+    ) -> Result<(ScreenShare, async_channel::Receiver<Vec<u8>>), VideoError> {
         let (fd, node) = futures::executor::block_on(choose())
             .map_err(|error| VideoError::Screen(error.to_string()))?;
         let (units, received) = async_channel::bounded(BACKLOG);
@@ -110,7 +117,7 @@ mod linux {
         std::thread::Builder::new()
             .name("natizap-screen".into())
             .spawn(move || {
-                if let Err(error) = capture(fd, node, units, writer, &wanting, stopped) {
+                if let Err(error) = capture(fd, node, (units, writer, inset), &wanting, stopped) {
                     tracing::warn!(%error, "the screen stopped being shared");
                 }
             })
@@ -165,6 +172,8 @@ mod linux {
         scalers: Scalers,
         units: async_channel::Sender<Vec<u8>>,
         writer: FeedWriter,
+        inset: Inset,
+        corner: Corner,
         keyframe: Arc<AtomicBool>,
         last: Option<Instant>,
     }
@@ -174,8 +183,7 @@ mod linux {
     fn capture(
         fd: OwnedFd,
         node: u32,
-        units: async_channel::Sender<Vec<u8>>,
-        writer: FeedWriter,
+        (units, writer, inset): (async_channel::Sender<Vec<u8>>, FeedWriter, Inset),
         keyframe: &Arc<AtomicBool>,
         stopped: pw::channel::Receiver<()>,
     ) -> Result<(), pw::Error> {
@@ -202,6 +210,8 @@ mod linux {
             scalers: Scalers::new(Source::Screen.width(), false),
             units,
             writer,
+            inset,
+            corner: Corner::default(),
             keyframe: Arc::clone(keyframe),
             last: None,
         };
@@ -270,13 +280,14 @@ mod linux {
                 return;
             };
             self.last = Some(Instant::now());
-            let Ok((sent, shown)) = self.scalers.convert(&picture) else {
+            let Ok((mut sent, shown)) = self.scalers.convert(&picture) else {
                 return;
             };
             self.writer.show(shown);
             let Some(encoder) = self.encoder.as_mut() else {
                 return;
             };
+            self.corner.draw(&self.inset, &mut sent);
             match encoder.encode(&sent, self.keyframe.swap(false, Ordering::Relaxed)) {
                 // Full means the call is behind: this picture is lost.
                 Ok(unit) => drop(self.units.try_send(unit)),

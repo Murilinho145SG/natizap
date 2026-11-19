@@ -19,6 +19,7 @@ use crate::decode::{fit, packed_rows};
 use crate::devices::default_camera;
 use crate::feed::{FeedWriter, VideoFeed, feed};
 use crate::h264::{FRAME_RATE, H264Encoder, Source};
+use crate::inset::Inset;
 use crate::remote_video::VideoError;
 
 /// The widest the user's own picture is drawn: it shows small.
@@ -30,6 +31,7 @@ const BACKLOG: usize = 4;
 #[derive(Debug)]
 pub struct Camera {
     stop: Arc<AtomicBool>,
+    inset: Inset,
     keyframe: Arc<AtomicBool>,
     preview: VideoFeed,
 }
@@ -37,12 +39,14 @@ pub struct Camera {
 impl Drop for Camera {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
+        self.inset.clear();
     }
 }
 
 impl Camera {
-    /// Opens the default camera. The receiver gives the call one Annex-B
-    /// access unit per picture, fifteen a second. Blocks while the
+    /// Opens `device`, or the default camera. The receiver gives the call
+    /// one Annex-B access unit per picture, fifteen a second, except while
+    /// `inset` lends the pictures to the shared screen. Blocks while the
     /// camera opens; run it off the UI thread.
     ///
     /// # Errors
@@ -50,15 +54,17 @@ impl Camera {
     /// Fails when there is no camera or it will not open.
     pub fn start(
         device: Option<&str>,
+        inset: Inset,
     ) -> Result<(Self, async_channel::Receiver<Vec<u8>>), VideoError> {
         let path = device.unwrap_or_else(|| default_camera()).to_owned();
-        Self::open((input_format(), path))
+        Self::open((input_format(), path), inset)
     }
 
     /// Opens the device `input` names: an FFmpeg input format and what
     /// it opens.
     fn open(
         input: (&'static str, String),
+        inset: Inset,
     ) -> Result<(Self, async_channel::Receiver<Vec<u8>>), VideoError> {
         let (units, received) = async_channel::bounded(BACKLOG);
         let (writer, preview) = feed();
@@ -68,13 +74,14 @@ impl Camera {
         );
         let (opened_tx, opened) = std::sync::mpsc::channel();
         let (stopping, wanting) = (Arc::clone(&stop), Arc::clone(&keyframe));
+        let lending = inset.clone();
         // A plain thread: reading the camera blocks.
         std::thread::Builder::new()
             .name("natizap-camera".into())
             .spawn(move || match Capture::open(input) {
                 Ok(capture) => {
                     let _ = opened_tx.send(Ok(()));
-                    capture.run(&units, &writer, &stopping, &wanting);
+                    capture.run(&units, &writer, &lending, (&stopping, &wanting));
                 }
                 Err(error) => {
                     let _ = opened_tx.send(Err(error));
@@ -87,6 +94,7 @@ impl Camera {
         Ok((
             Self {
                 stop,
+                inset,
                 keyframe,
                 preview,
             },
@@ -160,8 +168,8 @@ impl Capture {
         mut self,
         units: &async_channel::Sender<Vec<u8>>,
         preview: &FeedWriter,
-        stop: &AtomicBool,
-        keyframe: &AtomicBool,
+        inset: &Inset,
+        (stop, keyframe): (&AtomicBool, &AtomicBool),
     ) {
         let mut encoder = match H264Encoder::new(Source::Camera) {
             Ok(encoder) => encoder,
@@ -193,6 +201,13 @@ impl Capture {
                     continue;
                 };
                 preview.show(shown);
+                if inset.lending() {
+                    inset.lend(sent);
+                    // Sent again after the screen: the other end needs a
+                    // whole picture then.
+                    keyframe.store(true, Ordering::Relaxed);
+                    continue;
+                }
                 match encoder.encode(&sent, keyframe.swap(false, Ordering::Relaxed)) {
                     // Full means the call is behind: this picture is lost.
                     Ok(unit) => drop(units.try_send(unit)),
@@ -296,15 +311,18 @@ mod tests {
     use std::time::Duration;
 
     use super::{Camera, mirrored};
+    use crate::inset::Inset;
 
     #[test]
     fn a_camera_sends_keyframe_first_and_shows_the_user_themselves() {
         // FFmpeg's own test picture, where a test machine has no camera.
-        let (camera, units) =
-            match Camera::open(("lavfi", "testsrc=size=640x480:rate=15".to_owned())) {
-                Ok(opened) => opened,
-                Err(error) => panic!("{error}"),
-            };
+        let (camera, units) = match Camera::open(
+            ("lavfi", "testsrc=size=640x480:rate=15".to_owned()),
+            Inset::default(),
+        ) {
+            Ok(opened) => opened,
+            Err(error) => panic!("{error}"),
+        };
         let first = units.recv_blocking().unwrap_or_default();
         // An IDR's NAL type, 5, after SPS (7) and PPS (8).
         let types: Vec<u8> = first
