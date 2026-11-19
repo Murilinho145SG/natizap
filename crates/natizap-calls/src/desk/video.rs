@@ -2,7 +2,7 @@
 //! it is on, and turning a voice call into a video call either way.
 
 use gpui::{AppContext as _, Context, Entity, Task};
-use natizap_playback::{Camera, VideoError, decode_video};
+use natizap_playback::{AccessUnits, Camera, VideoError, decode_video};
 use natizap_protocol::Video;
 
 use super::lifecycle::logged;
@@ -16,7 +16,7 @@ const SENT_BACKLOG: usize = 4;
 /// Whether the camera shows the user to the other end.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CameraState {
-    /// Off: the other end sees the last picture sent, or none.
+    /// Off: the other end is told so.
     Off,
     /// Being opened.
     Opening,
@@ -33,10 +33,15 @@ pub(super) struct CallVideo {
     pub(super) camera: CameraState,
     /// The open camera, while it is on.
     open: Option<Camera>,
-    /// The call's own end of the camera: the camera feeds it while on, so
-    /// turning the camera off and on again needs no word with the call.
+    /// The call's own end of the camera, fed by the camera while it is on.
     sent: async_channel::Sender<Vec<u8>>,
     feeding: Option<Task<()>>,
+    /// Where the other end's pictures go, to hand the call again when the
+    /// camera comes back on.
+    screen: AccessUnits,
+    /// Whether the call sends the other end pictures: off once the camera
+    /// was turned off, until it comes back on.
+    sending: bool,
     /// Whether the other end's camera is on, as they last said.
     pub(super) peer_on: bool,
 }
@@ -56,6 +61,8 @@ impl CallVideo {
                 open: None,
                 sent,
                 feeding: None,
+                screen: screen.clone(),
+                sending: true,
                 peer_on: true,
             },
             Video { camera, screen },
@@ -66,6 +73,16 @@ impl CallVideo {
     pub(super) fn keyframe_wanted(&self) {
         if let Some(camera) = &self.open {
             camera.request_keyframe();
+        }
+    }
+
+    /// Fresh ends for the call to send the camera through again.
+    fn fresh_ends(&mut self) -> Video {
+        let (sent, camera) = async_channel::bounded(SENT_BACKLOG);
+        self.sent = sent;
+        Video {
+            camera,
+            screen: self.screen.clone(),
         }
     }
 
@@ -102,9 +119,24 @@ impl CallDesk {
         match call.video.as_mut() {
             Some(video) if matches!(video.camera, CameraState::On | CameraState::Opening) => {
                 video.camera_off();
+                video.sending = false;
+                let stopped = self.protocol.read(cx).stop_video(&live, cx);
+                logged(
+                    stopped,
+                    "could not tell the other end the camera went off",
+                    cx,
+                );
                 cx.notify();
             }
-            Some(_) => self.open_camera(cx),
+            Some(video) => {
+                if !video.sending {
+                    video.sending = true;
+                    let ends = video.fresh_ends();
+                    let resumed = self.protocol.read(cx).resume_video(&live, ends, cx);
+                    logged(resumed, "could not send the camera again", cx);
+                }
+                self.open_camera(cx);
+            }
             None => {
                 let Some((video, ends)) = Self::video_for_call(cx) else {
                     return;

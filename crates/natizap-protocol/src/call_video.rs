@@ -92,4 +92,34 @@ impl Protocol {
                 .map_err(|error| ActionError::refused(&error))
         })
     }
+
+    /// Stops sending `call` the camera, telling the other end it went off;
+    /// their pictures keep coming.
+    pub fn stop_video(&self, call: &LiveCall, cx: &App) -> Task<Result<(), ActionError>> {
+        let handle = call.handle.clone();
+        self.connection.run(cx, move |_| async move {
+            handle
+                .stop_video()
+                .await
+                .map_err(|error| ActionError::refused(&error))
+        })
+    }
+
+    /// Sends `call` the camera again after [`Protocol::stop_video`], with
+    /// `video`'s fresh ends.
+    pub fn resume_video(
+        &self,
+        call: &LiveCall,
+        video: Video,
+        cx: &App,
+    ) -> Task<Result<(), ActionError>> {
+        let handle = call.handle.clone();
+        let (camera, screen) = video.endpoints(cx);
+        self.connection.run(cx, move |_| async move {
+            handle
+                .resume_video(camera, screen)
+                .await
+                .map_err(|error| ActionError::refused(&error))
+        })
+    }
 }
