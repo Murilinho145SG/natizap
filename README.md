@@ -33,17 +33,23 @@ end-to-end encrypted; keys and history live only on your machine.
 
 - **Linking** by QR code, with the chat list and history synced from the phone
   and cached locally, so it opens instantly, even offline.
-- **Chat list**: search by name or number, unread and group filters, archived
-  chats, pins, mutes, unread counts and verified business seals.
+- **Chat list**: search by name or number, and through every chat's
+  messages, unread and group filters, archived chats, pins, mutes, unread
+  counts and verified business seals. A right click on a chat archives,
+  mutes, pins, marks it read or unread, blocks, clears or deletes it
+  without opening it.
 - **Conversations**: WhatsApp formatting, clickable links, email addresses,
   phone numbers and Brazilian tax IDs, code blocks with syntax colors,
   replies that jump to the quoted message, reactions, forwarding, starring,
-  pinning and deleting, text selection and copying, and missed calls marked
-  in their chat.
-- **Media**: photos with a full-size viewer, videos in a built-in player,
-  voice notes with their waveform and playback speeds, documents with their
-  first page, stickers, shared contacts and polls, voted on with a click and
-  tallied as votes arrive.
+  pinning and deleting, text selection and copying, search through the
+  whole chat, and missed calls marked in their chat.
+- **Mentions**: typing `@` in a group lists its members to pick from;
+  mentions show the person's name and open their profile when clicked.
+- **Media**: photos with a full-size viewer, pictures sent together folded
+  into one album, videos in a built-in player, voice notes with their
+  waveform and playback speeds, documents with their first page, stickers,
+  shared contacts and polls, voted on with a click and tallied as votes
+  arrive, and the pictures in businesses' messages.
 - **Stickers**: favorites synced with the phone, sent from the same tray as
   the emoji, and any sticker in a chat added to them with a click.
 - **Sending**: text, recorded voice notes, contacts and polls, and files,
@@ -52,7 +58,16 @@ end-to-end encrypted; keys and history live only on your machine.
 - **Profiles** of people, businesses (seal, hours, banner, links) and groups
   (members and admins), with presence: online, last seen and typing, and
   every photo, video, document and link a chat shared, by month and
-  searchable.
+  searchable. Your own name, about line and picture can be changed.
+- **Status**: everyone's updates of the last day, played in a viewer,
+  replied to, and your own posted, text or media.
+- **Calls history**: missed and answered calls, each a way to its chat.
+- **Themes**: natizap's own Graphite and ports of well-known palettes
+  (Catppuccin, Dracula, GitHub, Nord, …), plus themes of your own made in
+  the settings, with the app icon following the theme in the tray and the
+  dock.
+- **Tray**: closing the window keeps natizap running, connected and
+  notifying.
 - **Notifications**: system notifications while natizap is in the
   background, opening the chat when clicked, and a chime for new messages
   outside the chat on screen, with a choice of tones for chats and groups;
@@ -60,8 +75,8 @@ end-to-end encrypted; keys and history live only on your machine.
 
 ## Not yet
 
-Calls, status, channels and search inside a chat are on the roadmap. natizap targets full parity with the phone apps, calls
-included.
+Voice and video calls, channels and communities are on the roadmap.
+natizap targets full parity with the phone apps, calls included.
 
 ## Caveat
 
