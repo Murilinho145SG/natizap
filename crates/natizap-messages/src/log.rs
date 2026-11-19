@@ -7,7 +7,7 @@ use gpui::{App, AppContext as _, Context, Entity, EventEmitter, SharedString, Ta
 use natizap_protocol::whatsapp_rust::prelude::Event;
 use natizap_protocol::whatsapp_rust::types::events::EventKind;
 use natizap_protocol::{
-    Anchor, ChatId, ContentKind, Forward, GroupInfo, PersonName, Protocol, Received, Unread,
+    Anchor, ChatId, ContentKind, Forward, GroupInfo, PersonName, Protocol, Received, Typing, Unread,
 };
 
 use crate::items::{Item, Members};
@@ -147,6 +147,8 @@ pub struct MessageLog {
     settings_path: PathBuf,
     /// Whether the person in the open one-to-one chat is around.
     seen: Presence,
+    /// Who is typing or recording, in every chat.
+    typing: Typing,
     _tasks: [Task<()>; 5],
 }
 
@@ -208,8 +210,12 @@ impl MessageLog {
         let seen = cx.spawn(async move |this, cx| {
             while let Ok(event) = presence.recv().await {
                 let followed = this.update(cx, |log, cx| {
-                    let Some(open) = &log.open else { return };
-                    if log.seen.follow(&event, &open.addresses) {
+                    // Every chat's typing is kept, for a chat opened while
+                    // someone types in it.
+                    let typed = log.typing.hear(&event);
+                    let open = log.open.as_ref();
+                    let seen = open.is_some_and(|open| log.seen.follow(&event, &open.addresses));
+                    if typed || seen {
                         cx.notify();
                     }
                 });
@@ -255,6 +261,7 @@ impl MessageLog {
             typing_look: TypingLook::read(&settings_path),
             settings_path,
             seen: Presence::default(),
+            typing: Typing::default(),
             _tasks: [forward, sync, apply, seen, retry],
         }
     }
@@ -329,7 +336,17 @@ impl MessageLog {
     /// Whether the person in the open one-to-one chat is online, typing or
     /// recording, or when they were last seen.
     pub(crate) fn presence_line(&self) -> Option<String> {
-        self.seen.label(Local::now())
+        let doing = self
+            .open
+            .as_ref()
+            .filter(|open| !open.id.is_group())
+            .and_then(|open| {
+                self.typing
+                    .in_chat(&open.addresses)
+                    .first()
+                    .map(|(_, doing)| *doing)
+            });
+        self.seen.label(doing, Local::now())
     }
 
     /// The media and starred messages of a chat filed under `addresses`,

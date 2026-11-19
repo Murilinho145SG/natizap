@@ -250,8 +250,9 @@ impl ChatListView {
                             }
                             None => status_ring(face, None).into_any_element(),
                         };
+                        let typing = this.list.read(cx).typing_line(row);
                         div().w_full().px_2().child(
-                            chat_row(row, face, now)
+                            chat_row(row, face, typing, now)
                                 .when(selected, |row| row.bg(rgb(RAISED)))
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     this.select(clicked.clone(), cx);
@@ -403,8 +404,16 @@ fn archive_row(count: usize) -> Stateful<Div> {
         .child(div().text_size(px(12.5)).child(count.to_string()))
 }
 
-fn chat_row(row: &ChatRow, face: AnyElement, now: DateTime<Local>) -> Stateful<Div> {
+/// One chat's row; `typing` says who types in it, in place of the last
+/// message.
+fn chat_row(
+    row: &ChatRow,
+    face: AnyElement,
+    typing: Option<SharedString>,
+    now: DateTime<Local>,
+) -> Stateful<Div> {
     let has_unread = row.unread > 0 || row.marked_unread;
+    let typed = typing.is_some();
     let time = row
         .sent_at
         .map_or_default(|sent_at| time_label(sent_at, now));
@@ -485,13 +494,18 @@ fn chat_row(row: &ChatRow, face: AnyElement, now: DateTime<Local>) -> Stateful<D
                         .text_size(px(13.5))
                         .line_height(relative(1.3))
                         .text_color(rgb(MUTED))
-                        .children(row.preview_kind.and_then(kind_icon).map(status_icon))
+                        .when(!typed, |line| {
+                            line.children(row.preview_kind.and_then(kind_icon).map(status_icon))
+                        })
                         .child(
                             div()
                                 .flex_1()
                                 .min_w_0()
                                 .truncate()
-                                .children(row.preview.clone()),
+                                .map(|line| match typing {
+                                    Some(typing) => line.text_color(rgb(ACCENT)).child(typing),
+                                    None => line.children(row.preview.clone()),
+                                }),
                         )
                         .when(row.muted, |line| line.child(status_icon(Icon::Muted)))
                         .when(row.pinned, |line| line.child(status_icon(Icon::Pin)))

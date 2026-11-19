@@ -11,7 +11,7 @@ use natizap_ui::{Icon, avatar};
 
 use super::ConversationView;
 use crate::log::{Typer, TypingLook};
-use crate::presence::Activity;
+use natizap_protocol::Activity;
 
 /// How many faces show; the names say the rest.
 const MOST_FACES: usize = 3;

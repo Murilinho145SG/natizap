@@ -7,7 +7,7 @@ use gpui::{App, AppContext as _, Context, SharedString};
 use natizap_protocol::ChatId;
 
 use super::MessageLog;
-use crate::presence::Activity;
+use natizap_protocol::Activity;
 
 /// How the conversation shows who is typing.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -61,12 +61,16 @@ impl MessageLog {
     /// Who is typing or recording in the open chat, this account left out.
     pub(crate) fn typers(&self, cx: &App) -> Vec<Typer> {
         let protocol = self.protocol.read(cx);
-        self.seen
-            .typers()
+        let Some(open) = &self.open else {
+            return Vec::new();
+        };
+        self.typing
+            .in_chat(&open.addresses)
+            .into_iter()
             .filter(|(who, _)| !protocol.is_own(who))
             .map(|(who, activity)| Typer {
-                id: who.clone(),
-                name: self.first_name(who),
+                name: self.first_name(&who),
+                id: who,
                 activity,
             })
             .collect()

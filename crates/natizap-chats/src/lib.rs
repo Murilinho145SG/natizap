@@ -10,6 +10,7 @@ mod list;
 mod picker;
 mod store;
 mod sync;
+mod typing;
 mod view;
 
 pub use list::{ChatList, ChatRow};

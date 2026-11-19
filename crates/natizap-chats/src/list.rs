@@ -7,7 +7,7 @@ use gpui::{App, AppContext as _, Context, Entity, SharedString, Task};
 use natizap_protocol::Protocol;
 use natizap_protocol::whatsapp_rust::prelude::Event;
 
-use natizap_protocol::{ChatId, ContentKind, Disappearing, Marked, PersonName};
+use natizap_protocol::{ChatId, ContentKind, Disappearing, Marked, PersonName, Typing};
 
 use crate::book::{Chat, ChatBook, ChatChange, Mute, Preview};
 use crate::store::ChatStore;
@@ -151,8 +151,10 @@ pub struct ChatList {
     /// Whether a question is in flight.
     asking: bool,
     snapshot: Snapshot,
+    /// Who is typing or recording, in every chat.
+    pub(crate) typing: Typing,
     inputs: async_channel::Sender<Input>,
-    _tasks: [Task<()>; 3],
+    _tasks: [Task<()>; 4],
 }
 
 impl ChatList {
@@ -198,13 +200,15 @@ impl ChatList {
                 }
             }
         });
+        let typing = Self::follow_typing(protocol, cx);
         Self {
             protocol: protocol.clone(),
             asked: HashSet::new(),
             asking: false,
             snapshot: Snapshot::default(),
+            typing: Typing::default(),
             inputs: inputs_tx,
-            _tasks: [forward, sync, apply],
+            _tasks: [forward, sync, apply, typing],
         }
     }
 

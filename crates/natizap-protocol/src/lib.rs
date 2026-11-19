@@ -27,6 +27,7 @@ mod read_elsewhere;
 mod status;
 mod status_link;
 mod stickers;
+mod typing;
 
 pub use actions::{ActionError, Anchor, Disappearing, PinFor, Reply, Sent, Unread};
 pub use answer::Answer;
@@ -48,4 +49,5 @@ pub use protocol::{Protocol, StartError};
 pub use read_elsewhere::ReadElsewhere;
 pub use status_link::StatusLink;
 pub use stickers::Sticker;
+pub use typing::{Activity, STILL_TYPING, Typing};
 pub use whatsapp_rust;
