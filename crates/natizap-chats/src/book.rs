@@ -379,7 +379,8 @@ impl ChatBook {
     /// Everyone's names, by each address they are known under.
     #[must_use]
     pub(crate) fn names(&self) -> HashMap<ChatId, PersonName> {
-        self.people
+        let mut names: HashMap<ChatId, PersonName> = self
+            .people
             .iter()
             .filter(|(_, person)| person.contact_name.is_some() || person.push_name.is_some())
             .map(|(id, person)| {
@@ -389,7 +390,23 @@ impl ChatBook {
                 };
                 (id.clone(), name)
             })
-            .collect()
+            .collect();
+        // A person saved under their phone number is the same person under
+        // their LID, which is how status updates and groups name them.
+        for (alias, chat) in &self.aliases {
+            match (names.get(alias), names.get(chat)) {
+                (None, Some(name)) => {
+                    let name = name.clone();
+                    names.insert(alias.clone(), name);
+                }
+                (Some(name), None) => {
+                    let name = name.clone();
+                    names.insert(chat.clone(), name);
+                }
+                _ => {}
+            }
+        }
+        names
     }
 
     /// A person's names, for persistence.
@@ -650,6 +667,23 @@ mod tests {
             id("5511999@s.whatsapp.net"),
         ));
         assert_eq!(title(&book, &lid).as_deref(), Some("Ana"));
+    }
+
+    #[test]
+    fn a_name_reaches_every_address_of_the_person() {
+        let mut book = ChatBook::default();
+        book.apply(ChatChange::ContactName(
+            id("5@s.whatsapp.net"),
+            "Ana".into(),
+        ));
+        book.apply(ChatChange::SameChat(id("5@lid"), id("5@s.whatsapp.net")));
+        let names = book.names();
+        assert_eq!(
+            names
+                .get(&id("5@lid"))
+                .and_then(|name| name.saved.as_deref()),
+            Some("Ana")
+        );
     }
 
     #[test]
