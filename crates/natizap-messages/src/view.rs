@@ -146,6 +146,12 @@ pub struct ProfileRequested {
 
 impl EventEmitter<ProfileRequested> for ConversationView {}
 
+/// The user asked to call the person the open chat is with.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CallRequested(pub ChatId);
+
+impl EventEmitter<CallRequested> for ConversationView {}
+
 /// The user clicked a phone number in a message, to chat with it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChatRequested {

@@ -7,7 +7,7 @@ use gpui::{App, ClickEvent, Context, Div, FontWeight, Stateful, Window, div, px,
 use natizap_ui::theme::ActiveTheme as _;
 use natizap_ui::{Button, ButtonVariant, Icon, Menu, avatar, verified_seal};
 
-use super::{ConversationView, ProfileRequested};
+use super::{CallRequested, ConversationView, ProfileRequested};
 use crate::log::OpenChat;
 
 /// The chat's picture, name and, for a person, their number. Clicking it
@@ -79,6 +79,21 @@ pub(super) fn header(
                 .flex()
                 .items_center()
                 .gap_1()
+                .when(!chat.id.is_group(), |buttons| {
+                    let peer = chat.id.clone();
+                    buttons.child(
+                        Button::new("chat-call")
+                            .icon(Icon::Call)
+                            .variant(ButtonVariant::Ghost)
+                            .round()
+                            .tooltip("Voice call")
+                            .on_click(cx.listener(move |_, _, _, cx| {
+                                // The header behind opens the profile.
+                                cx.stop_propagation();
+                                cx.emit(CallRequested(peer.clone()));
+                            })),
+                    )
+                })
                 .child(
                     Button::new("chat-search")
                         .icon(Icon::Search)

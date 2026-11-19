@@ -43,6 +43,6 @@ pub use overview::{ChatOverview, MediaTile, TileImage};
 pub use search_view::{MessageSearch, SearchHitOpened};
 pub use settings_view::ChatSettings;
 pub use view::{
-    ChatClosed, ChatRequested, ContactsRequested, ConversationView, MuteRequested, PlayRequested,
-    ProfileRequested, StickerFavoriteToggled,
+    CallRequested, ChatClosed, ChatRequested, ContactsRequested, ConversationView, MuteRequested,
+    PlayRequested, ProfileRequested, StickerFavoriteToggled,
 };
