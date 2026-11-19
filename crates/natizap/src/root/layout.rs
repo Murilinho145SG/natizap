@@ -78,6 +78,9 @@ impl Root {
                         .border_l_1()
                         .border_color(rgb(LINE))
                         .shadow_lg()
+                        // Over the conversation: its clicks stay here, or
+                        // the header below would open the profile again.
+                        .occlude()
                         .child(panel)
                 }
             }))
