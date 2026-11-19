@@ -371,18 +371,36 @@ impl Watch {
             }),
         );
         futures::pin_mut!(heard);
+        // What went by, told in the log once the call ends: where a call's
+        // voice got lost is otherwise invisible.
+        let (mut foreign, mut unwrapped) = (0_u64, 0_u64);
         while let Some(heard) = heard.next().await {
-            if let Heard::Media(CallEvent::ForeignAudio(packet)) = &heard {
-                if let Some(packet) = standard_opus(packet) {
-                    // Full means the speaker is behind: this piece is lost.
-                    let _ = opus.try_send(packet);
+            match &heard {
+                Heard::Media(CallEvent::ForeignAudio(packet)) => {
+                    foreign += 1;
+                    if let Some(packet) = standard_opus(packet) {
+                        unwrapped += 1;
+                        // Full means the speaker is behind: this piece is lost.
+                        let _ = opus.try_send(packet);
+                    }
+                    continue;
                 }
-                continue;
+                // Several a second: too many for the log.
+                Heard::Media(CallEvent::RtcpReceived { .. }) | Heard::Signal(_) | Heard::Ended => {}
+                Heard::Media(event) => tracing::info!(call = %self.id, ?event, "call media event"),
             }
             let Some(progress) = self.hear(&heard) else {
                 continue;
             };
             let ended = matches!(progress, CallProgress::Ended(_));
+            if ended {
+                tracing::info!(
+                    call = %self.id,
+                    foreign,
+                    unwrapped,
+                    "call ended: Opus packets from the other end, and how many unwrapped"
+                );
+            }
             // Nobody listening is no reason to stop following: the call
             // runs on until it ends.
             let _ = tell.send(progress).await;

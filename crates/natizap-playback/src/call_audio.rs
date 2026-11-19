@@ -6,6 +6,8 @@
 //! awaited, so a slow call drops a frame instead of stalling the card.
 
 use std::collections::VecDeque;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use cpal::traits::{DeviceTrait as _, HostTrait as _, StreamTrait as _};
 use cpal::{Stream, StreamConfig};
@@ -62,10 +64,48 @@ pub struct CallPorts {
     pub opus: async_channel::Sender<Vec<u8>>,
 }
 
+/// How much sound went each way, told in the log when a call's sound
+/// closes: where a call's voice got lost is otherwise invisible.
+#[derive(Debug, Default)]
+struct Meter {
+    /// Frames the microphone sent to the call.
+    sent: AtomicU64,
+    /// Frames lost because the call was behind.
+    unsent: AtomicU64,
+    /// Frames the call gave the speaker, Opus ones included.
+    received: AtomicU64,
+    /// Opus packets decoded.
+    opus: AtomicU64,
+    /// Samples played that were not silence filling a gap.
+    played: AtomicU64,
+}
+
+impl Meter {
+    fn add(counter: &AtomicU64, count: usize) {
+        counter.fetch_add(u64::try_from(count).unwrap_or(u64::MAX), Ordering::Relaxed);
+    }
+}
+
 /// The microphone and speaker open for a call. Dropping it closes both.
 pub struct CallAudio {
     _microphone: Stream,
     _speaker: Stream,
+    meter: Arc<Meter>,
+}
+
+impl Drop for CallAudio {
+    fn drop(&mut self) {
+        let read = |counter: &AtomicU64| counter.load(Ordering::Relaxed);
+        let meter = &self.meter;
+        tracing::info!(
+            sent = read(&meter.sent),
+            unsent = read(&meter.unsent),
+            received = read(&meter.received),
+            opus = read(&meter.opus),
+            played = read(&meter.played),
+            "call sound closed: frames sent and received, Opus packets decoded, samples played"
+        );
+    }
 }
 
 impl std::fmt::Debug for CallAudio {
@@ -90,9 +130,11 @@ impl CallAudio {
         let output = host
             .default_output_device()
             .ok_or(CallAudioError::NoSpeaker)?;
+        let meter = Arc::new(Meter::default());
         let calls = Self {
-            _microphone: listen(&input, format, heard)?,
-            _speaker: play(&output, format, said)?,
+            _microphone: listen(&input, format, heard, Arc::clone(&meter))?,
+            _speaker: play(&output, format, said, Arc::clone(&meter))?,
+            meter: Arc::clone(&meter),
         };
         let (opus, packets) = async_channel::bounded(SPEAKER_BACKLOG);
         let decoded = speaker.clone();
@@ -100,7 +142,7 @@ impl CallAudio {
         // It ends once the call drops its end of `opus`.
         std::thread::Builder::new()
             .name("natizap-call-opus".into())
-            .spawn(move || decode_opus(&packets, &decoded, format))
+            .spawn(move || decode_opus(&packets, &decoded, format, &meter))
             .map_err(device_error)?;
         Ok((
             calls,
@@ -117,13 +159,19 @@ fn listen(
     device: &cpal::Device,
     format: CallFormat,
     heard: async_channel::Sender<Vec<i16>>,
+    meter: Arc<Meter>,
 ) -> Result<Stream, CallAudioError> {
     let config = closest_f32(
         &device.default_input_config().map_err(device_error)?,
         device.supported_input_configs().map_err(device_error)?,
     )
     .ok_or_else(|| CallAudioError::Device("the microphone gives no f32 samples".into()))?;
-    let mut microphone = Microphone::new(config, format, heard);
+    tracing::info!(
+        rate = config.sample_rate,
+        channels = config.channels,
+        "call microphone open"
+    );
+    let mut microphone = Microphone::new(config, format, heard, meter);
     let stream = device
         .build_input_stream(
             config,
@@ -140,13 +188,19 @@ fn play(
     device: &cpal::Device,
     format: CallFormat,
     said: async_channel::Receiver<Vec<i16>>,
+    meter: Arc<Meter>,
 ) -> Result<Stream, CallAudioError> {
     let config = closest_f32(
         &device.default_output_config().map_err(device_error)?,
         device.supported_output_configs().map_err(device_error)?,
     )
     .ok_or_else(|| CallAudioError::Device("the speaker takes no f32 samples".into()))?;
-    let mut speaker = Speaker::new(config, format, said);
+    tracing::info!(
+        rate = config.sample_rate,
+        channels = config.channels,
+        "call speaker open"
+    );
+    let mut speaker = Speaker::new(config, format, said, meter);
     let stream = device
         .build_output_stream(
             config,
@@ -164,6 +218,7 @@ fn decode_opus(
     packets: &async_channel::Receiver<Vec<u8>>,
     speaker: &async_channel::Sender<Vec<i16>>,
     format: CallFormat,
+    meter: &Meter,
 ) {
     let mut decoder = match OpusDecoder::new() {
         Ok(decoder) => decoder,
@@ -189,6 +244,7 @@ fn decode_opus(
             Some((from, resampler)) if *from == rate => resampler,
             slot => &mut slot.insert((rate, Resampler::new(rate, format.rate))).1,
         };
+        Meter::add(&meter.opus, 1);
         converted.clear();
         resampler.push(&sound, &mut converted);
         // Full means the speaker is behind: this piece is lost.
@@ -210,6 +266,7 @@ struct Microphone {
     pending: Vec<f32>,
     mono: Vec<f32>,
     heard: async_channel::Sender<Vec<i16>>,
+    meter: Arc<Meter>,
 }
 
 impl Microphone {
@@ -217,6 +274,7 @@ impl Microphone {
         config: StreamConfig,
         format: CallFormat,
         heard: async_channel::Sender<Vec<i16>>,
+        meter: Arc<Meter>,
     ) -> Self {
         Self {
             channels: usize::from(config.channels).max(1),
@@ -225,6 +283,7 @@ impl Microphone {
             pending: Vec::with_capacity(format.frame * 2),
             mono: Vec::new(),
             heard,
+            meter,
         }
     }
 
@@ -245,7 +304,12 @@ impl Microphone {
             let frame: Vec<i16> = self.pending.drain(..self.frame).map(to_i16).collect();
             // A full channel means the call is behind: this frame is lost,
             // as it would be on a bad network.
-            let _ = self.heard.try_send(frame);
+            let counter = if self.heard.try_send(frame).is_ok() {
+                &self.meter.sent
+            } else {
+                &self.meter.unsent
+            };
+            Meter::add(counter, 1);
         }
     }
 }
@@ -263,6 +327,7 @@ struct Speaker {
     most: usize,
     /// Whether the cushion is full and sound is playing.
     playing: bool,
+    meter: Arc<Meter>,
 }
 
 impl Speaker {
@@ -276,6 +341,7 @@ impl Speaker {
         config: StreamConfig,
         format: CallFormat,
         said: async_channel::Receiver<Vec<i16>>,
+        meter: Arc<Meter>,
     ) -> Self {
         let rate = config.sample_rate as f32;
         Self {
@@ -287,11 +353,13 @@ impl Speaker {
             cushion: (rate * CUSHION_SECONDS) as usize,
             most: (rate * MOST_SECONDS) as usize,
             playing: false,
+            meter,
         }
     }
 
     fn fill(&mut self, output: &mut [f32]) {
         while let Ok(frame) = self.said.try_recv() {
+            Meter::add(&self.meter.received, 1);
             self.converted.clear();
             let samples: Vec<f32> = frame.iter().copied().map(to_f32).collect();
             self.resampler.push(&samples, &mut self.converted);
@@ -313,6 +381,8 @@ impl Speaker {
             frame.fill(sample.unwrap_or(0.0));
             if sample.is_none() {
                 self.playing = false;
+            } else {
+                Meter::add(&self.meter.played, 1);
             }
         }
     }
@@ -332,6 +402,8 @@ fn to_f32(sample: i16) -> f32 {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use cpal::StreamConfig;
 
     use super::{CallFormat, Microphone, Speaker};
@@ -352,7 +424,7 @@ mod tests {
     #[test]
     fn the_microphone_sends_whole_frames_at_the_calls_rate() {
         let (heard, frames) = async_channel::unbounded();
-        let mut microphone = Microphone::new(card(48_000, 2), FORMAT, heard);
+        let mut microphone = Microphone::new(card(48_000, 2), FORMAT, heard, Arc::default());
         // One second of stereo sound at 48 kHz, in the card's small pieces.
         for _ in 0..100 {
             microphone.hear(&[0.5; 960]);
@@ -369,7 +441,7 @@ mod tests {
     #[test]
     fn the_speaker_waits_for_its_cushion_then_plays_on_every_channel() {
         let (said, frames) = async_channel::unbounded();
-        let mut speaker = Speaker::new(card(16_000, 2), FORMAT, frames);
+        let mut speaker = Speaker::new(card(16_000, 2), FORMAT, frames, Arc::default());
         let mut output = vec![1.0; 320];
         said.try_send(vec![i16::MAX / 2; 960]).ok();
         speaker.fill(&mut output);
@@ -385,7 +457,7 @@ mod tests {
     #[test]
     fn a_speaker_that_falls_behind_drops_the_oldest_sound() {
         let (said, frames) = async_channel::unbounded();
-        let mut speaker = Speaker::new(card(16_000, 1), FORMAT, frames);
+        let mut speaker = Speaker::new(card(16_000, 1), FORMAT, frames, Arc::default());
         for _ in 0..20 {
             said.try_send(vec![0; 960]).ok();
         }
