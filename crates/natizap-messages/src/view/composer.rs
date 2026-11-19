@@ -27,6 +27,9 @@ impl ConversationView {
         }
         let reply = self.replying.take().map(|replying| replying.reply);
         self.log.update(cx, |log, cx| log.send(text, reply, cx));
+        // What was just sent shows, as on the phone.
+        self.messages.scroll_to_end();
+        self.away_from_end = false;
         self.composer
             .update(cx, |composer, cx| composer.clear(window, cx));
     }

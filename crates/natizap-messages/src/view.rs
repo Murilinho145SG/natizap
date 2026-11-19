@@ -1,5 +1,6 @@
 use gpui::prelude::*;
 use std::collections::HashSet;
+use std::sync::Arc;
 use std::time::Instant;
 
 use gpui::{
@@ -36,6 +37,7 @@ mod list;
 mod message_menu;
 mod recorder;
 mod saving;
+mod scrolling;
 mod stickers;
 mod tray;
 mod viewer;
@@ -101,6 +103,10 @@ pub struct ConversationView {
     carousel: Option<Carousel>,
     /// The search in the open chat, while its bar shows.
     find: Option<find::Find>,
+    /// The messages the list shows, to keep its place when they change.
+    shown_items: Arc<[Item]>,
+    /// The list is scrolled up, away from the latest messages.
+    away_from_end: bool,
     /// Where the header's menu is open.
     chat_menu: Option<Point<Pixels>>,
     /// A voice note being recorded.
@@ -165,6 +171,8 @@ impl ConversationView {
         cx: &mut Context<Self>,
     ) -> Self {
         cx.observe(&pictures, |_, _, cx| cx.notify()).detach();
+        let messages = ListState::new(0, ListAlignment::Bottom, px(600.0));
+        Self::watch_scroll(&messages, cx);
         let composer = cx.new(|cx| TextInput::new("Message", cx).wrapping());
         let emoji_picker = cx.new(|_| EmojiPicker::new());
         let reaction_emojis = cx.new(|_| EmojiPicker::new());
@@ -218,7 +226,7 @@ impl ConversationView {
             log,
             pictures,
             composer,
-            messages: ListState::new(0, ListAlignment::Bottom, px(600.0)),
+            messages,
             shown_chat: None,
             replying: None,
             reacting: None,
@@ -238,6 +246,8 @@ impl ConversationView {
             viewing: None,
             carousel: None,
             find: None,
+            shown_items: Arc::from([]),
+            away_from_end: false,
             chat_menu: None,
             recorder: None,
             sticker_picker: None,
@@ -257,7 +267,6 @@ impl ConversationView {
                 .map(|chat| SharedString::from(chat.id.as_str().to_owned()));
             (open, log.items().clone())
         };
-        let count = items.len();
         let ids = items.iter().filter_map(|item| match item {
             Item::Bubble(bubble) => Some(&bubble.id),
             Item::Day(_) => None,
@@ -267,7 +276,8 @@ impl ConversationView {
         } else {
             self.arrivals.reset(ids);
         }
-        if open != self.shown_chat {
+        let same_chat = open == self.shown_chat;
+        if !same_chat {
             self.shown_chat = open;
             self.replying = None;
             self.reacting = None;
@@ -281,7 +291,7 @@ impl ConversationView {
             let focus: FocusHandle = self.composer.focus_handle(cx);
             window.focus(&focus, cx);
         }
-        self.messages.reset(count);
+        self.refill(items, same_chat);
         self.keep_going(cx);
         cx.notify();
     }

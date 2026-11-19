@@ -114,7 +114,8 @@ impl ConversationView {
                 .when(centered, |list| list.max_w(px(CENTERED_WIDTH)).px_4())
                 .when(!centered, |list| list.px(px(56.0))),
             )
-            .child(scrollbar);
+            .child(scrollbar)
+            .children(self.latest_button(cx));
         rise_in(
             SharedString::from(format!("chat-{}", chat.as_str())),
             messages,
