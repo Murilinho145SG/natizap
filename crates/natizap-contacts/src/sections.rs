@@ -77,6 +77,10 @@ pub struct TileOpened(pub usize);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MediaRequested;
 
+/// The user asked to see the messages they starred in the chat.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StarredRequested;
+
 impl ProfilePanel {
     /// Media, starred messages, notifications, disappearing messages and
     /// encryption, as on the phone; empty until the app says what it knows.
@@ -116,7 +120,14 @@ impl ProfilePanel {
                     ))
                 })
                 .child(div().w_full().py_2().child(separator()))
-                .child(row(Icon::Star, "Starred messages").child(count(summary.starred)));
+                .child(
+                    row(Icon::Star, "Starred messages")
+                        .id("starred")
+                        .cursor_pointer()
+                        .hover(|row| row.bg(rgb(RAISED)))
+                        .on_click(cx.listener(|_, _, _, cx| cx.emit(StarredRequested)))
+                        .child(count(summary.starred)),
+                );
         }
         if let Some(settings) = self.settings {
             sections = sections

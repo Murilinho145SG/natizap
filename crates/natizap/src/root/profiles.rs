@@ -6,7 +6,7 @@ use gpui::prelude::*;
 use gpui::{Context, Entity, SharedString};
 use natizap_contacts::{
     ChatSettings, ChatSummary, ChatWanted, DisappearingChosen, MediaRequested, MuteToggled,
-    PersonOpened, ProfileClosed, ProfilePanel, Tile, TileOpened,
+    PersonOpened, ProfileClosed, ProfilePanel, StarredRequested, Tile, TileOpened,
 };
 use natizap_messages::{ConversationView, OpenChat, ProfileRequested};
 use natizap_protocol::ChatId;
@@ -125,11 +125,19 @@ impl Root {
         };
         panel.update(cx, |panel, cx| panel.set_settings(settings, cx));
 
-        let addresses = row.addresses.to_vec();
+        let (addresses, shown) = (row.addresses.to_vec(), title.clone());
         cx.subscribe(panel, move |root, _, _: &MediaRequested, cx| {
-            let (addresses, title) = (addresses.clone(), title.clone());
+            let (addresses, title) = (addresses.clone(), shown.clone());
             root.conversation.update(cx, |conversation, cx| {
                 conversation.browse_media(addresses, title, cx);
+            });
+        })
+        .detach();
+        let addresses = row.addresses.to_vec();
+        cx.subscribe(panel, move |root, _, _: &StarredRequested, cx| {
+            let (addresses, title) = (addresses.clone(), title.clone());
+            root.conversation.update(cx, |conversation, cx| {
+                conversation.browse_starred(addresses, title, cx);
             });
         })
         .detach();

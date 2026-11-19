@@ -15,7 +15,8 @@ impl MessageStore {
         self.connection
             .prepare(&format!(
                 "SELECT * FROM messages WHERE chat IN ({placeholders}) AND deleted = 0
-                 AND (kind IN ('Photo', 'Video', 'Document', 'Audio') OR text LIKE '%.%')
+                 AND (kind IN ('Photo', 'Video', 'Document', 'Audio') OR text LIKE '%.%'
+                      OR starred = 1)
                  ORDER BY sent_at DESC"
             ))?
             .query_map(

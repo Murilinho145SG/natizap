@@ -22,6 +22,21 @@ pub(crate) struct Library {
     pub(crate) docs: Vec<Shelved>,
     /// Web links in messages, newest first.
     pub(crate) links: Vec<SharedLink>,
+    /// Messages this account starred, newest first.
+    pub(crate) starred: Vec<Starred>,
+}
+
+/// A message this account starred.
+#[derive(Debug, Clone)]
+pub(crate) struct Starred {
+    /// What it says, or what it holds.
+    pub(crate) summary: SharedString,
+    /// Who wrote it: `None` for this account.
+    pub(crate) author: Option<SharedString>,
+    /// Its id, to go to it.
+    pub(crate) message_id: SharedString,
+    /// When it was sent, in Unix seconds.
+    pub(crate) sent_at: i64,
 }
 
 /// A photo, video, document or audio file.
@@ -114,6 +129,15 @@ impl Library {
     fn of(messages: &[Message], media_dir: &Path) -> Self {
         let mut library = Self::default();
         for message in messages {
+            if message.starred {
+                library.starred.push(Starred {
+                    summary: crate::items::summary(message).into(),
+                    author: (!message.from_me)
+                        .then(|| message.author.clone().unwrap_or_default().into()),
+                    message_id: message.id.clone().into(),
+                    sent_at: message.sent_at,
+                });
+            }
             let text = message.text.as_deref().unwrap_or_default();
             let links = web_links(text);
             // The phone previews one link per message: the one it names,

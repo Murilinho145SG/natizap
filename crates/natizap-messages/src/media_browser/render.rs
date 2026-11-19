@@ -192,6 +192,7 @@ impl MediaBrowser {
                 (false, Tab::Media) => "No photos or videos yet",
                 (false, Tab::Docs) => "No documents yet",
                 (false, Tab::Links) => "No links yet",
+                (false, Tab::Starred) => "No starred messages",
             });
         }
         let (lines, made) = (Arc::clone(&self.lines), Arc::clone(&self.made));
@@ -268,6 +269,10 @@ fn render_line(
             || div().into_any_element(),
             |shown| link(shown, browser, Pick::Link(*index)),
         ),
+        Line::Starred(index) => library.starred.get(*index).map_or_else(
+            || div().into_any_element(),
+            |starred| super::starred::row(starred, browser),
+        ),
     }
 }
 
@@ -342,7 +347,7 @@ fn tile(
 
 /// A row: something to know it by on the left, a title, and muted lines
 /// below. It lights up on hover and dims while pressed.
-fn entry(
+pub(super) fn entry(
     id: SharedString,
     leading: AnyElement,
     title: SharedString,
@@ -390,7 +395,7 @@ fn entry(
 }
 
 /// A rounded square holding `icon`, `side` pixels wide.
-fn badge(icon: Icon, side: f32) -> AnyElement {
+pub(super) fn badge(icon: Icon, side: f32) -> AnyElement {
     div()
         .size(px(side))
         .flex_none()
@@ -480,7 +485,7 @@ fn link(link: &SharedLink, browser: &WeakEntity<MediaBrowser>, pick: Pick) -> An
 }
 
 /// The day `sent_at` falls on: "12 Nov".
-fn day(sent_at: i64) -> String {
+pub(super) fn day(sent_at: i64) -> String {
     Local
         .timestamp_opt(sent_at, 0)
         .single()

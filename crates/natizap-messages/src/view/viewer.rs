@@ -6,7 +6,9 @@ use natizap_protocol::{ChatId, ContentKind};
 
 use super::ConversationView;
 use crate::items::MediaView;
-use crate::media_browser::{BrowserClosed, MediaBrowser, MediaChosen, MediaUse, MessageWanted};
+use crate::media_browser::{
+    BrowserClosed, MediaBrowser, MediaChosen, MediaUse, MessageWanted, Tab,
+};
 use crate::overview::MediaTile;
 
 impl ConversationView {
@@ -50,8 +52,29 @@ impl ConversationView {
         title: SharedString,
         cx: &mut Context<Self>,
     ) {
+        self.browse(chats, title, Tab::Media, cx);
+    }
+
+    /// Opens the same window on the messages this account starred in
+    /// `chats`, each a way to the message.
+    pub fn browse_starred(
+        &mut self,
+        chats: Vec<ChatId>,
+        title: SharedString,
+        cx: &mut Context<Self>,
+    ) {
+        self.browse(chats, title, Tab::Starred, cx);
+    }
+
+    fn browse(
+        &mut self,
+        chats: Vec<ChatId>,
+        title: SharedString,
+        tab: Tab,
+        cx: &mut Context<Self>,
+    ) {
         let library = self.log.read(cx).library(chats.clone(), cx);
-        let browser = cx.new(|cx| MediaBrowser::new(title, chats, library, cx));
+        let browser = cx.new(|cx| MediaBrowser::new(title, chats, library, tab, cx));
         cx.subscribe(&browser, |this, _, MediaChosen(media, how), cx| match how {
             MediaUse::Open => this.show_media(media, cx),
             MediaUse::SaveAs => Self::save_media_as(media, cx),

@@ -73,6 +73,7 @@ impl EventEmitter<ProfileClosed> for ProfilePanel {}
 impl EventEmitter<ChatWanted> for ProfilePanel {}
 impl EventEmitter<crate::members::PersonOpened> for ProfilePanel {}
 impl EventEmitter<crate::sections::TileOpened> for ProfilePanel {}
+impl EventEmitter<crate::sections::StarredRequested> for ProfilePanel {}
 impl EventEmitter<crate::sections::MediaRequested> for ProfilePanel {}
 
 impl ProfilePanel {

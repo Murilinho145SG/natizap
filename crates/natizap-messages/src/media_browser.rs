@@ -16,12 +16,13 @@ use gpui::{
 use natizap_ui::TextInput;
 
 use crate::items::MediaView;
-use crate::library::{Library, SharedLink, Shelved};
+use crate::library::{Library, SharedLink, Shelved, Starred};
 use crate::thumbs;
 use natizap_protocol::ChatId;
 
 mod menu;
 mod render;
+mod starred;
 
 /// Photos and videos in a row of the grid.
 const COLUMNS: usize = 6;
@@ -68,20 +69,22 @@ impl Entrance {
 
 /// One of the window's tabs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Tab {
+pub(crate) enum Tab {
     Media,
     Docs,
     Links,
+    Starred,
 }
 
 impl Tab {
-    const ALL: [Self; 3] = [Self::Media, Self::Docs, Self::Links];
+    const ALL: [Self; 4] = [Self::Media, Self::Docs, Self::Links, Self::Starred];
 
     fn label(self) -> &'static str {
         match self {
             Self::Media => "Media",
             Self::Docs => "Docs",
             Self::Links => "Links",
+            Self::Starred => "Starred",
         }
     }
 }
@@ -102,6 +105,7 @@ enum Line {
     Tiles(Vec<usize>),
     Doc(usize),
     Link(usize),
+    Starred(usize),
 }
 
 /// The window showing a chat's media, docs and links.
@@ -143,11 +147,13 @@ impl EventEmitter<BrowserClosed> for MediaBrowser {}
 impl EventEmitter<MessageWanted> for MediaBrowser {}
 
 impl MediaBrowser {
-    /// Shows `library` once it is read, under the chat's `title`.
+    /// Shows `library` once it is read, under the chat's `title`, open on
+    /// `tab`.
     pub(crate) fn new(
         title: SharedString,
         chats: Vec<ChatId>,
         library: Task<Library>,
+        tab: Tab,
         cx: &mut Context<Self>,
     ) -> Self {
         let search = cx.new(|cx| TextInput::new("Search", cx));
@@ -166,7 +172,7 @@ impl MediaBrowser {
             chats,
             menu: None,
             library: None,
-            tab: Tab::Media,
+            tab,
             search,
             lines: Arc::from([]),
             list: ListState::new(0, ListAlignment::Top, px(800.0)),
@@ -243,6 +249,11 @@ impl MediaBrowser {
                 |link| matches(&format!("{} {}", link.shown, link.message)),
                 |items| items.iter().map(|&index| Line::Link(index)).collect(),
             ),
+            Tab::Starred => lay_out(
+                &library.starred,
+                |starred| matches(&starred.summary),
+                |items| items.iter().map(|&index| Line::Starred(index)).collect(),
+            ),
         };
         self.lines = lines.into();
         self.list.reset(self.lines.len());
@@ -262,6 +273,12 @@ impl Dated for Shelved {
 }
 
 impl Dated for SharedLink {
+    fn sent_at(&self) -> i64 {
+        self.sent_at
+    }
+}
+
+impl Dated for Starred {
     fn sent_at(&self) -> i64 {
         self.sent_at
     }

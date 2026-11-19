@@ -89,8 +89,9 @@ also emits `ForwardRequested`, which the binary answers with the chats'
 `ChatPicker`, handing the chosen chats back to `MessageLog::forward`. The
 conversation emits `ProfileRequested` from its header, which the binary
 answers by showing the contacts' `ProfilePanel` beside it. The panel emits
-`TileOpened` and `MediaRequested`, which the binary answers with
-`ConversationView::show_tile` and `ConversationView::browse_media`. `Notifier` hears
+`TileOpened`, `MediaRequested` and `StarredRequested`, which the binary
+answers with `ConversationView::show_tile`, `ConversationView::browse_media`
+and `ConversationView::browse_starred`. `Notifier` hears
 new messages itself; the binary tells it whether the window is focused,
 which chat `MessageLog` has open and which chats `ChatList` has muted, and
 it chimes for messages anywhere else. While the window is in the

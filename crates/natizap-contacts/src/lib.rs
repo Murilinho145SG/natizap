@@ -16,5 +16,6 @@ pub use members::PersonOpened;
 pub use own::{OwnProfile, OwnProfileClosed};
 pub use panel::{ChatWanted, ProfileClosed, ProfilePanel};
 pub use sections::{
-    ChatSettings, ChatSummary, DisappearingChosen, MediaRequested, MuteToggled, Tile, TileOpened,
+    ChatSettings, ChatSummary, DisappearingChosen, MediaRequested, MuteToggled, StarredRequested,
+    Tile, TileOpened,
 };
