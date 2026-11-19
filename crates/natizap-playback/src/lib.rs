@@ -26,6 +26,7 @@ mod remote_video;
 mod resample;
 mod speed;
 mod turn;
+mod voice_processing;
 
 use std::path::Path;
 use std::sync::{Arc, mpsc};

@@ -15,6 +15,7 @@ use cpal::{Stream, StreamConfig};
 use crate::audio::closest_f32;
 use crate::opus::OpusDecoder;
 use crate::resample::Resampler;
+use crate::voice_processing::VoiceProcessing;
 
 /// Frames waiting for the call before new ones are dropped.
 const MICROPHONE_BACKLOG: usize = 4;
@@ -136,9 +137,10 @@ impl CallAudio {
             .default_output_device()
             .ok_or(CallAudioError::NoSpeaker)?;
         let meter = Arc::new(Meter::default());
+        let voice = VoiceProcessing::new(format.rate);
         let calls = Self {
-            _microphone: listen(&input, format, heard, Arc::clone(&meter))?,
-            _speaker: play(&output, format, said, Arc::clone(&meter))?,
+            _microphone: listen(&input, format, heard, voice.clone(), Arc::clone(&meter))?,
+            _speaker: play(&output, format, said, voice, Arc::clone(&meter))?,
             meter: Arc::clone(&meter),
         };
         let (opus, packets) = async_channel::bounded(SPEAKER_BACKLOG);
@@ -164,6 +166,7 @@ fn listen(
     device: &cpal::Device,
     format: CallFormat,
     heard: async_channel::Sender<Vec<i16>>,
+    voice: VoiceProcessing,
     meter: Arc<Meter>,
 ) -> Result<Stream, CallAudioError> {
     let config = closest_f32(
@@ -176,7 +179,7 @@ fn listen(
         channels = config.channels,
         "call microphone open"
     );
-    let mut microphone = Microphone::new(config, format, heard, meter);
+    let mut microphone = Microphone::new(config, format, heard, voice, meter);
     let stream = device
         .build_input_stream(
             config,
@@ -193,6 +196,7 @@ fn play(
     device: &cpal::Device,
     format: CallFormat,
     said: async_channel::Receiver<Vec<i16>>,
+    voice: VoiceProcessing,
     meter: Arc<Meter>,
 ) -> Result<Stream, CallAudioError> {
     let config = closest_f32(
@@ -205,7 +209,7 @@ fn play(
         channels = config.channels,
         "call speaker open"
     );
-    let mut speaker = Speaker::new(config, format, said, meter);
+    let mut speaker = Speaker::new(config, format, said, voice, meter);
     let stream = device
         .build_output_stream(
             config,
@@ -267,10 +271,13 @@ struct Microphone {
     channels: usize,
     resampler: Resampler,
     frame: usize,
-    /// Mono samples at the call's rate, not yet a whole frame.
+    /// Mono samples at the call's rate, not yet a whole piece to clean.
+    raw: Vec<f32>,
+    /// Cleaned samples, not yet a whole frame.
     pending: Vec<f32>,
     mono: Vec<f32>,
     heard: async_channel::Sender<Vec<i16>>,
+    voice: VoiceProcessing,
     meter: Arc<Meter>,
 }
 
@@ -279,15 +286,18 @@ impl Microphone {
         config: StreamConfig,
         format: CallFormat,
         heard: async_channel::Sender<Vec<i16>>,
+        voice: VoiceProcessing,
         meter: Arc<Meter>,
     ) -> Self {
         Self {
             channels: usize::from(config.channels).max(1),
             resampler: Resampler::new(config.sample_rate, format.rate),
             frame: format.frame,
+            raw: Vec::with_capacity(format.frame),
             pending: Vec::with_capacity(format.frame * 2),
             mono: Vec::new(),
             heard,
+            voice,
             meter,
         }
     }
@@ -304,7 +314,13 @@ impl Microphone {
                 .chunks(self.channels)
                 .map(|frame| frame.iter().sum::<f32>() / channels),
         );
-        self.resampler.push(&self.mono, &mut self.pending);
+        self.resampler.push(&self.mono, &mut self.raw);
+        let piece = self.voice.piece();
+        let whole = self.raw.len() / piece * piece;
+        for chunk in self.raw[..whole].chunks_exact_mut(piece) {
+            self.voice.clean(chunk);
+        }
+        self.pending.extend(self.raw.drain(..whole));
         while self.pending.len() >= self.frame {
             let frame: Vec<i16> = self.pending.drain(..self.frame).map(to_i16).collect();
             // A full channel means the call is behind: this frame is lost,
@@ -332,6 +348,7 @@ struct Speaker {
     most: usize,
     /// Whether the cushion is full and sound is playing.
     playing: bool,
+    voice: VoiceProcessing,
     meter: Arc<Meter>,
 }
 
@@ -346,6 +363,7 @@ impl Speaker {
         config: StreamConfig,
         format: CallFormat,
         said: async_channel::Receiver<Vec<i16>>,
+        voice: VoiceProcessing,
         meter: Arc<Meter>,
     ) -> Self {
         let rate = config.sample_rate as f32;
@@ -358,6 +376,7 @@ impl Speaker {
             cushion: (rate * CUSHION_SECONDS) as usize,
             most: (rate * MOST_SECONDS) as usize,
             playing: false,
+            voice,
             meter,
         }
     }
@@ -370,6 +389,9 @@ impl Speaker {
             }
             self.converted.clear();
             let samples: Vec<f32> = frame.iter().copied().map(to_f32).collect();
+            // What plays now comes back through the microphone a moment
+            // later: the cleaning finds it there by this.
+            self.voice.played(&samples);
             self.resampler.push(&samples, &mut self.converted);
             self.queue.extend(&self.converted);
         }
@@ -414,7 +436,7 @@ mod tests {
 
     use cpal::StreamConfig;
 
-    use super::{CallFormat, Microphone, Speaker};
+    use super::{CallFormat, Microphone, Speaker, VoiceProcessing};
 
     const FORMAT: CallFormat = CallFormat {
         rate: 16_000,
@@ -432,7 +454,13 @@ mod tests {
     #[test]
     fn the_microphone_sends_whole_frames_at_the_calls_rate() {
         let (heard, frames) = async_channel::unbounded();
-        let mut microphone = Microphone::new(card(48_000, 2), FORMAT, heard, Arc::default());
+        let mut microphone = Microphone::new(
+            card(48_000, 2),
+            FORMAT,
+            heard,
+            VoiceProcessing::new(FORMAT.rate),
+            Arc::default(),
+        );
         // One second of stereo sound at 48 kHz, in the card's small pieces.
         for _ in 0..100 {
             microphone.hear(&[0.5; 960]);
@@ -449,7 +477,13 @@ mod tests {
     #[test]
     fn the_speaker_waits_for_its_cushion_then_plays_on_every_channel() {
         let (said, frames) = async_channel::unbounded();
-        let mut speaker = Speaker::new(card(16_000, 2), FORMAT, frames, Arc::default());
+        let mut speaker = Speaker::new(
+            card(16_000, 2),
+            FORMAT,
+            frames,
+            VoiceProcessing::new(FORMAT.rate),
+            Arc::default(),
+        );
         let mut output = vec![1.0; 320];
         said.try_send(vec![i16::MAX / 2; 960]).ok();
         speaker.fill(&mut output);
@@ -465,7 +499,13 @@ mod tests {
     #[test]
     fn a_speaker_that_falls_behind_drops_the_oldest_sound() {
         let (said, frames) = async_channel::unbounded();
-        let mut speaker = Speaker::new(card(16_000, 1), FORMAT, frames, Arc::default());
+        let mut speaker = Speaker::new(
+            card(16_000, 1),
+            FORMAT,
+            frames,
+            VoiceProcessing::new(FORMAT.rate),
+            Arc::default(),
+        );
         for _ in 0..20 {
             said.try_send(vec![0; 960]).ok();
         }
