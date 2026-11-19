@@ -60,6 +60,8 @@ pub(crate) enum Change {
     Removed { poster: ChatId, id: String },
     /// This account saw it.
     Seen { poster: ChatId, id: String },
+    /// This account saw it on another device, which names it by id alone.
+    SeenElsewhere { id: String },
     /// Its photo or video was downloaded to `file`.
     Downloaded {
         poster: ChatId,
@@ -112,6 +114,9 @@ impl StatusStore {
                         "UPDATE posts SET seen = 1 WHERE poster = ?1 AND id = ?2",
                         params![poster.as_str(), id],
                     )?;
+                }
+                Change::SeenElsewhere { id } => {
+                    tx.execute("UPDATE posts SET seen = 1 WHERE id = ?1", params![id])?;
                 }
                 Change::Downloaded { poster, id, file } => {
                     tx.execute(

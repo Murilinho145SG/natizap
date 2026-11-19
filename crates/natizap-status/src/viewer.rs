@@ -507,10 +507,27 @@ fn text_post(post: &Post) -> impl IntoElement {
         .flex()
         .items_center()
         .justify_center()
-        .text_center()
-        .text_size(px(30.0))
-        .font_weight(FontWeight::MEDIUM)
-        .child(post.text.clone().unwrap_or_default())
+        .overflow_hidden()
+        .child(
+            // Its own width, so long words and links wrap instead of
+            // running past the colour.
+            div()
+                .w_full()
+                .text_center()
+                .text_size(px(text_size(post.text.as_deref().unwrap_or_default())))
+                .font_weight(FontWeight::MEDIUM)
+                .child(post.text.clone().unwrap_or_default()),
+        )
+}
+
+/// Smaller type for longer text, as the phone sets it, so it fits.
+fn text_size(text: &str) -> f32 {
+    match text.chars().count() {
+        0..=60 => 30.0,
+        61..=160 => 24.0,
+        161..=320 => 19.0,
+        _ => 16.0,
+    }
 }
 
 /// WhatsApp's 0xAARRGGBB as GPUI's 0xRRGGBBAA.
