@@ -46,7 +46,8 @@ pub use content::{Card, Content, ContentKind, Extra, Forwarding, Poll, Quote};
 pub use group::{GroupInfo, Member, Role};
 pub use link::LinkPreview;
 pub use live_call::{
-    CallEnd, CallProgress, LiveCall, Ring, RingChange, Rings, VOICE_FRAME, VOICE_RATE, Voice,
+    CallEnd, CallProgress, LiveCall, MediaCounts, Ring, RingChange, Rings, VOICE_FRAME, VOICE_RATE,
+    Voice,
 };
 pub use markup::{LinkKind, Mark, Marked};
 pub use media::{HdThumbnail, Media, MediaOrigin, Received};

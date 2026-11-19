@@ -167,6 +167,13 @@ impl CallAudio {
 }
 
 impl CallAudio {
+    /// How many frames from the other end held a voice, not silence, so
+    /// far: what changes between two looks is whether they spoke.
+    #[must_use]
+    pub fn voiced_frames(&self) -> u64 {
+        self.meter.voiced.load(Ordering::Relaxed)
+    }
+
     /// Moves the call to `devices`' microphone and speaker; the call goes on
     /// as it was.
     ///

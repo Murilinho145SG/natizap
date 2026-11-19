@@ -171,6 +171,16 @@ pub enum CallEnd {
     Failed(String),
 }
 
+/// What a call's media counted since it started.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct MediaCounts {
+    /// Frames of the other end's sound that arrived and played.
+    pub decoded: u32,
+    /// Frames that never arrived, or late, and were made up to cover the
+    /// gap.
+    pub concealed: u32,
+}
+
 /// A call natizap takes part in. Clones control the same call.
 #[derive(Clone)]
 pub struct LiveCall {
@@ -204,6 +214,17 @@ impl LiveCall {
                 .await
                 .map_err(|error| ActionError::refused(&error))
         })
+    }
+
+    /// What the call's media has counted so far, to tell how well the
+    /// connection carries it.
+    #[must_use]
+    pub fn media_counts(&self) -> MediaCounts {
+        let stats = self.handle.media_stats();
+        MediaCounts {
+            decoded: stats.audio_frames_decoded,
+            concealed: stats.audio_frames_concealed,
+        }
     }
 
     /// How the call goes, step by step, ending with
