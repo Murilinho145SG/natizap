@@ -4,6 +4,7 @@
 use gpui::prelude::*;
 use gpui::{Context, px};
 use natizap_contacts::{OwnProfile, OwnProfileClosed};
+use natizap_messages::ChatSettings;
 use natizap_notifications::{NotificationSettings, SettingsClosed};
 use natizap_ui::{Button, ButtonVariant, Icon, RAIL_AVATAR, Rail, avatar, rail_avatar};
 
@@ -86,6 +87,11 @@ impl Root {
     fn open_settings(&mut self, cx: &mut Context<Self>) {
         let notifier = self.notifier.clone();
         let settings = cx.new(|cx| NotificationSettings::new(notifier, cx));
+        let messages = self.messages.clone();
+        let chat_settings = cx.new(|cx| ChatSettings::new(messages, cx));
+        settings.update(cx, |settings, cx| {
+            settings.add_section(chat_settings.into(), cx);
+        });
         cx.subscribe(&settings, |root, _, _: &SettingsClosed, cx| {
             root.settings = None;
             cx.notify();

@@ -1,19 +1,29 @@
 //! Whether the person in the open chat is online, typing or recording, and
 //! when they were last seen, as the header says it.
 
+use std::time::{Duration, Instant};
+
 use chrono::{DateTime, Datelike as _, Local, TimeZone as _};
 use natizap_protocol::ChatId;
 use natizap_protocol::whatsapp_rust::prelude::Event;
 use natizap_protocol::whatsapp_rust::types::presence::{ChatPresence, ChatPresenceMedia};
 
-/// What the person in a one-to-one chat is doing.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+/// What the person in a one-to-one chat is doing, and who is typing or
+/// recording in the open chat, groups included.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct Presence {
     pub(crate) online: bool,
     /// When they were last online, in Unix seconds, if they share it.
     pub(crate) last_seen: Option<i64>,
     pub(crate) activity: Option<Activity>,
+    /// Who is typing or recording, since when they last said so.
+    typers: Vec<(ChatId, Activity, Instant)>,
 }
+
+/// How long someone counts as typing without saying so again: phones
+/// repeat it every few seconds, and a lost "stopped" must not leave them
+/// typing for good.
+const STILL_TYPING: Duration = Duration::from_secs(25);
 
 /// What someone is doing in the chat right now.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -47,12 +57,26 @@ impl Presence {
                     (ChatPresence::Composing, ChatPresenceMedia::Text) => Some(Activity::Typing),
                     (ChatPresence::Paused, _) => None,
                 };
+                // In a group the one typing is the sender; alone, the chat.
+                let who = ChatId::new(&update.source.sender.to_non_ad().to_string());
+                self.typers.retain(|(typer, _, _)| *typer != who);
+                if let Some(activity) = self.activity {
+                    self.typers.push((who, activity, Instant::now()));
+                }
                 // Typing shows they are here.
                 self.online |= self.activity.is_some();
                 true
             }
             _ => false,
         }
+    }
+
+    /// Who is typing or recording now, in the order they started.
+    pub(crate) fn typers(&self) -> impl Iterator<Item = (&ChatId, Activity)> {
+        self.typers
+            .iter()
+            .filter(|(_, _, since)| since.elapsed() < STILL_TYPING)
+            .map(|(who, activity, _)| (who, *activity))
     }
 
     /// The header's line: "typing…", "online", or when they were last seen.

@@ -24,11 +24,14 @@ mod actions;
 mod backlog;
 mod downloads;
 mod sending;
+mod typing;
 mod uploads;
 mod worker;
 
 pub use backlog::StoredStatus;
 use downloads::{Background, Failed, Then};
+pub(crate) use typing::Typer;
+pub use typing::TypingLook;
 
 use worker::sync;
 
@@ -138,6 +141,10 @@ pub struct MessageLog {
     group: Option<GroupInfo>,
     /// What people are called, by address.
     names: Arc<HashMap<ChatId, PersonName>>,
+    /// How the conversation shows who is typing.
+    typing_look: TypingLook,
+    /// The chat settings file.
+    settings_path: PathBuf,
     /// Whether the person in the open one-to-one chat is around.
     seen: Presence,
     _tasks: [Task<()>; 5],
@@ -178,6 +185,7 @@ impl MessageLog {
         protocol: Entity<Protocol>,
         store_path: PathBuf,
         media_dir: PathBuf,
+        settings_path: PathBuf,
         cx: &mut Context<Self>,
     ) -> Self {
         let (inputs_tx, inputs) = async_channel::unbounded();
@@ -244,6 +252,8 @@ impl MessageLog {
             pinned: None,
             group: None,
             names: Arc::default(),
+            typing_look: TypingLook::read(&settings_path),
+            settings_path,
             seen: Presence::default(),
             _tasks: [forward, sync, apply, seen, retry],
         }

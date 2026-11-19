@@ -3,8 +3,8 @@
 
 use gpui::prelude::*;
 use gpui::{
-    App, Context, Div, Entity, EventEmitter, FontWeight, SharedString, Stateful, Window, div, px,
-    rgb, svg,
+    AnyView, App, Context, Div, Entity, EventEmitter, FontWeight, SharedString, Stateful, Window,
+    div, px, rgb, svg,
 };
 use natizap_ui::theme::{ACCENT, LINE, MUTED, PANEL, RAISED, TEXT, glass};
 use natizap_ui::{Button, ButtonVariant, Icon, Switch, dialog, separator};
@@ -19,6 +19,8 @@ pub struct SettingsClosed;
 #[derive(Debug)]
 pub struct NotificationSettings {
     notifier: Entity<Notifier>,
+    /// Other features' settings, shown under these.
+    more: Vec<AnyView>,
 }
 
 impl EventEmitter<SettingsClosed> for NotificationSettings {}
@@ -27,7 +29,17 @@ impl NotificationSettings {
     /// Shows and changes `notifier`'s preferences.
     pub fn new(notifier: Entity<Notifier>, cx: &mut Context<Self>) -> Self {
         cx.observe(&notifier, |_, _, cx| cx.notify()).detach();
-        Self { notifier }
+        Self {
+            notifier,
+            more: Vec::new(),
+        }
+    }
+
+    /// Shows `section`, another feature's settings, under these, so the
+    /// window holds every setting.
+    pub fn add_section(&mut self, section: AnyView, cx: &mut Context<Self>) {
+        self.more.push(section);
+        cx.notify();
     }
 
     /// Applies `change` to the preferences.
@@ -244,7 +256,7 @@ impl Render for NotificationSettings {
                             .flex_1()
                             .text_size(px(16.0))
                             .font_weight(FontWeight::SEMIBOLD)
-                            .child("Notifications"),
+                            .child("Settings"),
                     )
                     .child(
                         Button::new("close-notification-settings")
@@ -271,7 +283,14 @@ impl Render for NotificationSettings {
                     preferences.previews,
                     cx,
                 ))
-            });
+            })
+            .children(self.more.iter().map(|section| {
+                div()
+                    .flex()
+                    .flex_col()
+                    .child(div().px_5().py_1().child(separator()))
+                    .child(section.clone())
+            }));
         let settings = cx.weak_entity();
         dialog(window, panel, move |_, cx| {
             let _ = settings.update(cx, |_, cx| cx.emit(SettingsClosed));

@@ -27,6 +27,7 @@ mod quote;
 mod rich_text;
 mod search_view;
 mod send_preview;
+mod settings_view;
 mod store;
 mod sync;
 mod text_pill;
@@ -37,9 +38,10 @@ mod voice;
 mod voice_view;
 mod zoom;
 
-pub use log::{ForwardRequested, MessageLog, MessageSent, OpenChat, StoredStatus};
+pub use log::{ForwardRequested, MessageLog, MessageSent, OpenChat, StoredStatus, TypingLook};
 pub use overview::{ChatOverview, MediaTile, TileImage};
 pub use search_view::{MessageSearch, SearchHitOpened};
+pub use settings_view::ChatSettings;
 pub use view::{
     ChatClosed, ChatRequested, ContactsRequested, ConversationView, MuteRequested, PlayRequested,
     ProfileRequested, StickerFavoriteToggled,

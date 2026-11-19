@@ -151,6 +151,7 @@ fn features(data_dir: &Path, executable: &Path, cx: &mut App) -> Features {
             protocol.clone(),
             data_dir.join("messages.db"),
             data_dir.join("media"),
+            data_dir.join("conversation.conf"),
             cx,
         )
     });

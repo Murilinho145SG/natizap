@@ -40,6 +40,7 @@ mod saving;
 mod scrolling;
 mod stickers;
 mod tray;
+mod typing;
 mod viewer;
 mod voice_notes;
 mod votes;
@@ -528,7 +529,12 @@ impl Render for ConversationView {
             .when(self.sending.is_none(), |pane| {
                 pane.children(pinned.map(|pinned| self.pinned_bar(pinned, cx)))
                     .child(messages)
-                    .child(self.composer(window, cx))
+                    .child(
+                        div()
+                            .relative()
+                            .child(self.composer(window, cx))
+                            .children(self.typing_note(cx)),
+                    )
             })
             // Only while a drag is on: the zone animates, and an animation
             // redraws every frame.
