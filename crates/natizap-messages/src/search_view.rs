@@ -12,7 +12,7 @@ use gpui::{
     UniformListScrollHandle, Window, div, px, rgb, uniform_list,
 };
 use natizap_protocol::{ChatId, Marked};
-use natizap_ui::theme::{ACCENT, HOVER, MUTED, TEXT};
+use natizap_ui::theme::ActiveTheme as _;
 use natizap_ui::{Button, ButtonVariant, scrollbar};
 
 use crate::log::MessageLog;
@@ -140,6 +140,7 @@ impl MessageSearch {
 
 impl Render for MessageSearch {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = *cx.theme();
         let status = match (self.searched, self.hits.len()) {
             (false, _) => "Searching…".to_owned(),
             (true, 0) => "No messages".to_owned(),
@@ -169,13 +170,13 @@ impl Render for MessageSearch {
                             .flex_1()
                             .text_size(px(13.0))
                             .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(rgb(ACCENT))
+                            .text_color(rgb(theme.accent))
                             .child("Messages"),
                     )
                     .child(
                         div()
                             .text_size(px(12.5))
-                            .text_color(rgb(MUTED))
+                            .text_color(rgb(theme.muted))
                             .child(status),
                     )
                     .child(
@@ -271,12 +272,13 @@ impl HitRow {
     }
 
     fn render(&self, cx: &mut Context<MessageSearch>) -> impl IntoElement + use<> {
+        let theme = *cx.theme();
         let opened = self.opened.clone();
         let highlights = self.found.iter().map(|range| {
             (
                 range.clone(),
                 HighlightStyle {
-                    color: Some(rgb(TEXT).into()),
+                    color: Some(rgb(theme.text).into()),
                     font_weight: Some(FontWeight::BOLD),
                     ..HighlightStyle::default()
                 },
@@ -295,7 +297,7 @@ impl HitRow {
                 .gap_0p5()
                 .rounded_lg()
                 .cursor_pointer()
-                .hover(|row| row.bg(gpui::rgba(HOVER)))
+                .hover(|row| row.bg(gpui::rgba(theme.hover)))
                 .on_click(cx.listener(move |_, _, _, cx| cx.emit(opened.clone())))
                 .child(
                     div()
@@ -314,7 +316,7 @@ impl HitRow {
                             div()
                                 .flex_none()
                                 .text_size(px(12.0))
-                                .text_color(rgb(MUTED))
+                                .text_color(rgb(theme.muted))
                                 .child(self.when.clone()),
                         ),
                 )
@@ -323,7 +325,7 @@ impl HitRow {
                         .flex()
                         .min_w_0()
                         .text_size(px(13.5))
-                        .text_color(rgb(MUTED))
+                        .text_color(rgb(theme.muted))
                         .children(
                             self.by
                                 .clone()

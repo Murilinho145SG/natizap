@@ -11,7 +11,7 @@ use gpui::{
 };
 
 use crate::input::TextInput;
-use crate::theme::{THUMB, THUMB_ACTIVE};
+use crate::theme::ActiveTheme as _;
 
 /// Width the bar takes over the list's edge.
 const WIDTH: f32 = 10.0;
@@ -136,6 +136,7 @@ pub fn scrollbar(
     window: &mut Window,
     cx: &mut App,
 ) -> Canvas<Hitbox> {
+    let theme = *cx.theme();
     let source: ScrollSource = source.into();
     // Where in the thumb it was grabbed, while it is dragged.
     let grab: Entity<Cell<Option<Pixels>>> =
@@ -158,7 +159,11 @@ pub fn scrollbar(
                     size(width, thumb),
                 ),
                 width / 2.0,
-                rgba(if active { THUMB_ACTIVE } else { THUMB }),
+                rgba(if active {
+                    theme.thumb_active
+                } else {
+                    theme.thumb
+                }),
                 px(0.0),
                 gpui::transparent_black(),
                 gpui::BorderStyle::default(),

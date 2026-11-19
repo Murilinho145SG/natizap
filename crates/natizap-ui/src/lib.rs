@@ -24,7 +24,7 @@ mod text_boundary;
 pub mod theme;
 
 pub use assets::{Assets, Icon, load_fonts};
-pub use avatar::{avatar, name_color, status_ring};
+pub use avatar::{avatar, name_color, name_tint, status_ring};
 pub use components::alert::{Alert, AlertTone};
 pub use components::alert_dialog::AlertDialog;
 pub use components::badge::{BadgeTone, badge, count_label, verified_seal};

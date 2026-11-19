@@ -5,19 +5,17 @@ use std::ops::Range;
 use gpui::prelude::*;
 use gpui::{Div, FontStyle, HighlightStyle, SharedString, StyledText, div, px, rgb};
 
-use crate::theme::{
-    CODE_CALL, CODE_KEYWORD, CODE_NUMBER, CODE_STRING, CODE_TYPE, DEEP, LINE, MONO_FONT, MUTED,
-};
+use crate::theme::{MONO_FONT, Theme};
 
 /// `code`, monospaced and colored. Messages rarely say which language they
 /// hold, so the coloring reads what most languages share rather than one
 /// grammar.
 #[must_use]
-pub fn code_block(code: impl Into<SharedString>) -> Div {
+pub fn code_block(code: impl Into<SharedString>, theme: Theme) -> Div {
     let code = code.into();
     let highlights: Vec<(Range<usize>, HighlightStyle)> = highlight(&code)
         .into_iter()
-        .map(|(range, token)| (range, token.style()))
+        .map(|(range, token)| (range, token.style(theme)))
         .collect();
     div()
         .font_family(MONO_FONT)
@@ -26,9 +24,9 @@ pub fn code_block(code: impl Into<SharedString>) -> Div {
         .px(px(10.0))
         .py(px(8.0))
         .rounded(px(8.0))
-        .bg(rgb(DEEP))
+        .bg(rgb(theme.deep))
         .border_1()
-        .border_color(rgb(LINE))
+        .border_color(rgb(theme.line))
         .child(StyledText::new(code).with_highlights(highlights))
 }
 
@@ -43,14 +41,14 @@ enum Token {
 }
 
 impl Token {
-    fn style(self) -> HighlightStyle {
+    fn style(self, theme: Theme) -> HighlightStyle {
         let color = match self {
-            Self::Comment => MUTED,
-            Self::Quoted => CODE_STRING,
-            Self::Number => CODE_NUMBER,
-            Self::Keyword => CODE_KEYWORD,
-            Self::Type => CODE_TYPE,
-            Self::Call => CODE_CALL,
+            Self::Comment => theme.muted,
+            Self::Quoted => theme.code_string,
+            Self::Number => theme.code_number,
+            Self::Keyword => theme.code_keyword,
+            Self::Type => theme.code_type,
+            Self::Call => theme.code_call,
         };
         HighlightStyle {
             color: Some(rgb(color).into()),

@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use gpui::prelude::*;
 use gpui::{App, ClickEvent, Context, Div, FontWeight, Stateful, Window, div, px, rgb};
-use natizap_ui::theme::{LINE, MUTED, PANEL, RAISED};
+use natizap_ui::theme::ActiveTheme as _;
 use natizap_ui::{Button, ButtonVariant, Icon, Menu, avatar, verified_seal};
 
 use super::{ConversationView, ProfileRequested};
@@ -19,6 +19,7 @@ pub(super) fn header(
     presence: Option<String>,
     cx: &mut Context<ConversationView>,
 ) -> Stateful<Div> {
+    let theme = *cx.theme();
     let subtitle = if chat.id.is_group() {
         Some(members.unwrap_or_else(|| "Group".to_owned()))
     } else {
@@ -32,7 +33,7 @@ pub(super) fn header(
         .id("chat-header")
         .cursor_pointer()
         // The whole header opens the profile; lighting it up says so.
-        .hover(|header| header.bg(rgb(RAISED)))
+        .hover(|header| header.bg(rgb(theme.raised)))
         .on_click(cx.listener(|this, _, _, cx| this.request_profile(cx)))
         .h(px(60.0))
         .flex_none()
@@ -40,9 +41,9 @@ pub(super) fn header(
         .items_center()
         .gap_3()
         .px_4()
-        .bg(rgb(PANEL))
+        .bg(rgb(theme.panel))
         .border_b_1()
-        .border_color(rgb(LINE))
+        .border_color(rgb(theme.line))
         .child(avatar(chat.id.as_str(), &chat.title, picture, px(38.0)))
         .child(
             div()
@@ -60,13 +61,15 @@ pub(super) fn header(
                         // monochrome even with the emoji font as fallback.
                         .font_weight(FontWeight::MEDIUM)
                         .child(div().min_w_0().truncate().child(chat.title.clone()))
-                        .when(chat.verified, |title| title.child(verified_seal(16.0))),
+                        .when(chat.verified, |title| {
+                            title.child(verified_seal(16.0, theme))
+                        }),
                 )
                 .children(subtitle.map(|subtitle| {
                     div()
                         .truncate()
                         .text_size(px(12.5))
-                        .text_color(rgb(MUTED))
+                        .text_color(rgb(theme.muted))
                         .child(subtitle)
                 })),
         )

@@ -8,7 +8,7 @@ use gpui::{App, ClickEvent, FontWeight, SharedString, Window, div, px, rgb};
 
 use crate::components::button::{Button, ButtonVariant};
 use crate::components::dialog::dialog;
-use crate::theme::{MUTED, PANEL, TEXT, glass};
+use crate::theme::ActiveTheme as _;
 
 type Handler = Rc<dyn Fn(&mut Window, &mut App)>;
 
@@ -66,7 +66,8 @@ impl AlertDialog {
 }
 
 impl RenderOnce for AlertDialog {
-    fn render(self, window: &mut Window, _: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let theme = *cx.theme();
         let dismiss = Rc::clone(&self.on_dismiss);
         let panel = div()
             .id("alert-dialog")
@@ -76,20 +77,22 @@ impl RenderOnce for AlertDialog {
             .flex_col()
             .gap_2()
             .rounded_xl()
-            .bg(rgb(PANEL))
-            .map(glass)
+            .bg(rgb(theme.panel))
+            .map(|surface| theme.glass(surface))
             .occlude()
             .child(
                 div()
                     .text_size(px(16.0))
                     .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(rgb(TEXT))
+                    .text_color(rgb(theme.text))
                     .child(self.title),
             )
-            .children(
-                self.description
-                    .map(|text| div().text_size(px(14.0)).text_color(rgb(MUTED)).child(text)),
-            )
+            .children(self.description.map(|text| {
+                div()
+                    .text_size(px(14.0))
+                    .text_color(rgb(theme.muted))
+                    .child(text)
+            }))
             .child(
                 div()
                     .pt_3()
@@ -106,6 +109,6 @@ impl RenderOnce for AlertDialog {
                         },
                     )),
             );
-        dialog(window, panel, move |window, cx| dismiss(window, cx))
+        dialog(window, panel, move |window, cx| dismiss(window, cx), theme)
     }
 }

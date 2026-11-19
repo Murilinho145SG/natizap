@@ -13,7 +13,7 @@ use natizap_protocol::{Business, ChatId, GroupInfo, PersonName, Profile, Protoco
 use crate::business_view::{business_fields, field};
 use crate::hours;
 use crate::sections::{ChatSettings, ChatSummary, DisappearingChosen, MuteToggled};
-use natizap_ui::theme::{ALERT, LINE, MINT, MUTED, PANEL, TEXT};
+use natizap_ui::theme::{ActiveTheme as _, Theme};
 use natizap_ui::{Button, ButtonVariant, Icon, avatar, dialog, separator, skeleton, verified_seal};
 
 /// Size of the picture at the top of the panel.
@@ -175,15 +175,16 @@ impl EventEmitter<DisappearingChosen> for ProfilePanel {}
 
 impl Render for ProfilePanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = *cx.theme();
         div()
             .id("profile-panel")
             .size_full()
             .flex()
             .flex_col()
-            .bg(rgb(PANEL))
+            .bg(rgb(theme.panel))
             .border_l_1()
-            .border_color(rgb(LINE))
-            .text_color(rgb(TEXT))
+            .border_color(rgb(theme.line))
+            .text_color(rgb(theme.text))
             .child(self.title_bar(cx))
             .child(
                 div()
@@ -212,16 +213,16 @@ impl Render for ProfilePanel {
                             .pb_8()
                             .when(self.cover.is_none(), Styled::pt_8)
                             .child(self.picture(cx))
-                            .child(self.identity())
+                            .child(self.identity(theme))
                             .children(self.message_button(cx))
-                            .child(div().w_full().py_4().child(separator()))
+                            .child(div().w_full().py_4().child(separator(theme)))
                             // Without details, a separator under them would
                             // leave an empty band between two lines.
-                            .children(self.details().map(|details| {
+                            .children(self.details(theme).map(|details| {
                                 div()
                                     .w_full()
                                     .child(details)
-                                    .child(div().w_full().pt_4().pb_2().child(separator()))
+                                    .child(div().w_full().pt_4().pb_2().child(separator(theme)))
                             }))
                             .child(self.sections(cx))
                             .children(self.group.clone().map(|group| self.members(&group, cx))),
@@ -247,6 +248,7 @@ impl Render for ProfilePanel {
                                 cx.notify();
                             });
                         },
+                        theme,
                     )
                 }))
             })
@@ -255,6 +257,7 @@ impl Render for ProfilePanel {
 
 impl ProfilePanel {
     fn title_bar(&self, cx: &mut Context<Self>) -> Div {
+        let theme = *cx.theme();
         let heading = if self.chat.is_group() {
             "Group info"
         } else if self.business().is_some() {
@@ -270,7 +273,7 @@ impl ProfilePanel {
             .gap_3()
             .px_4()
             .border_b_1()
-            .border_color(rgb(LINE))
+            .border_color(rgb(theme.line))
             .child(
                 Button::new("close-profile")
                     .icon(Icon::Close)
@@ -289,6 +292,7 @@ impl ProfilePanel {
     /// The picture, ringed and overlapping the banner when there is one;
     /// clicking it shows it full size.
     fn picture(&self, cx: &mut Context<Self>) -> Stateful<Div> {
+        let theme = *cx.theme();
         let size = if self.cover.is_some() {
             COVERED_PICTURE
         } else {
@@ -307,7 +311,9 @@ impl ProfilePanel {
             .id("profile-picture")
             .rounded_full()
             .when(self.cover.is_some(), |ring| {
-                ring.mt(px(-size / 2.0)).border_4().border_color(rgb(PANEL))
+                ring.mt(px(-size / 2.0))
+                    .border_4()
+                    .border_color(rgb(theme.panel))
             })
             .when(self.picture.is_some(), |ring| {
                 ring.cursor_pointer()
@@ -339,7 +345,7 @@ impl ProfilePanel {
         )
     }
 
-    fn identity(&self) -> Div {
+    fn identity(&self, theme: Theme) -> Div {
         let business = self.business();
         // A business shows the name WhatsApp verified, as the phone does.
         let mut name: String = business
@@ -368,12 +374,12 @@ impl ProfilePanel {
                     .items_center()
                     .gap_2()
                     .child(name)
-                    .when(verified, |name| name.child(verified_seal(20.0))),
+                    .when(verified, |name| name.child(verified_seal(20.0, theme))),
             )
             .children(self.chat.phone_number().map(|phone| {
                 div()
                     .text_size(px(15.0))
-                    .text_color(rgb(MUTED))
+                    .text_color(rgb(theme.muted))
                     .child(phone)
             }))
             .children(self.group.as_ref().map(|group| {
@@ -384,7 +390,7 @@ impl ProfilePanel {
                 };
                 div()
                     .text_size(px(15.0))
-                    .text_color(rgb(MUTED))
+                    .text_color(rgb(theme.muted))
                     .child(format!("{kind} · {} members", group.members.len()))
             }))
             .children(
@@ -393,16 +399,16 @@ impl ProfilePanel {
                     .map(|category| {
                         div()
                             .text_size(px(13.5))
-                            .text_color(rgb(MUTED))
+                            .text_color(rgb(theme.muted))
                             .child(category)
                     }),
             )
             .children(today.map(|today| {
                 let status = today.open.map(|open| {
                     let (label, color) = if open {
-                        ("Open now", MINT)
+                        ("Open now", theme.mint)
                     } else {
-                        ("Closed now", ALERT)
+                        ("Closed now", theme.alert)
                     };
                     div().text_color(rgb(color)).child(label)
                 });
@@ -412,7 +418,7 @@ impl ProfilePanel {
                     .gap_1p5()
                     .text_size(px(13.5))
                     .children(status)
-                    .child(div().text_color(rgb(MUTED)).child(today.hours))
+                    .child(div().text_color(rgb(theme.muted)).child(today.hours))
             }))
     }
 }
@@ -421,10 +427,14 @@ impl ProfilePanel {
     /// The about line and a business's details, or a group's description,
     /// with placeholders while they load; `None` when there are none, such
     /// as when someone hides their about line.
-    fn details(&self) -> Option<Div> {
+    fn details(&self, theme: Theme) -> Option<Div> {
         if let Some(group) = &self.group {
             let description = group.description.clone()?;
-            return Some(div().w_full().child(field("Description", description)));
+            return Some(
+                div()
+                    .w_full()
+                    .child(field("Description", description, theme)),
+            );
         }
         let Some(profile) = &self.profile.as_ref().filter(|_| !self.chat.is_group()) else {
             return Some(
@@ -436,18 +446,23 @@ impl ProfilePanel {
                     .child(skeleton(
                         "about-label",
                         div().w(px(60.0)).h(px(10.0)).rounded_md(),
+                        theme,
                     ))
                     .child(skeleton(
                         "about-text",
                         div().w_full().h(px(14.0)).rounded_md(),
+                        theme,
                     )),
             );
         };
-        let about = profile.about.clone().map(|about| field("About", about));
+        let about = profile
+            .about
+            .clone()
+            .map(|about| field("About", about, theme));
         let business = profile
             .business
             .as_ref()
-            .map_or_else(Vec::new, business_fields);
+            .map_or_else(Vec::new, |business| business_fields(business, theme));
         let shown: Vec<Div> = about.into_iter().chain(business).collect();
         (!shown.is_empty()).then(|| div().w_full().flex().flex_col().gap_4().children(shown))
     }

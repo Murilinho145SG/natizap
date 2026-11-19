@@ -4,7 +4,7 @@
 use gpui::prelude::*;
 use gpui::{Context, Div, FontWeight, SharedString, Window, div, px, rgb};
 use natizap_protocol::Extra;
-use natizap_ui::theme::{MUTED, PANEL, TEXT, glass};
+use natizap_ui::theme::{ActiveTheme as _, Theme};
 use natizap_ui::{Button, ButtonVariant, Icon, dialog, separator};
 
 use super::ConversationView;
@@ -25,6 +25,7 @@ impl ConversationView {
         window: &Window,
         cx: &mut Context<Self>,
     ) -> Option<impl IntoElement> {
+        let theme = *cx.theme();
         let id = self.votes_shown.clone()?;
         let bubble = self.bubble(&id, cx)?;
         let (
@@ -42,7 +43,7 @@ impl ConversationView {
             .options
             .iter()
             .zip(&state.chosen_by)
-            .map(|(option, voters)| option_votes(option, voters, &faces));
+            .map(|(option, voters)| option_votes(option, voters, &faces, theme));
         let panel = div()
             .w(px(400.0))
             .max_h(px(560.0))
@@ -51,9 +52,9 @@ impl ConversationView {
             .flex_col()
             .gap_4()
             .rounded_xl()
-            .bg(rgb(PANEL))
-            .map(glass)
-            .text_color(rgb(TEXT))
+            .bg(rgb(theme.panel))
+            .map(|surface| theme.glass(surface))
+            .text_color(rgb(theme.text))
             .occlude()
             .child(
                 div()
@@ -90,12 +91,17 @@ impl ConversationView {
                     .children(options),
             );
         let view = cx.weak_entity();
-        Some(dialog(window, panel, move |_, cx| {
-            let _ = view.update(cx, |this, cx| {
-                this.votes_shown = None;
-                cx.notify();
-            });
-        }))
+        Some(dialog(
+            window,
+            panel,
+            move |_, cx| {
+                let _ = view.update(cx, |this, cx| {
+                    this.votes_shown = None;
+                    cx.notify();
+                });
+            },
+            theme,
+        ))
     }
 
     /// The pictures of `voters`.
@@ -117,7 +123,7 @@ impl ConversationView {
 }
 
 /// One option's votes: its name and count, then who chose it.
-fn option_votes(option: &str, voters: &[Voter], faces: &Faces) -> Div {
+fn option_votes(option: &str, voters: &[Voter], faces: &Faces, theme: Theme) -> Div {
     div()
         .flex()
         .flex_col()
@@ -133,20 +139,23 @@ fn option_votes(option: &str, voters: &[Voter], faces: &Faces) -> Div {
                         .font_weight(FontWeight::MEDIUM)
                         .child(option.to_owned()),
                 )
-                .child(div().text_size(px(12.5)).text_color(rgb(MUTED)).child(
-                    match voters.len() {
-                        1 => "1 vote".to_owned(),
-                        count => format!("{count} votes"),
-                    },
-                )),
+                .child(
+                    div()
+                        .text_size(px(12.5))
+                        .text_color(rgb(theme.muted))
+                        .child(match voters.len() {
+                            1 => "1 vote".to_owned(),
+                            count => format!("{count} votes"),
+                        }),
+                ),
         )
         .children(voters.iter().map(|voter| {
             div()
                 .flex()
                 .items_center()
                 .gap_3()
-                .child(face(voter, faces))
+                .child(face(voter, faces, theme))
                 .child(div().truncate().child(voter.name.clone()))
         }))
-        .child(div().pt_1().child(separator()))
+        .child(div().pt_1().child(separator(theme)))
 }

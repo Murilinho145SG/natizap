@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use gpui::prelude::*;
 use gpui::{Animation, AnimationExt as _, Context, Div, SharedString, div, px, rgb, svg};
-use natizap_ui::theme::{MUTED, PANEL, glass};
+use natizap_ui::theme::{ActiveTheme as _, Theme};
 use natizap_ui::{Icon, avatar};
 
 use super::ConversationView;
@@ -23,6 +23,7 @@ const BREATH: Duration = Duration::from_millis(1200);
 impl ConversationView {
     /// The note of who is typing, while anyone is.
     pub(super) fn typing_note(&mut self, cx: &mut Context<Self>) -> Option<Div> {
+        let theme = *cx.theme();
         let log = self.log.read(cx);
         let typers = log.typers(cx);
         if typers.is_empty() {
@@ -54,8 +55,8 @@ impl ConversationView {
                 .items_center()
                 .gap_2()
                 .rounded_full()
-                .bg(rgb(PANEL))
-                .map(glass)
+                .bg(rgb(theme.panel))
+                .map(|surface| theme.glass(surface))
                 .child(
                     div()
                         .flex()
@@ -65,7 +66,7 @@ impl ConversationView {
                                 div()
                                     .rounded_full()
                                     .border_2()
-                                    .border_color(rgb(PANEL))
+                                    .border_color(rgb(theme.panel))
                                     .when(place > 0, |face| face.ml(px(-FACE / 3.0)))
                                     .child(avatar(
                                         typer.id.as_str(),
@@ -80,11 +81,15 @@ impl ConversationView {
                     note.child(
                         div()
                             .text_size(px(12.5))
-                            .text_color(rgb(MUTED))
+                            .text_color(rgb(theme.muted))
                             .child(names(&typers)),
                     )
                 })
-                .child(if recording { microphone() } else { dots() }),
+                .child(if recording {
+                    microphone(theme)
+                } else {
+                    dots(theme)
+                }),
         )
     }
 }
@@ -100,7 +105,7 @@ fn names(typers: &[Typer]) -> SharedString {
 }
 
 /// Three dots that brighten one after another.
-fn dots() -> Div {
+fn dots(theme: Theme) -> Div {
     div()
         .flex()
         .items_center()
@@ -110,7 +115,7 @@ fn dots() -> Div {
             div()
                 .size(px(5.0))
                 .rounded_full()
-                .bg(rgb(MUTED))
+                .bg(rgb(theme.muted))
                 .with_animation(
                     ("typing-dot", u64::from(place)),
                     Animation::new(BREATH).repeat(),
@@ -125,12 +130,12 @@ fn dots() -> Div {
 }
 
 /// A microphone that pulses while someone records.
-fn microphone() -> Div {
+fn microphone(theme: Theme) -> Div {
     div().child(
         svg()
             .path(Icon::Mic.path())
             .size(px(13.0))
-            .text_color(rgb(MUTED))
+            .text_color(rgb(theme.muted))
             .with_animation(
                 "typing-recording",
                 Animation::new(BREATH).repeat(),

@@ -7,7 +7,7 @@ use gpui::{
 
 use crate::Icon;
 use crate::components::tooltip::Tooltip;
-use crate::theme::{ACCENT, ACCENT_INK, ALERT, LINE, MUTED, RAISED, TEXT};
+use crate::theme::ActiveTheme as _;
 
 /// What a button is for, which sets its colors.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -155,12 +155,13 @@ impl Button {
 }
 
 impl RenderOnce for Button {
-    fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        let theme = *cx.theme();
         let (background, ink, hover) = match self.variant {
-            ButtonVariant::Primary => (Some(ACCENT), ACCENT_INK, None),
-            ButtonVariant::Secondary => (Some(RAISED), TEXT, Some(LINE)),
-            ButtonVariant::Ghost => (None, MUTED, Some(RAISED)),
-            ButtonVariant::Danger => (Some(ALERT), TEXT, None),
+            ButtonVariant::Primary => (Some(theme.accent), theme.accent_ink, None),
+            ButtonVariant::Secondary => (Some(theme.raised), theme.text, Some(theme.line)),
+            ButtonVariant::Ghost => (None, theme.muted, Some(theme.raised)),
+            ButtonVariant::Danger => (Some(theme.alert), theme.text, None),
         };
         let height = self.size.height();
         let icon_only = self.label.is_none();
@@ -185,14 +186,14 @@ impl RenderOnce for Button {
             })
             .when_some(background, |button, background| button.bg(rgb(background)))
             .when_some(hover.filter(|_| self.selected), |button, hover| {
-                button.bg(rgb(hover)).text_color(rgb(TEXT))
+                button.bg(rgb(hover)).text_color(rgb(theme.text))
             })
             .text_color(rgb(ink))
             .font_weight(FontWeight::SEMIBOLD)
             .cursor_pointer()
             .map(|button| match hover {
                 Some(hover) => {
-                    button.hover(move |style| style.bg(rgb(hover)).text_color(rgb(TEXT)))
+                    button.hover(move |style| style.bg(rgb(hover)).text_color(rgb(theme.text)))
                 }
                 None => button.hover(|style| style.opacity(0.9)),
             })

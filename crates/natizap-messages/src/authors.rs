@@ -5,7 +5,8 @@ use std::sync::Arc;
 
 use gpui::SharedString;
 use natizap_protocol::{ChatId, PersonName};
-use natizap_ui::name_color;
+use natizap_ui::name_tint;
+use natizap_ui::theme::Theme;
 
 use crate::message::Message;
 
@@ -22,9 +23,37 @@ pub(crate) struct Author {
     pub(crate) name: SharedString,
     /// Their number beside a chosen name, when known.
     pub(crate) phone: Option<SharedString>,
-    pub(crate) color: u32,
+    pub(crate) color: Tint,
     /// Their role under their name, e.g. "Community admin".
     pub(crate) role: Option<SharedString>,
+}
+
+/// The colour a name is drawn in, chosen while the theme is not at hand
+/// and read from it when drawn.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Tint {
+    /// The accent, for this account.
+    Accent,
+    /// Secondary text, for someone unknown.
+    Muted,
+    /// One of the theme's name tints, by place.
+    Name(usize),
+}
+
+impl Tint {
+    /// The colour `self` is in `theme`.
+    pub(crate) fn of(self, theme: Theme) -> u32 {
+        match self {
+            Self::Accent => theme.accent,
+            Self::Muted => theme.muted,
+            Self::Name(place) => theme.name_tints[place % theme.name_tints.len()],
+        }
+    }
+
+    /// The tint of the person at `seed`.
+    pub(crate) fn person(seed: &str) -> Self {
+        Self::Name(name_tint(seed))
+    }
 }
 
 /// What the group says about its members, beyond each message.
@@ -121,7 +150,7 @@ impl Author {
             profile: phone_address.clone(),
             name: name.into(),
             phone: phone.map(Into::into),
-            color: name_color(sender.as_str()),
+            color: Tint::person(sender.as_str()),
             role: senders
                 .members
                 .community_admins

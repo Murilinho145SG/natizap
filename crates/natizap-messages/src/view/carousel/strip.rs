@@ -5,7 +5,7 @@ use gpui::prelude::*;
 use gpui::{Context, Div, ObjectFit, SharedString, div, img, px, rgb, svg};
 use natizap_protocol::ContentKind;
 use natizap_ui::Icon;
-use natizap_ui::theme::{MUTED, RAISED, TEXT};
+use natizap_ui::theme::ActiveTheme as _;
 
 use crate::carousel::Carousel;
 use crate::view::ConversationView;
@@ -27,6 +27,7 @@ pub(super) fn reveal(carousel: &Carousel) {
 
 /// The strip, empty until the chat's photos and videos are read.
 pub(super) fn strip(carousel: &Carousel, cx: &mut Context<ConversationView>) -> Div {
+    let theme = *cx.theme();
     let shelf = carousel.shelf();
     let tiles = shelf.iter().enumerate().rev().map(|(index, item)| {
         let current = carousel.at() == Some(index);
@@ -46,10 +47,10 @@ pub(super) fn strip(carousel: &Carousel, cx: &mut Context<ConversationView>) -> 
             .justify_center()
             .overflow_hidden()
             .rounded_md()
-            .bg(rgb(RAISED))
+            .bg(rgb(theme.raised))
             .border_2()
             .border_color(if current {
-                rgb(TEXT)
+                rgb(theme.text)
             } else {
                 gpui::transparent_black().into()
             })
@@ -69,7 +70,7 @@ pub(super) fn strip(carousel: &Carousel, cx: &mut Context<ConversationView>) -> 
                 None => svg()
                     .path(if video { Icon::Video } else { Icon::Camera }.path())
                     .size(px(18.0))
-                    .text_color(rgb(MUTED))
+                    .text_color(rgb(theme.muted))
                     .into_any_element(),
             })
             .when(video && shown, |tile| {
@@ -84,7 +85,7 @@ pub(super) fn strip(carousel: &Carousel, cx: &mut Context<ConversationView>) -> 
                             svg()
                                 .path(Icon::Play.path())
                                 .size(px(16.0))
-                                .text_color(rgb(TEXT)),
+                                .text_color(rgb(theme.text)),
                         ),
                 )
             })

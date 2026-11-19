@@ -1,7 +1,7 @@
 use gpui::prelude::*;
 use gpui::{Context, Div, Entity, FontWeight, SharedString, Window, div, px, relative, rgb, svg};
 use natizap_ui::Icon;
-use natizap_ui::theme::{ACCENT, ACCENT_INK, DEEP, DISPLAY_FONT, LINE, MUTED, PANE, TEXT};
+use natizap_ui::theme::{ActiveTheme as _, DISPLAY_FONT, Theme};
 
 use crate::{QrMatrix, Session, SessionState};
 
@@ -27,26 +27,25 @@ impl PairingView {
 
 impl Render for PairingView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = *cx.theme();
         let body = match self.session.read(cx).state() {
-            SessionState::AwaitingPairing(qr) => pairing(qr),
-            SessionState::Starting => notice("Connecting…", "Reaching WhatsApp."),
-            SessionState::Paired => notice("Linked", "Bringing your chats over from your phone…"),
-            SessionState::Connected => notice("Connected", "Opening your chats…"),
+            SessionState::AwaitingPairing(qr) => pairing(qr, theme),
+            SessionState::Starting => notice("Connecting…", "Reaching WhatsApp.", theme),
+            SessionState::Paired => notice("Linked", "Bringing your chats over from your phone…", theme),
+            SessionState::Connected => notice("Connected", "Opening your chats…", theme),
             SessionState::Reconnecting => {
-                notice("Reconnecting…", "The connection dropped. natizap keeps trying.")
+                notice("Reconnecting…", "The connection dropped. natizap keeps trying.", theme)
             }
             SessionState::PairingExpired => notice(
                 "The code expired",
-                "Codes refresh for a few minutes, then stop until you ask for a new one.",
-            )
+                "Codes refresh for a few minutes, then stop until you ask for a new one.", theme)
             .child(Self::restart_button("Show a new code", cx)),
             SessionState::LoggedOut => notice(
                 "This computer was unlinked",
-                "It was removed from Linked devices on your phone. Link it again to keep using natizap.",
-            )
+                "It was removed from Linked devices on your phone. Link it again to keep using natizap.", theme)
             .child(Self::restart_button("Link again", cx)),
             SessionState::Failed(error) => {
-                notice("natizap could not connect", error.to_string())
+                notice("natizap could not connect", error.to_string(), theme)
                     .child(Self::restart_button("Try again", cx))
             }
         };
@@ -56,22 +55,23 @@ impl Render for PairingView {
             .items_center()
             .justify_center()
             .p_8()
-            .bg(rgb(PANE))
-            .text_color(rgb(TEXT))
+            .bg(rgb(theme.pane))
+            .text_color(rgb(theme.text))
             .child(body)
     }
 }
 
 impl PairingView {
     fn restart_button(label: &'static str, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = *cx.theme();
         div()
             .id("restart")
             .mt_2()
             .px_5()
             .py_2p5()
             .rounded_full()
-            .bg(rgb(ACCENT))
-            .text_color(rgb(ACCENT_INK))
+            .bg(rgb(theme.accent))
+            .text_color(rgb(theme.accent_ink))
             .font_weight(FontWeight::SEMIBOLD)
             .cursor_pointer()
             .hover(|style| style.opacity(0.9))
@@ -82,7 +82,7 @@ impl PairingView {
     }
 }
 
-fn notice(title: &'static str, detail: impl Into<SharedString>) -> Div {
+fn notice(title: &'static str, detail: impl Into<SharedString>, theme: Theme) -> Div {
     div()
         .max_w(px(420.0))
         .flex()
@@ -91,7 +91,7 @@ fn notice(title: &'static str, detail: impl Into<SharedString>) -> Div {
         .gap_2()
         .text_center()
         .child(heading(title).text_size(px(24.0)))
-        .child(div().text_color(rgb(MUTED)).child(detail.into()))
+        .child(div().text_color(rgb(theme.muted)).child(detail.into()))
 }
 
 fn heading(text: &'static str) -> Div {
@@ -101,7 +101,7 @@ fn heading(text: &'static str) -> Div {
         .child(text)
 }
 
-fn pairing(qr: &QrMatrix) -> Div {
+fn pairing(qr: &QrMatrix, theme: Theme) -> Div {
     let steps = [
         "Open WhatsApp on your phone",
         "Go to Settings, then Linked devices",
@@ -141,10 +141,10 @@ fn pairing(qr: &QrMatrix) -> Div {
                                         .justify_center()
                                         .rounded_full()
                                         .border_1()
-                                        .border_color(rgb(LINE))
+                                        .border_color(rgb(theme.line))
                                         .text_size(px(13.0))
                                         .font_weight(FontWeight::SEMIBOLD)
-                                        .text_color(rgb(ACCENT))
+                                        .text_color(rgb(theme.accent))
                                         .child((index + 1).to_string()),
                                 )
                                 .child(*step)
@@ -157,24 +157,24 @@ fn pairing(qr: &QrMatrix) -> Div {
                         .gap_2()
                         .pt_2()
                         .text_size(px(13.0))
-                        .text_color(rgb(MUTED))
+                        .text_color(rgb(theme.muted))
                         .child(
                             svg()
                                 .path(Icon::Lock.path())
                                 .size(px(14.0))
-                                .text_color(rgb(MUTED)),
+                                .text_color(rgb(theme.muted)),
                         )
                         .child("Messages stay end-to-end encrypted and are kept on this computer."),
                 ),
         )
-        .child(qr_code(qr))
+        .child(qr_code(qr, theme))
 }
 
 #[expect(
     clippy::cast_precision_loss,
     reason = "QR codes are at most 177 modules wide, exactly representable in f32"
 )]
-fn qr_code(qr: &QrMatrix) -> Div {
+fn qr_code(qr: &QrMatrix, theme: Theme) -> Div {
     let module = px(QR_SIZE / qr.width() as f32);
     div()
         .flex_none()
@@ -184,7 +184,7 @@ fn qr_code(qr: &QrMatrix) -> Div {
         .children(qr.rows().map(|row| {
             div().flex().children(
                 row.iter()
-                    .map(|&dark| div().size(module).when(dark, |m| m.bg(rgb(DEEP)))),
+                    .map(|&dark| div().size(module).when(dark, |m| m.bg(rgb(theme.deep)))),
             )
         }))
 }

@@ -3,7 +3,7 @@
 
 use gpui::prelude::*;
 use gpui::{App, Div, Entity, FontWeight, SharedString, div, px, rgb, svg};
-use natizap_ui::theme::{ACCENT, ACCENT_INK, LINE, MUTED, RAISED, TEXT};
+use natizap_ui::theme::Theme;
 use natizap_ui::{Icon, TextInput};
 
 use crate::list::ChatRow;
@@ -46,7 +46,7 @@ pub(crate) fn narrowed(rows: &[ChatRow], filter: Filter, query: &str) -> Vec<Cha
 }
 
 /// The rounded search field.
-pub(crate) fn search_field(input: &Entity<TextInput>) -> Div {
+pub(crate) fn search_field(input: &Entity<TextInput>, theme: Theme) -> Div {
     div()
         .mx_3()
         .px_3()
@@ -55,14 +55,14 @@ pub(crate) fn search_field(input: &Entity<TextInput>) -> Div {
         .items_center()
         .gap_2()
         .rounded_full()
-        .bg(rgb(RAISED))
+        .bg(rgb(theme.raised))
         .text_size(px(14.0))
         .child(
             svg()
                 .path(Icon::Search.path())
                 .size(px(15.0))
                 .flex_none()
-                .text_color(rgb(MUTED)),
+                .text_color(rgb(theme.muted)),
         )
         .child(div().flex_1().min_w_0().child(input.clone()))
 }
@@ -72,6 +72,7 @@ pub(crate) fn chips(
     chosen: Filter,
     unread: usize,
     on_choose: impl Fn(Filter, &mut App) + Clone + 'static,
+    theme: Theme,
 ) -> Div {
     div()
         .px_3()
@@ -97,13 +98,13 @@ pub(crate) fn chips(
                 .cursor_pointer()
                 .map(|chip| {
                     if on {
-                        chip.bg(rgb(ACCENT))
-                            .border_color(rgb(ACCENT))
-                            .text_color(rgb(ACCENT_INK))
+                        chip.bg(rgb(theme.accent))
+                            .border_color(rgb(theme.accent))
+                            .text_color(rgb(theme.accent_ink))
                     } else {
-                        chip.border_color(rgb(LINE))
-                            .text_color(rgb(MUTED))
-                            .hover(|chip| chip.text_color(rgb(TEXT)))
+                        chip.border_color(rgb(theme.line))
+                            .text_color(rgb(theme.muted))
+                            .hover(|chip| chip.text_color(rgb(theme.text)))
                     }
                 })
                 .on_click(move |_, _, cx| on_choose(filter, cx))

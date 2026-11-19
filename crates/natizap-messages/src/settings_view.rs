@@ -4,7 +4,7 @@
 use gpui::prelude::*;
 use gpui::{Context, Entity, FontWeight, Window, div, px, rgb};
 use natizap_ui::Switch;
-use natizap_ui::theme::MUTED;
+use natizap_ui::theme::ActiveTheme as _;
 
 use crate::log::{MessageLog, TypingLook};
 
@@ -29,6 +29,7 @@ impl ChatSettings {
 
 impl Render for ChatSettings {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = *cx.theme();
         let names = self.log.read(cx).typing_look() == TypingLook::NamesAndFaces;
         let log = self.log.clone();
         div()
@@ -40,7 +41,7 @@ impl Render for ChatSettings {
                     .pt_3()
                     .text_size(px(13.0))
                     .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(rgb(MUTED))
+                    .text_color(rgb(theme.muted))
                     .child("Chats"),
             )
             .child(
@@ -61,7 +62,7 @@ impl Render for ChatSettings {
                             .child(
                                 div()
                                     .text_size(px(12.5))
-                                    .text_color(rgb(MUTED))
+                                    .text_color(rgb(theme.muted))
                                     .child("Say who is typing beside their pictures"),
                             ),
                     )

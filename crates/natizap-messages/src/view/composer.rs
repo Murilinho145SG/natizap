@@ -10,7 +10,7 @@ use gpui::{
 };
 use natizap_protocol::{Answer, ContentKind, Reply};
 use natizap_ui::motion::{fade_in, rise_in};
-use natizap_ui::theme::{LINE, MUTED, PANEL, RAISED};
+use natizap_ui::theme::ActiveTheme as _;
 use natizap_ui::{Button, ButtonSize, ButtonVariant, FilesPasted, Icon};
 
 use super::ConversationView;
@@ -147,6 +147,7 @@ impl ConversationView {
     }
 
     fn reply_bar(&self, cx: &mut Context<Self>) -> Option<Div> {
+        let theme = *cx.theme();
         let replying = self.replying.as_ref()?;
         Some(
             div()
@@ -157,10 +158,11 @@ impl ConversationView {
                     quote_block(
                         replying.author.clone(),
                         None,
-                        replying.color,
+                        replying.color.of(theme),
                         replying.reply.text.clone().into(),
                         ContentKind::Text,
                         None,
+                        theme,
                     )
                     .flex_1()
                     .min_w_0(),
@@ -175,7 +177,7 @@ impl ConversationView {
                         .justify_center()
                         .rounded_full()
                         .cursor_pointer()
-                        .hover(|style| style.bg(rgb(RAISED)))
+                        .hover(|style| style.bg(rgb(theme.raised)))
                         // Acts on press, so nothing else can claim the click
                         // first.
                         .on_mouse_down(
@@ -190,7 +192,7 @@ impl ConversationView {
                             svg()
                                 .path(Icon::Close.path())
                                 .size(px(16.0))
-                                .text_color(rgb(MUTED)),
+                                .text_color(rgb(theme.muted)),
                         ),
                 ),
         )
@@ -208,6 +210,7 @@ impl ConversationView {
     }
 
     pub(super) fn composer(&self, window: &mut Window, cx: &mut Context<Self>) -> Stateful<Div> {
+        let theme = *cx.theme();
         if let Some(notice) = self.who_may_write(cx) {
             return div()
                 .id("composer")
@@ -216,11 +219,11 @@ impl ConversationView {
                 .justify_center()
                 .px_4()
                 .py_4()
-                .bg(rgb(PANEL))
+                .bg(rgb(theme.panel))
                 .border_t_1()
-                .border_color(rgb(LINE))
+                .border_color(rgb(theme.line))
                 .text_size(px(13.5))
-                .text_color(rgb(MUTED))
+                .text_color(rgb(theme.muted))
                 .child(notice);
         }
         div()
@@ -232,9 +235,9 @@ impl ConversationView {
             .gap_2()
             .px_4()
             .py_3()
-            .bg(rgb(PANEL))
+            .bg(rgb(theme.panel))
             .border_t_1()
-            .border_color(rgb(LINE))
+            .border_color(rgb(theme.line))
             .children(self.tray_popover(cx))
             .children(self.reply_bar(cx).map(|bar| {
                 let id = self

@@ -11,8 +11,10 @@ use gpui::{
 use natizap_playback::Recorder;
 use natizap_profiles::ProfilePictures;
 use natizap_protocol::{ChatId, ContentKind, Reply};
-use natizap_ui::theme::{ACCENT, LINE, MUTED, PANE};
-use natizap_ui::{FilesPasted, Icon, Submitted, TextInput, name_color};
+use natizap_ui::theme::{ActiveTheme as _, Theme};
+use natizap_ui::{FilesPasted, Icon, Submitted, TextInput};
+
+use crate::authors::Tint;
 
 use crate::carousel::Carousel;
 use crate::emoji::{EmojiPicked, EmojiPicker};
@@ -163,7 +165,7 @@ impl EventEmitter<StickerFavoriteToggled> for ConversationView {}
 struct Replying {
     reply: Reply,
     author: SharedString,
-    color: u32,
+    color: Tint,
 }
 
 impl ConversationView {
@@ -307,11 +309,11 @@ impl ConversationView {
     pub(crate) fn reply_to(&mut self, bubble: &Bubble, cx: &mut Context<Self>) {
         let reply = bubble.reply.clone();
         let (author, color) = match (&reply.sender, &bubble.sender) {
-            (None, _) => ("You".into(), ACCENT),
+            (None, _) => ("You".into(), Tint::Accent),
             (Some(_), Some(group_sender)) => (group_sender.name.clone(), group_sender.color),
             (Some(sender), None) => {
                 let title = self.log.read(cx).open_chat().map(|chat| chat.title.clone());
-                (title.unwrap_or_default(), name_color(sender.as_str()))
+                (title.unwrap_or_default(), Tint::person(sender.as_str()))
             }
         };
         self.replying = Some(Replying {
@@ -358,6 +360,7 @@ impl ConversationView {
     }
 
     fn reaction_picker(&self, cx: &mut Context<Self>) -> Option<impl IntoElement> {
+        let theme = *cx.theme();
         let (_, position) = self.reaction_picker.as_ref()?;
         let view = cx.weak_entity();
         Some(
@@ -372,7 +375,7 @@ impl ConversationView {
                                 let _ = view.update(cx, ConversationView::close_popups);
                             })
                             .h(px(crate::emoji::HEIGHT))
-                            .map(tray::frame)
+                            .map(|tray| tray::frame(tray, theme))
                             .child(self.reaction_emojis.clone()),
                     ),
             )
@@ -493,6 +496,7 @@ impl ConversationView {
 
 impl Render for ConversationView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = *cx.theme();
         if std::mem::take(&mut self.refocus) {
             window.focus(&self.composer.focus_handle(cx), cx);
         }
@@ -505,7 +509,7 @@ impl Render for ConversationView {
         let members = log.members_line(cx);
         let presence = log.presence_line();
         let Some(chat) = log.open_chat().cloned() else {
-            return placeholder().into_any_element();
+            return placeholder(theme).into_any_element();
         };
         let pinned = log.pinned().cloned();
         let messages = self.message_list(&chat.id, window, cx);
@@ -516,7 +520,7 @@ impl Render for ConversationView {
             .group("conversation")
             .flex()
             .flex_col()
-            .bg(rgb(PANE))
+            .bg(rgb(theme.pane))
             .on_drop(cx.listener(|this, dropped: &ExternalPaths, window, cx| {
                 this.stage(dropped.paths().to_vec(), false, window, cx);
             }))
@@ -534,7 +538,7 @@ impl Render for ConversationView {
             })
             // Only while a drag is on: the zone animates, and an animation
             // redraws every frame.
-            .when(cx.has_active_drag(), |pane| pane.child(drop_zone()))
+            .when(cx.has_active_drag(), |pane| pane.child(drop_zone(theme)))
             .children(self.message_popup(cx))
             .children(self.reaction_picker(cx))
             .children(self.attach_menu(cx))
@@ -548,7 +552,7 @@ impl Render for ConversationView {
     }
 }
 
-fn placeholder() -> Div {
+fn placeholder(theme: Theme) -> Div {
     div()
         .size_full()
         .flex()
@@ -556,12 +560,12 @@ fn placeholder() -> Div {
         .items_center()
         .justify_center()
         .gap_3()
-        .bg(rgb(PANE))
+        .bg(rgb(theme.pane))
         .child(
             svg()
                 .path(Icon::Chats.path())
                 .size(px(56.0))
-                .text_color(rgb(LINE)),
+                .text_color(rgb(theme.line)),
         )
         .child(
             div()
@@ -574,12 +578,12 @@ fn placeholder() -> Div {
                 .items_center()
                 .gap_1p5()
                 .text_size(px(12.5))
-                .text_color(rgb(MUTED))
+                .text_color(rgb(theme.muted))
                 .child(
                     svg()
                         .path(Icon::Lock.path())
                         .size(px(13.0))
-                        .text_color(rgb(MUTED)),
+                        .text_color(rgb(theme.muted)),
                 )
                 .child("End-to-end encrypted"),
         )

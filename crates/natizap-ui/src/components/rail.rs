@@ -4,7 +4,7 @@
 use gpui::prelude::*;
 use gpui::{AnyElement, App, Div, ElementId, Stateful, Window, div, px, rgb, rgba};
 
-use crate::theme::{HOVER, LINE, PANEL, TEXT};
+use crate::theme::{ActiveTheme as _, Theme};
 
 /// Width the rail takes.
 pub const RAIL_WIDTH: f32 = 64.0;
@@ -51,7 +51,8 @@ impl Rail {
 }
 
 impl RenderOnce for Rail {
-    fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        let theme = *cx.theme();
         let stack = || div().flex().flex_col().items_center().gap_2();
         div()
             .w(px(RAIL_WIDTH))
@@ -61,9 +62,9 @@ impl RenderOnce for Rail {
             .flex_col()
             .justify_between()
             .py_3()
-            .bg(rgb(PANEL))
+            .bg(rgb(theme.panel))
             .border_r_1()
-            .border_color(rgb(LINE))
+            .border_color(rgb(theme.line))
             .child(stack().children(self.top))
             .child(stack().children(self.bottom))
     }
@@ -71,18 +72,23 @@ impl RenderOnce for Rail {
 
 /// `avatar` (from [`avatar`](crate::avatar) at [`RAIL_AVATAR`]) as a rail
 /// item, ringed while its place is `selected`. Add `on_click` to it.
-pub fn rail_avatar(id: impl Into<ElementId>, avatar: Div, selected: bool) -> Stateful<Div> {
+pub fn rail_avatar(
+    id: impl Into<ElementId>,
+    avatar: Div,
+    selected: bool,
+    theme: Theme,
+) -> Stateful<Div> {
     div()
         .id(id)
         .p(px(3.0))
         .rounded_full()
         .border_2()
         .border_color(if selected {
-            rgb(TEXT)
+            rgb(theme.text)
         } else {
             gpui::transparent_black().into()
         })
         .cursor_pointer()
-        .hover(|item| item.bg(rgba(HOVER)))
+        .hover(|item| item.bg(rgba(theme.hover)))
         .child(avatar)
 }

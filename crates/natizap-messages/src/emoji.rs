@@ -11,7 +11,7 @@ use gpui::{
     rgb, uniform_list,
 };
 use natizap_ui::Tooltip;
-use natizap_ui::theme::{MUTED, RAISED};
+use natizap_ui::theme::ActiveTheme as _;
 
 /// The emoji people reach for most, in roughly that order: the first
 /// category, as on the phone.
@@ -138,6 +138,7 @@ impl EmojiPicker {
 
 impl Render for EmojiPicker {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = *cx.theme();
         let current = self.current_category();
         let sidebar = div()
             .w(px(SIDEBAR))
@@ -148,7 +149,7 @@ impl Render for EmojiPicker {
             .gap_0p5()
             .py_2()
             .border_r_1()
-            .border_color(gpui::rgba(natizap_ui::theme::EDGE))
+            .border_color(gpui::rgba(theme.edge))
             .children(CATEGORIES.iter().enumerate().map(|(index, category)| {
                 div()
                     .id(("emoji-category", index))
@@ -159,9 +160,9 @@ impl Render for EmojiPicker {
                     .rounded_md()
                     .cursor_pointer()
                     .text_size(px(18.0))
-                    .when(index == current, |icon| icon.bg(rgb(RAISED)))
+                    .when(index == current, |icon| icon.bg(rgb(theme.raised)))
                     .when(index != current, |icon| icon.opacity(0.6))
-                    .hover(|icon| icon.bg(rgb(RAISED)).opacity(1.0))
+                    .hover(|icon| icon.bg(rgb(theme.raised)).opacity(1.0))
                     .tooltip(Tooltip::text(category.name))
                     .on_click(cx.listener(move |this, _, _, cx| {
                         let (_, starts) = &*LINES;
@@ -174,7 +175,7 @@ impl Render for EmojiPicker {
         let list = uniform_list(
             "emoji",
             LINES.0.len(),
-            cx.processor(|_, range: Range<usize>, _, cx| {
+            cx.processor(move |_, range: Range<usize>, _, cx| {
                 LINES.0[range]
                     .iter()
                     .map(|line| match line {
@@ -186,7 +187,7 @@ impl Render for EmojiPicker {
                             .pb_1()
                             .text_size(px(12.0))
                             .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(rgb(MUTED))
+                            .text_color(rgb(theme.muted))
                             .child(CATEGORIES[*category].name)
                             .into_any_element(),
                         Line::Emoji(range, category) => div()
@@ -202,7 +203,7 @@ impl Render for EmojiPicker {
                                         .justify_center()
                                         .rounded_md()
                                         .cursor_pointer()
-                                        .hover(|cell| cell.bg(rgb(RAISED)))
+                                        .hover(|cell| cell.bg(rgb(theme.raised)))
                                         .on_click(cx.listener(move |_, _, _, cx| {
                                             cx.emit(EmojiPicked(emoji));
                                         }))

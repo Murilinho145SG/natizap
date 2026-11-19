@@ -7,7 +7,7 @@ use gpui::{
     Context, Div, Entity, EventEmitter, Focusable as _, FontWeight, PathPromptOptions,
     SharedString, Window, div, px, rgb, rgba,
 };
-use natizap_ui::theme::{ALERT, LINE, MUTED, PANEL, STATUS_BACKGROUNDS, TEXT, glass};
+use natizap_ui::theme::{ActiveTheme as _, STATUS_BACKGROUNDS, Theme};
 use natizap_ui::{Button, ButtonVariant, Icon, TextInput, dialog, separator};
 
 use crate::book::StatusBook;
@@ -120,7 +120,35 @@ impl StatusComposer {
         cx.notify();
     }
 
-    fn preview(&self) -> Div {
+    /// The colours a text status can be posted on, the chosen one ringed.
+    fn swatches(&self, theme: Theme, cx: &mut Context<Self>) -> Option<Div> {
+        matches!(self.draft, Draft::Text { .. }).then(|| {
+            div()
+                .flex()
+                .gap_2()
+                .children(STATUS_BACKGROUNDS.iter().enumerate().map(|(index, color)| {
+                    let chosen = self.draft == Draft::Text { background: index };
+                    div()
+                        .id(("status-color", index))
+                        .size(px(24.0))
+                        .rounded_full()
+                        .bg(rgba(color.rotate_left(8)))
+                        .border_2()
+                        .border_color(if chosen {
+                            rgb(theme.text)
+                        } else {
+                            gpui::transparent_black().into()
+                        })
+                        .cursor_pointer()
+                        .on_click(cx.listener(move |composer, _, _, cx| {
+                            composer.draft = Draft::Text { background: index };
+                            cx.notify();
+                        }))
+                }))
+        })
+    }
+
+    fn preview(&self, theme: Theme) -> Div {
         match &self.draft {
             Draft::Text { background } => div()
                 .h(px(220.0))
@@ -143,7 +171,7 @@ impl StatusComposer {
                         div()
                             .truncate()
                             .text_size(px(13.5))
-                            .text_color(rgb(MUTED))
+                            .text_color(rgb(theme.muted))
                             .child(path.file_name().map_or_else(String::new, |name| {
                                 name.to_string_lossy().into_owned()
                             })),
@@ -154,7 +182,7 @@ impl StatusComposer {
                             .py_2()
                             .rounded_lg()
                             .border_1()
-                            .border_color(rgb(LINE))
+                            .border_color(rgb(theme.line))
                             .child(self.words.clone()),
                     )
             }
@@ -164,30 +192,8 @@ impl StatusComposer {
 
 impl Render for StatusComposer {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let swatches = matches!(self.draft, Draft::Text { .. }).then(|| {
-            div()
-                .flex()
-                .gap_2()
-                .children(STATUS_BACKGROUNDS.iter().enumerate().map(|(index, color)| {
-                    let chosen = self.draft == Draft::Text { background: index };
-                    div()
-                        .id(("status-color", index))
-                        .size(px(24.0))
-                        .rounded_full()
-                        .bg(rgba(color.rotate_left(8)))
-                        .border_2()
-                        .border_color(if chosen {
-                            rgb(TEXT)
-                        } else {
-                            gpui::transparent_black().into()
-                        })
-                        .cursor_pointer()
-                        .on_click(cx.listener(move |composer, _, _, cx| {
-                            composer.draft = Draft::Text { background: index };
-                            cx.notify();
-                        }))
-                }))
-        });
+        let theme = *cx.theme();
+        let swatches = self.swatches(theme, cx);
         let panel = div()
             .w(px(440.0))
             .p_5()
@@ -195,9 +201,9 @@ impl Render for StatusComposer {
             .flex_col()
             .gap_4()
             .rounded_xl()
-            .bg(rgb(PANEL))
-            .map(glass)
-            .text_color(rgb(TEXT))
+            .bg(rgb(theme.panel))
+            .map(|surface| theme.glass(surface))
+            .text_color(rgb(theme.text))
             .occlude()
             .child(
                 div()
@@ -240,13 +246,13 @@ impl Render for StatusComposer {
                             .on_click(cx.listener(|_, _, _, cx| Self::pick_file(cx))),
                     ),
             )
-            .child(self.preview())
+            .child(self.preview(theme))
             .children(swatches)
-            .child(separator())
+            .child(separator(theme))
             .children(self.error.clone().map(|error| {
                 div()
                     .text_size(px(12.5))
-                    .text_color(rgb(ALERT))
+                    .text_color(rgb(theme.alert))
                     .child(error)
             }))
             .child(
@@ -261,8 +267,13 @@ impl Render for StatusComposer {
                 ),
             );
         let view = cx.weak_entity();
-        dialog(window, panel, move |_, cx| {
-            let _ = view.update(cx, |_, cx| cx.emit(ComposerClosed));
-        })
+        dialog(
+            window,
+            panel,
+            move |_, cx| {
+                let _ = view.update(cx, |_, cx| cx.emit(ComposerClosed));
+            },
+            theme,
+        )
     }
 }

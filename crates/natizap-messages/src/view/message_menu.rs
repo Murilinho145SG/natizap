@@ -3,7 +3,7 @@
 use gpui::prelude::*;
 use gpui::{ClipboardItem, Context, Pixels, Point, SharedString, WeakEntity, div, px, rgb, svg};
 use natizap_protocol::{ContentKind, Forward, PinFor};
-use natizap_ui::theme::{LINE, MUTED, PANEL, RAISED, TEXT};
+use natizap_ui::theme::ActiveTheme as _;
 use natizap_ui::{AlertDialog, ButtonVariant, Icon, Menu};
 
 use super::ConversationView;
@@ -213,6 +213,7 @@ impl ConversationView {
     /// The pinned message under the header; clicking it scrolls to the
     /// message when it is among those loaded.
     pub(super) fn pinned_bar(&self, pinned: Pinned, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = *cx.theme();
         let index = self
             .log
             .read(cx)
@@ -227,12 +228,12 @@ impl ConversationView {
             .items_center()
             .gap_3()
             .px_4()
-            .bg(rgb(PANEL))
+            .bg(rgb(theme.panel))
             .border_b_1()
-            .border_color(rgb(LINE))
+            .border_color(rgb(theme.line))
             .text_size(px(13.5))
             .when(index.is_some(), |bar| {
-                bar.cursor_pointer().hover(|bar| bar.bg(rgb(RAISED)))
+                bar.cursor_pointer().hover(|bar| bar.bg(rgb(theme.raised)))
             })
             .on_click(cx.listener(move |this, _, _, _| {
                 if let Some(index) = index {
@@ -244,13 +245,13 @@ impl ConversationView {
                     .path(Icon::Pin.path())
                     .size(px(15.0))
                     .flex_none()
-                    .text_color(rgb(MUTED)),
+                    .text_color(rgb(theme.muted)),
             )
             .child(
                 div()
                     .min_w_0()
                     .truncate()
-                    .text_color(rgb(TEXT))
+                    .text_color(rgb(theme.text))
                     .child(pinned.text),
             )
     }

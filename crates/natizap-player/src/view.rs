@@ -11,7 +11,7 @@ use gpui::{
 };
 use image::{Frame, RgbaImage};
 use natizap_playback::Playback;
-use natizap_ui::theme::{LINE, MUTED, TEXT};
+use natizap_ui::theme::{ActiveTheme as _, Theme};
 use natizap_ui::{Button, ButtonSize, Icon, progress};
 
 /// Plays a video, with its own decoder and sound output: nothing outside
@@ -95,6 +95,7 @@ impl PlayerView {
 
 impl Render for PlayerView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = *cx.theme();
         self.advance();
         for image in self.retired.drain(..) {
             if let Err(error) = window.drop_image(image) {
@@ -108,9 +109,9 @@ impl Render for PlayerView {
         }
 
         let stage = match (&status.error, &self.picture, status.has_video) {
-            (Some(error), ..) => notice(format!("Could not play this file: {error}")),
+            (Some(error), ..) => notice(format!("Could not play this file: {error}"), theme),
             (None, Some(picture), true) => frame(picture.clone()),
-            (None, None, true) => notice("Loading…".to_owned()),
+            (None, None, true) => notice("Loading…".to_owned(), theme),
             (None, _, false) => div()
                 .size_full()
                 .flex()
@@ -120,7 +121,7 @@ impl Render for PlayerView {
                     svg()
                         .path(Icon::Play.path())
                         .size(px(96.0))
-                        .text_color(rgb(LINE)),
+                        .text_color(rgb(theme.line)),
                 ),
         };
 
@@ -131,7 +132,7 @@ impl Render for PlayerView {
             .size_full()
             .flex()
             .flex_col()
-            .text_color(rgb(TEXT))
+            .text_color(rgb(theme.text))
             .child(
                 div()
                     .flex_1()
@@ -151,6 +152,7 @@ impl PlayerView {
         ended: bool,
         cx: &mut Context<Self>,
     ) -> Div {
+        let theme = *cx.theme();
         let total = duration.unwrap_or(Duration::ZERO);
         let fraction = if total.is_zero() {
             0.0
@@ -181,7 +183,7 @@ impl PlayerView {
             .child(
                 div()
                     .text_size(px(13.0))
-                    .text_color(rgb(MUTED))
+                    .text_color(rgb(theme.muted))
                     .child(clock_label(position.min(total.max(position)))),
             )
             .child(
@@ -203,7 +205,7 @@ impl PlayerView {
                         }),
                     )
                     .child(
-                        progress(fraction).relative().child(
+                        progress(fraction, theme).relative().child(
                             canvas(
                                 move |bounds, _, _| track.set(Some(bounds)),
                                 |_, (), _, _| {},
@@ -216,19 +218,19 @@ impl PlayerView {
             .child(
                 div()
                     .text_size(px(13.0))
-                    .text_color(rgb(MUTED))
+                    .text_color(rgb(theme.muted))
                     .child(clock_label(total)),
             )
     }
 }
 
-fn notice(message: String) -> Div {
+fn notice(message: String, theme: Theme) -> Div {
     div()
         .size_full()
         .flex()
         .items_center()
         .justify_center()
-        .text_color(rgb(MUTED))
+        .text_color(rgb(theme.muted))
         .child(message)
 }
 

@@ -5,7 +5,7 @@ use gpui::{Div, FontWeight, SharedString, Stateful, div, px, rgb, svg};
 
 use crate::Icon;
 use crate::components::tooltip::Tooltip;
-use crate::theme::{ACCENT, ACCENT_INK, LINE, MINT, MUTED};
+use crate::theme::Theme;
 
 /// How loudly a badge speaks.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -20,10 +20,10 @@ pub enum BadgeTone {
 /// A pill with `text`; empty text makes a dot-sized pill, as for a chat
 /// marked unread without a count.
 #[must_use]
-pub fn badge(text: impl Into<SharedString>, tone: BadgeTone) -> Div {
+pub fn badge(text: impl Into<SharedString>, tone: BadgeTone, theme: Theme) -> Div {
     let (background, ink) = match tone {
-        BadgeTone::Accent => (ACCENT, ACCENT_INK),
-        BadgeTone::Muted => (LINE, MUTED),
+        BadgeTone::Accent => (theme.accent, theme.accent_ink),
+        BadgeTone::Muted => (theme.line, theme.muted),
     };
     div()
         .min_w(px(20.0))
@@ -44,7 +44,7 @@ pub fn badge(text: impl Into<SharedString>, tone: BadgeTone) -> Div {
 /// The seal of a business WhatsApp vouches for, shown beside its name;
 /// hovering it says what it means.
 #[must_use]
-pub fn verified_seal(size: f32) -> Stateful<Div> {
+pub fn verified_seal(size: f32, theme: Theme) -> Stateful<Div> {
     div()
         .id("verified-seal")
         .flex_none()
@@ -53,7 +53,7 @@ pub fn verified_seal(size: f32) -> Stateful<Div> {
             svg()
                 .path(Icon::Verified.path())
                 .size(px(size))
-                .text_color(rgb(MINT)),
+                .text_color(rgb(theme.mint)),
         )
 }
 

@@ -3,6 +3,7 @@
 use gpui::prelude::*;
 use gpui::{Context, Window};
 use natizap_protocol::Extra;
+use natizap_ui::theme::ActiveTheme as _;
 use natizap_ui::{Icon, Menu, dialog};
 
 use super::ConversationView;
@@ -84,13 +85,19 @@ impl ConversationView {
         window: &Window,
         cx: &mut Context<Self>,
     ) -> Option<impl IntoElement> {
+        let theme = *cx.theme();
         let composer = self.poll_draft.clone()?;
         let view = cx.weak_entity();
-        Some(dialog(window, composer, move |_, cx| {
-            let _ = view.update(cx, |this, cx| {
-                this.poll_draft = None;
-                cx.notify();
-            });
-        }))
+        Some(dialog(
+            window,
+            composer,
+            move |_, cx| {
+                let _ = view.update(cx, |this, cx| {
+                    this.poll_draft = None;
+                    cx.notify();
+                });
+            },
+            theme,
+        ))
     }
 }

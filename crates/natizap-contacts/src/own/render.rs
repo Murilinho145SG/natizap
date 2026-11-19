@@ -7,7 +7,7 @@ use gpui::{
     Window, anchored, deferred, div, img, px, rgb, rgba, svg,
 };
 use natizap_protocol::Me;
-use natizap_ui::theme::{ALERT, DISPLAY_FONT, LINE, MUTED, PANEL, SCRIM, TEXT};
+use natizap_ui::theme::{ActiveTheme as _, DISPLAY_FONT, Theme};
 use natizap_ui::{Button, ButtonVariant, Icon, Menu, avatar, separator};
 
 use super::field::Field;
@@ -16,11 +16,12 @@ use crate::business_view::business_info;
 
 impl Render for OwnProfile {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = *cx.theme();
         let picture_error = self
             .error
             .as_ref()
             .filter(|(field, _)| field.is_none())
-            .map(|(_, why)| error_line(why.clone()));
+            .map(|(_, why)| error_line(why.clone(), theme));
         div()
             .id("own-profile")
             .track_focus(&self.focus)
@@ -28,8 +29,8 @@ impl Render for OwnProfile {
             .size_full()
             .flex()
             .flex_col()
-            .bg(rgb(PANEL))
-            .text_color(rgb(TEXT))
+            .bg(rgb(theme.panel))
+            .text_color(rgb(theme.text))
             .child(title_bar(cx))
             .child(
                 div()
@@ -59,10 +60,10 @@ impl Render for OwnProfile {
                             .when(self.cover.is_none(), Styled::pt_8)
                             .child(self.picture_view(cx))
                             .children(picture_error)
-                            .child(div().w_full().py_4().child(separator()))
+                            .child(div().w_full().py_4().child(separator(theme)))
                             .child(self.line(Field::Name, cx))
                             .child(self.line(Field::About, cx))
-                            .child(phone_line(&self.me))
+                            .child(phone_line(&self.me, theme))
                             .children(
                                 match &self.business {
                                     Loaded::Ready(business) => business.as_ref(),
@@ -74,7 +75,7 @@ impl Render for OwnProfile {
                                         .flex()
                                         .flex_col()
                                         .gap_3()
-                                        .child(div().w_full().py_4().child(separator()))
+                                        .child(div().w_full().py_4().child(separator(theme)))
                                         .child(
                                             div()
                                                 .font_family(DISPLAY_FONT)
@@ -82,12 +83,15 @@ impl Render for OwnProfile {
                                                 .font_weight(FontWeight::BOLD)
                                                 .child("Business info"),
                                         )
-                                        .child(business_info(business))
+                                        .child(business_info(business, theme))
                                         .child(
-                                            div().text_size(px(12.5)).text_color(rgb(MUTED)).child(
-                                                "Change these from WhatsApp Business \
+                                            div()
+                                                .text_size(px(12.5))
+                                                .text_color(rgb(theme.muted))
+                                                .child(
+                                                    "Change these from WhatsApp Business \
                                                  on your phone.",
-                                            ),
+                                                ),
                                         )
                                 }),
                             ),
@@ -100,6 +104,7 @@ impl Render for OwnProfile {
 impl OwnProfile {
     /// The picture, or your initials; a click on it offers to change it.
     fn picture_view(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let theme = *cx.theme();
         let initials = self.me.name.clone().unwrap_or_default();
         let size = if self.cover.is_some() {
             COVERED_PICTURE
@@ -121,7 +126,9 @@ impl OwnProfile {
             .rounded_full()
             // Over a banner, it overlaps its foot, ringed by the panel.
             .when(self.cover.is_some(), |ring| {
-                ring.mt(px(-size / 2.0)).border_4().border_color(rgb(PANEL))
+                ring.mt(px(-size / 2.0))
+                    .border_4()
+                    .border_color(rgb(theme.panel))
             })
             .cursor_pointer()
             .group("own-picture")
@@ -145,7 +152,7 @@ impl OwnProfile {
                     .items_center()
                     .justify_center()
                     .gap_1()
-                    .bg(rgba(SCRIM))
+                    .bg(rgba(theme.scrim))
                     .text_size(px(12.5))
                     .invisible()
                     .group_hover("own-picture", Styled::visible)
@@ -153,7 +160,7 @@ impl OwnProfile {
                         svg()
                             .path(Icon::Camera.path())
                             .size(px(24.0))
-                            .text_color(rgb(TEXT)),
+                            .text_color(rgb(theme.text)),
                     )
                     .child(if self.uploading {
                         "Updating…"
@@ -197,17 +204,18 @@ impl OwnProfile {
     /// A line of the profile: its label and value with a pencil to change
     /// it, or the field it is written in.
     fn line(&self, field: Field, cx: &mut Context<Self>) -> Div {
+        let theme = *cx.theme();
         let row = div().w_full().flex().flex_col().gap_1().py_2().child(
             div()
                 .text_size(px(12.5))
-                .text_color(rgb(MUTED))
+                .text_color(rgb(theme.muted))
                 .child(field.label()),
         );
         let error = self
             .error
             .as_ref()
             .filter(|(failed, _)| *failed == Some(field))
-            .map(|(_, why)| error_line(why.clone()));
+            .map(|(_, why)| error_line(why.clone(), theme));
         if let Some(editing) = self
             .editing
             .as_ref()
@@ -225,7 +233,7 @@ impl OwnProfile {
                                 .min_w_0()
                                 .pb_1()
                                 .border_b_2()
-                                .border_color(rgb(TEXT))
+                                .border_color(rgb(theme.text))
                                 .text_size(px(15.0))
                                 .child(editing.input.clone()),
                         )
@@ -276,7 +284,7 @@ impl OwnProfile {
                             text.font_family(DISPLAY_FONT)
                                 .font_weight(FontWeight::MEDIUM)
                         })
-                        .when(dim, |text| text.text_color(rgb(MUTED)))
+                        .when(dim, |text| text.text_color(rgb(theme.muted)))
                         .child(text),
                 )
                 .child(
@@ -295,6 +303,7 @@ impl OwnProfile {
 }
 
 fn title_bar(cx: &mut Context<OwnProfile>) -> Div {
+    let theme = *cx.theme();
     div()
         .h(px(60.0))
         .flex_none()
@@ -303,7 +312,7 @@ fn title_bar(cx: &mut Context<OwnProfile>) -> Div {
         .gap_3()
         .px_4()
         .border_b_1()
-        .border_color(rgb(LINE))
+        .border_color(rgb(theme.line))
         .child(
             Button::new("close-own-profile")
                 .icon(Icon::Back)
@@ -321,7 +330,7 @@ fn title_bar(cx: &mut Context<OwnProfile>) -> Div {
         )
 }
 
-fn phone_line(me: &Me) -> Div {
+fn phone_line(me: &Me, theme: Theme) -> Div {
     div()
         .w_full()
         .flex()
@@ -331,7 +340,7 @@ fn phone_line(me: &Me) -> Div {
         .child(
             div()
                 .text_size(px(12.5))
-                .text_color(rgb(MUTED))
+                .text_color(rgb(theme.muted))
                 .child("Phone"),
         )
         .child(
@@ -341,6 +350,9 @@ fn phone_line(me: &Me) -> Div {
         )
 }
 
-fn error_line(why: SharedString) -> Div {
-    div().text_size(px(12.5)).text_color(rgb(ALERT)).child(why)
+fn error_line(why: SharedString, theme: Theme) -> Div {
+    div()
+        .text_size(px(12.5))
+        .text_color(rgb(theme.alert))
+        .child(why)
 }

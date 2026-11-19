@@ -7,7 +7,7 @@ use gpui::{
     div, img, px, rgb, rgba, svg,
 };
 use natizap_protocol::Disappearing;
-use natizap_ui::theme::{DEEP, MUTED, RAISED, SCRIM, TEXT};
+use natizap_ui::theme::{ActiveTheme as _, Theme};
 use natizap_ui::{Icon, Menu, Switch, separator};
 
 use crate::panel::ProfilePanel;
@@ -85,22 +85,23 @@ impl ProfilePanel {
     /// Media, starred messages, notifications, disappearing messages and
     /// encryption, as on the phone; empty until the app says what it knows.
     pub(crate) fn sections(&self, cx: &mut Context<Self>) -> Div {
+        let theme = *cx.theme();
         let mut sections = div().w_full().flex().flex_col();
         if let Some(summary) = &self.summary {
             sections = sections
                 .child(
-                    row(Icon::Camera, "Media, links and docs")
+                    row(Icon::Camera, "Media, links and docs", theme)
                         .id("all-media")
                         .cursor_pointer()
-                        .hover(|row| row.bg(rgb(RAISED)))
+                        .hover(|row| row.bg(rgb(theme.raised)))
                         .on_click(cx.listener(|_, _, _, cx| cx.emit(MediaRequested)))
-                        .child(count(summary.media))
+                        .child(count(summary.media, theme))
                         .child(
                             svg()
                                 .path(Icon::ChevronDown.path())
                                 .size(px(14.0))
                                 .flex_none()
-                                .text_color(rgb(MUTED))
+                                .text_color(rgb(theme.muted))
                                 .with_transformation(Transformation::rotate(gpui::radians(
                                     -std::f32::consts::FRAC_PI_2,
                                 ))),
@@ -109,7 +110,7 @@ impl ProfilePanel {
                 .when(!summary.tiles.is_empty(), |sections| {
                     sections.child(div().flex().gap_2().pb_3().children(
                         summary.tiles.iter().enumerate().map(|(index, shown)| {
-                            tile(shown)
+                            tile(shown, theme)
                                 .id(("media-tile", index))
                                 .cursor_pointer()
                                 .hover(|tile| tile.opacity(0.85))
@@ -119,19 +120,19 @@ impl ProfilePanel {
                         }),
                     ))
                 })
-                .child(div().w_full().py_2().child(separator()))
+                .child(div().w_full().py_2().child(separator(theme)))
                 .child(
-                    row(Icon::Star, "Starred messages")
+                    row(Icon::Star, "Starred messages", theme)
                         .id("starred")
                         .cursor_pointer()
-                        .hover(|row| row.bg(rgb(RAISED)))
+                        .hover(|row| row.bg(rgb(theme.raised)))
                         .on_click(cx.listener(|_, _, _, cx| cx.emit(StarredRequested)))
-                        .child(count(summary.starred)),
+                        .child(count(summary.starred, theme)),
                 );
         }
         if let Some(settings) = self.settings {
             sections = sections
-                .child(row(Icon::Muted, "Mute notifications").child(
+                .child(row(Icon::Muted, "Mute notifications", theme).child(
                     Switch::new("mute-chat", settings.muted).on_toggle({
                         let panel = cx.weak_entity();
                         move |muted, _, cx| {
@@ -146,10 +147,10 @@ impl ProfilePanel {
                     }),
                 ))
                 .child(
-                    row(Icon::Clock, "Disappearing messages")
+                    row(Icon::Clock, "Disappearing messages", theme)
                         .id("disappearing")
                         .cursor_pointer()
-                        .hover(|row| row.bg(rgb(RAISED)))
+                        .hover(|row| row.bg(rgb(theme.raised)))
                         .on_mouse_down(
                             MouseButton::Left,
                             cx.listener(|panel, event: &gpui::MouseDownEvent, _, cx| {
@@ -160,17 +161,17 @@ impl ProfilePanel {
                         .child(
                             div()
                                 .text_size(px(13.0))
-                                .text_color(rgb(MUTED))
+                                .text_color(rgb(theme.muted))
                                 .child(settings.disappearing.map_or("Off", Disappearing::label)),
                         ),
                 );
         }
         sections
             .child(
-                row(Icon::Lock, "Encryption").child(
+                row(Icon::Lock, "Encryption", theme).child(
                     div()
                         .text_size(px(12.5))
-                        .text_color(rgb(MUTED))
+                        .text_color(rgb(theme.muted))
                         .child("End-to-end encrypted"),
                 ),
             )
@@ -211,7 +212,7 @@ fn timer_menu(position: Point<Pixels>, cx: &mut Context<ProfilePanel>) -> impl I
     menu.at(position)
 }
 
-fn row(icon: Icon, label: &'static str) -> Div {
+fn row(icon: Icon, label: &'static str, theme: Theme) -> Div {
     div()
         .w_full()
         .h(px(52.0))
@@ -225,21 +226,21 @@ fn row(icon: Icon, label: &'static str) -> Div {
                 .path(icon.path())
                 .size(px(18.0))
                 .flex_none()
-                .text_color(rgb(MUTED)),
+                .text_color(rgb(theme.muted)),
         )
         .child(
             div()
                 .flex_1()
                 .text_size(px(14.5))
-                .text_color(rgb(TEXT))
+                .text_color(rgb(theme.text))
                 .child(label),
         )
 }
 
-fn count(count: usize) -> Div {
+fn count(count: usize, theme: Theme) -> Div {
     div()
         .text_size(px(13.0))
-        .text_color(rgb(MUTED))
+        .text_color(rgb(theme.muted))
         .child(count.to_string())
 }
 
@@ -248,7 +249,7 @@ const TILE: f32 = 72.0;
 
 /// A photo or video, cropped to a square; one without a picture yet shows
 /// what kind it is.
-fn tile(tile: &Tile) -> Div {
+fn tile(tile: &Tile, theme: Theme) -> Div {
     div()
         .relative()
         .size(px(TILE))
@@ -258,7 +259,7 @@ fn tile(tile: &Tile) -> Div {
         .justify_center()
         .overflow_hidden()
         .rounded_lg()
-        .bg(rgb(DEEP))
+        .bg(rgb(theme.deep))
         .child(match tile.image.clone() {
             // A fixed size: a relative one let GPUI size tall pictures by
             // their shape, spilling out of the tile.
@@ -278,7 +279,7 @@ fn tile(tile: &Tile) -> Div {
                     .path(),
                 )
                 .size(px(22.0))
-                .text_color(rgb(MUTED))
+                .text_color(rgb(theme.muted))
                 .into_any_element(),
         })
         .children(tile.length.clone().map(|length| {
@@ -288,9 +289,9 @@ fn tile(tile: &Tile) -> Div {
                 .left_1()
                 .px_1()
                 .rounded_md()
-                .bg(rgba(SCRIM))
+                .bg(rgba(theme.scrim))
                 .text_size(px(11.0))
-                .text_color(rgb(TEXT))
+                .text_color(rgb(theme.text))
                 .child(length)
         }))
 }

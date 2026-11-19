@@ -8,7 +8,7 @@ use gpui::{
 };
 use natizap_profiles::ProfilePictures;
 use natizap_protocol::ChatId;
-use natizap_ui::theme::{ACCENT, ACCENT_INK, LINE, MUTED, PANEL, RAISED, TEXT, glass};
+use natizap_ui::theme::{ActiveTheme as _, Theme};
 use natizap_ui::{Button, ButtonSize, Icon, TextInput, avatar, dialog};
 
 use crate::list::{ChatList, ChatRow};
@@ -86,6 +86,7 @@ impl ChatPicker {
 
 impl Render for ChatPicker {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = *cx.theme();
         let rows = self.matching(cx);
         let count = rows.len();
         let list = uniform_list(
@@ -109,7 +110,7 @@ impl Render for ChatPicker {
                             .gap_3()
                             .rounded_lg()
                             .cursor_pointer()
-                            .hover(|row| row.bg(rgb(RAISED)))
+                            .hover(|row| row.bg(rgb(theme.raised)))
                             .on_click(cx.listener(move |this, _, _, cx| this.toggle(&id, cx)))
                             .child(avatar(row.id.as_str(), &row.title, picture, px(40.0)))
                             .child(
@@ -117,10 +118,10 @@ impl Render for ChatPicker {
                                     .flex_1()
                                     .min_w_0()
                                     .truncate()
-                                    .text_color(rgb(TEXT))
+                                    .text_color(rgb(theme.text))
                                     .child(row.title.clone()),
                             )
-                            .child(check(checked))
+                            .child(check(checked, theme))
                     })
                     .collect()
             }),
@@ -135,8 +136,8 @@ impl Render for ChatPicker {
             .flex()
             .flex_col()
             .rounded_xl()
-            .bg(rgb(PANEL))
-            .map(glass)
+            .bg(rgb(theme.panel))
+            .map(|surface| theme.glass(surface))
             .occlude()
             .on_key_down(cx.listener(|_, event: &gpui::KeyDownEvent, _, cx| {
                 if event.keystroke.key == "escape" {
@@ -150,7 +151,7 @@ impl Render for ChatPicker {
                     .pb_3()
                     .text_size(px(16.0))
                     .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(rgb(TEXT))
+                    .text_color(rgb(theme.text))
                     .child(self.title.clone()),
             )
             .child(
@@ -160,8 +161,8 @@ impl Render for ChatPicker {
                     .px_4()
                     .py_2()
                     .rounded_full()
-                    .bg(rgb(RAISED))
-                    .text_color(rgb(TEXT))
+                    .bg(rgb(theme.raised))
+                    .text_color(rgb(theme.text))
                     .child(self.search.clone()),
             )
             .child(
@@ -175,15 +176,21 @@ impl Render for ChatPicker {
             )
             .child(self.footer(cx));
         let picker = cx.weak_entity();
-        dialog(window, panel, move |_, cx| {
-            let _ = picker.update(cx, |_, cx| cx.emit(PickerDismissed));
-        })
+        dialog(
+            window,
+            panel,
+            move |_, cx| {
+                let _ = picker.update(cx, |_, cx| cx.emit(PickerDismissed));
+            },
+            theme,
+        )
     }
 }
 
 impl ChatPicker {
     /// How many are chosen, and send once there is one.
     fn footer(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = *cx.theme();
         let chosen = self.chosen.len();
         div()
             .flex_none()
@@ -193,12 +200,12 @@ impl ChatPicker {
             .px_5()
             .py_3()
             .border_t_1()
-            .border_color(rgb(LINE))
+            .border_color(rgb(theme.line))
             .child(
                 div()
                     .flex_1()
                     .text_size(px(13.0))
-                    .text_color(rgb(MUTED))
+                    .text_color(rgb(theme.muted))
                     .child(if chosen == 0 {
                         format!("Choose up to {MOST_CHOSEN} chats")
                     } else {
@@ -221,7 +228,7 @@ impl ChatPicker {
 }
 
 /// A round check: filled in the accent when chosen.
-fn check(checked: bool) -> impl IntoElement {
+fn check(checked: bool, theme: Theme) -> impl IntoElement {
     div()
         .size(px(22.0))
         .flex_none()
@@ -230,14 +237,14 @@ fn check(checked: bool) -> impl IntoElement {
         .justify_center()
         .rounded_full()
         .border_2()
-        .border_color(rgb(if checked { ACCENT } else { MUTED }))
-        .when(checked, |check| check.bg(rgb(ACCENT)))
+        .border_color(rgb(if checked { theme.accent } else { theme.muted }))
+        .when(checked, |check| check.bg(rgb(theme.accent)))
         .when(checked, |check| {
             check.child(
                 svg()
                     .path(Icon::Check.path())
                     .size(px(14.0))
-                    .text_color(rgb(ACCENT_INK)),
+                    .text_color(rgb(theme.accent_ink)),
             )
         })
 }

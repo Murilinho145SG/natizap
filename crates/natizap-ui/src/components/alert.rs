@@ -5,7 +5,7 @@ use gpui::prelude::*;
 use gpui::{App, FontWeight, SharedString, Window, div, px, rgb, svg};
 
 use crate::Icon;
-use crate::theme::{ACCENT, ALERT, MINT, MUTED, RAISED, TEXT, glass};
+use crate::theme::ActiveTheme as _;
 
 /// What kind of news an alert brings, which sets its color.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -46,11 +46,12 @@ impl Alert {
 }
 
 impl RenderOnce for Alert {
-    fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        let theme = *cx.theme();
         let color = match self.tone {
-            AlertTone::Info => MINT,
-            AlertTone::Warning => ACCENT,
-            AlertTone::Error => ALERT,
+            AlertTone::Info => theme.mint,
+            AlertTone::Warning => theme.accent,
+            AlertTone::Error => theme.alert,
         };
         div()
             .flex()
@@ -59,8 +60,8 @@ impl RenderOnce for Alert {
             .px_4()
             .py_3()
             .rounded_xl()
-            .bg(rgb(RAISED))
-            .map(glass)
+            .bg(rgb(theme.raised))
+            .map(|surface| theme.glass(surface))
             .child(
                 svg()
                     .path(Icon::Alert.path())
@@ -77,14 +78,15 @@ impl RenderOnce for Alert {
                         div()
                             .text_size(px(14.0))
                             .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(rgb(TEXT))
+                            .text_color(rgb(theme.text))
                             .child(self.title),
                     )
-                    .children(
-                        self.description.map(|text| {
-                            div().text_size(px(13.0)).text_color(rgb(MUTED)).child(text)
-                        }),
-                    ),
+                    .children(self.description.map(|text| {
+                        div()
+                            .text_size(px(13.0))
+                            .text_color(rgb(theme.muted))
+                            .child(text)
+                    })),
             )
     }
 }

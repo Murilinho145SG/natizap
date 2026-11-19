@@ -4,16 +4,16 @@ use std::path::PathBuf;
 use gpui::prelude::*;
 use gpui::{Div, FontWeight, ObjectFit, Pixels, div, img, px, rgb};
 
-use crate::theme::{ACCENT, AVATAR_TINTS, DISPLAY_FONT, LINE, NAME_TINTS};
+use crate::theme::{AVATAR_TINTS, DISPLAY_FONT, Theme};
 
 #[must_use]
 /// `picture`, an [`avatar`], ringed as the person's status says: accent
 /// while it holds something unseen, a hairline once all was seen, no ring
 /// without a status.
-pub fn status_ring(picture: Div, unseen: Option<bool>) -> Div {
+pub fn status_ring(picture: Div, unseen: Option<bool>, theme: Theme) -> Div {
     let ring = match unseen {
-        Some(true) => rgb(ACCENT).into(),
-        Some(false) => rgb(LINE).into(),
+        Some(true) => rgb(theme.accent).into(),
+        Some(false) => rgb(theme.line).into(),
         None => gpui::transparent_black(),
     };
     div()
@@ -64,8 +64,15 @@ pub fn avatar(seed: &str, title: &str, picture: Option<PathBuf>, size: Pixels) -
 
 /// Text color for a person's name in a group, stable per person.
 #[must_use]
-pub fn name_color(seed: &str) -> u32 {
-    NAME_TINTS[tint_index(seed)]
+pub fn name_color(seed: &str, theme: Theme) -> u32 {
+    theme.name_tints[name_tint(seed)]
+}
+
+/// A person's place among the theme's name tints, stable per person, for
+/// a name coloured where the theme is not at hand.
+#[must_use]
+pub fn name_tint(seed: &str) -> usize {
+    tint_index(seed)
 }
 
 fn tint_index(seed: &str) -> usize {

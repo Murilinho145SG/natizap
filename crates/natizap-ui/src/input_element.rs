@@ -6,7 +6,7 @@ use gpui::{
 
 use crate::input::TextInput;
 use crate::input_layout::{CARET_WIDTH, TextLayout};
-use crate::theme::ACCENT;
+use crate::theme::ActiveTheme as _;
 
 /// How many rows a wrapping field grows to before it scrolls, as on the
 /// phone's composer.
@@ -49,6 +49,7 @@ impl Element for TextElement {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, Self::RequestLayoutState) {
+        let theme = *cx.theme();
         let mut style = Style::default();
         style.size.width = gpui::relative(1.).into();
         let line_height = window.line_height();
@@ -64,7 +65,7 @@ impl Element for TextElement {
                     AvailableSpace::Definite(width) => Some(width),
                     AvailableSpace::MinContent | AvailableSpace::MaxContent => None,
                 });
-                let rows = TextLayout::rows(input.read(cx), width, window);
+                let rows = TextLayout::rows(input.read(cx), width, window, theme);
                 let rows = u8::try_from(rows).unwrap_or(u8::MAX).min(MOST_ROWS);
                 size(width.unwrap_or_default(), line_height * f32::from(rows))
             },
@@ -81,8 +82,9 @@ impl Element for TextElement {
         window: &mut Window,
         cx: &mut App,
     ) -> Self::PrepaintState {
+        let theme = *cx.theme();
         let input = self.input.read(cx);
-        let mut layout = TextLayout::new(input, bounds, window);
+        let mut layout = TextLayout::new(input, bounds, window, theme);
         // Follow the caret only when it moved or the text changed, so the
         // text stays where the mouse wheel left it.
         let moved = input
@@ -99,9 +101,9 @@ impl Element for TextElement {
         let (selection, cursor) = if selected.is_empty() {
             let caret = layout.position_for_index(input.cursor_offset());
             let caret = Bounds::new(caret, size(CARET_WIDTH, layout.line_height));
-            (Vec::new(), Some(fill(caret, rgb(ACCENT))))
+            (Vec::new(), Some(fill(caret, rgb(theme.accent))))
         } else {
-            (layout.selection(selected.start, selected.end), None)
+            (layout.selection(selected.start, selected.end, theme), None)
         };
         Prepaint {
             layout: Some(layout),

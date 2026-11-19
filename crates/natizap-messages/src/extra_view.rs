@@ -6,7 +6,7 @@ use gpui::{
     rgba, svg,
 };
 use natizap_protocol::{ButtonAction, Buttons, Card, ChatId, Extra, Reply};
-use natizap_ui::theme::{HOVER, LINE, LINK, MUTED};
+use natizap_ui::theme::Theme;
 use natizap_ui::{Icon, avatar, separator};
 
 use crate::poll::PollState;
@@ -23,6 +23,7 @@ pub(crate) fn render_extra(
     poll: Option<&PollState>,
     faces: &Faces,
     view: &WeakEntity<ConversationView>,
+    theme: Theme,
 ) -> Option<AnyElement> {
     Some(match extra {
         Extra::Cards(cards) => div()
@@ -33,10 +34,12 @@ pub(crate) fn render_extra(
                 cards
                     .iter()
                     .enumerate()
-                    .map(|(index, card)| contact(id, index, card, view)),
+                    .map(|(index, card)| contact(id, index, card, view, theme)),
             )
             .into_any_element(),
-        Extra::Poll(question) => poll_view(id, question, poll, faces, view).into_any_element(),
+        Extra::Poll(question) => {
+            poll_view(id, question, poll, faces, view, theme).into_any_element()
+        }
         Extra::Buttons(_) => return None,
     })
 }
@@ -50,12 +53,13 @@ pub(crate) fn render_buttons(
     buttons: &Buttons,
     offered: &Reply,
     view: &WeakEntity<ConversationView>,
+    theme: Theme,
 ) -> Div {
     let footer = buttons.footer.clone().map(|footer| {
         div()
             .pb_1()
             .text_size(px(12.5))
-            .text_color(rgb(MUTED))
+            .text_color(rgb(theme.muted))
             .child(footer)
     });
     let rows = buttons.buttons.iter().enumerate().map(|(index, button)| {
@@ -78,15 +82,20 @@ pub(crate) fn render_buttons(
             .justify_center()
             .gap_1p5()
             .border_t_1()
-            .border_color(rgb(LINE))
+            .border_color(rgb(theme.line))
             .text_size(px(14.0))
             .font_weight(FontWeight::MEDIUM)
-            .text_color(rgb(LINK))
-            .children(icon.map(|icon| svg().path(icon.path()).size(px(15.0)).text_color(rgb(LINK))))
+            .text_color(rgb(theme.link))
+            .children(icon.map(|icon| {
+                svg()
+                    .path(icon.path())
+                    .size(px(15.0))
+                    .text_color(rgb(theme.link))
+            }))
             .child(button.label.clone())
             .when(acts, |row| {
                 row.cursor_pointer()
-                    .hover(|row| row.bg(rgba(HOVER)))
+                    .hover(|row| row.bg(rgba(theme.hover)))
                     .on_click(move |_, _, cx| match &action {
                         ButtonAction::Url(url) => {
                             tracing::debug!(url, "opening a button's link");
@@ -118,7 +127,13 @@ pub(crate) fn render_buttons(
 }
 
 /// A shared contact: its name and number, and a way to message it.
-fn contact(id: &str, index: usize, card: &Card, view: &WeakEntity<ConversationView>) -> Div {
+fn contact(
+    id: &str,
+    index: usize,
+    card: &Card,
+    view: &WeakEntity<ConversationView>,
+    theme: Theme,
+) -> Div {
     let phone = card
         .phone
         .as_ref()
@@ -149,14 +164,14 @@ fn contact(id: &str, index: usize, card: &Card, view: &WeakEntity<ConversationVi
                         .children(number.map(|number| {
                             div()
                                 .text_size(px(12.5))
-                                .text_color(rgb(MUTED))
+                                .text_color(rgb(theme.muted))
                                 .child(number)
                         })),
                 ),
         )
         .children(phone.map(|phone| {
             let view = view.clone();
-            div().pt_1().child(separator()).child(
+            div().pt_1().child(separator(theme)).child(
                 div()
                     .id(ElementId::NamedInteger(
                         format!("{id}-card").into(),
@@ -167,7 +182,7 @@ fn contact(id: &str, index: usize, card: &Card, view: &WeakEntity<ConversationVi
                     .justify_center()
                     .text_size(px(14.0))
                     .font_weight(FontWeight::MEDIUM)
-                    .text_color(rgb(LINK))
+                    .text_color(rgb(theme.link))
                     .cursor_pointer()
                     .hover(Styled::underline)
                     .on_click(move |_, _, cx| {

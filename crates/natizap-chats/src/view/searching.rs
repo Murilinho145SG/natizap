@@ -3,7 +3,7 @@
 
 use gpui::prelude::*;
 use gpui::{AnyElement, AnyView, Context, Div, FontWeight, div, px, rgb};
-use natizap_ui::theme::ACCENT;
+use natizap_ui::theme::{ActiveTheme as _, Theme};
 
 use super::{ChatListView, ROW_HEIGHT};
 use crate::list::ChatRow;
@@ -40,6 +40,7 @@ impl ChatListView {
         rows: Vec<ChatRow>,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
+        let theme = *cx.theme();
         let results = self
             .message_results
             .clone()
@@ -52,7 +53,7 @@ impl ChatListView {
                 .flex_none()
                 .flex()
                 .flex_col()
-                .child(heading("Chats"))
+                .child(heading("Chats", theme))
                 .child(
                     div()
                         .flex()
@@ -74,13 +75,13 @@ impl ChatListView {
     }
 }
 
-fn heading(label: &'static str) -> Div {
+fn heading(label: &'static str, theme: Theme) -> Div {
     div()
         .px_5()
         .pt_2()
         .pb_1()
         .text_size(px(13.0))
         .font_weight(FontWeight::SEMIBOLD)
-        .text_color(rgb(ACCENT))
+        .text_color(rgb(theme.accent))
         .child(label)
 }

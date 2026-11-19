@@ -1,6 +1,7 @@
 //! The open chat's messages: a list drawn lazily, row by row, with the
 //! messages that just arrived rising into place.
 
+use natizap_ui::theme::ActiveTheme as _;
 use std::collections::HashSet;
 use std::time::Instant;
 
@@ -51,6 +52,7 @@ impl ConversationView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnimationElement<Div> {
+        let theme = *cx.theme();
         let faces = self.voter_faces(cx);
         let log = self.log.read(cx);
         let items = log.items().clone();
@@ -66,6 +68,7 @@ impl ConversationView {
             voice: self.voices.ui(),
             downloads: log.downloads(),
             faces,
+            theme,
         };
         // Downloads move on between draws; their bars follow.
         if !shown.downloads.is_empty() {

@@ -5,7 +5,7 @@
 use gpui::prelude::*;
 use gpui::{AnyElement, Context, Div, SharedString, deferred, div, px, relative, rgb, svg};
 use natizap_ui::motion::rise_in;
-use natizap_ui::theme::{MUTED, PANEL, RAISED, TEXT, glass};
+use natizap_ui::theme::{ActiveTheme as _, Theme};
 use natizap_ui::{Icon, Tooltip};
 
 use super::ConversationView;
@@ -61,18 +61,19 @@ impl Tray {
 }
 
 /// The glass panel the emoji picker sits in, wherever it is shown.
-pub(super) fn frame(panel: Div) -> Div {
+pub(super) fn frame(panel: Div, theme: Theme) -> Div {
     panel
         .w(px(emoji::WIDTH))
         .rounded_xl()
         .overflow_hidden()
-        .bg(rgb(PANEL))
-        .map(glass)
+        .bg(rgb(theme.panel))
+        .map(|surface| theme.glass(surface))
 }
 
 impl ConversationView {
     /// The tray, floating above the composer while open.
     pub(super) fn tray_popover(&self, cx: &mut Context<Self>) -> Option<impl IntoElement + use<>> {
+        let theme = *cx.theme();
         if !self.tray.open {
             return None;
         }
@@ -95,7 +96,7 @@ impl ConversationView {
                 .justify_center()
                 .gap_1()
                 .border_t_1()
-                .border_color(gpui::rgba(natizap_ui::theme::EDGE))
+                .border_color(gpui::rgba(theme.edge))
                 .child(Self::tab_button(TrayTab::Emoji, tab, cx))
                 .child(Self::tab_button(TrayTab::Stickers, tab, cx))
         });
@@ -112,7 +113,7 @@ impl ConversationView {
                         .h(px(emoji::HEIGHT + TABS))
                         .flex()
                         .flex_col()
-                        .map(frame)
+                        .map(|tray| frame(tray, theme))
                         .child(div().flex_1().min_h_0().child(content))
                         .children(tabs),
                     8.0,
@@ -121,6 +122,7 @@ impl ConversationView {
     }
 
     fn tab_button(tab: TrayTab, shown: TrayTab, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = *cx.theme();
         let current = tab == shown;
         div()
             .id(SharedString::from(format!("tray-{}", tab.label())))
@@ -132,9 +134,9 @@ impl ConversationView {
             .rounded_full()
             .cursor_pointer()
             .text_size(px(13.0))
-            .text_color(rgb(if current { TEXT } else { MUTED }))
-            .when(current, |button| button.bg(rgb(RAISED)))
-            .hover(|button| button.text_color(rgb(TEXT)))
+            .text_color(rgb(if current { theme.text } else { theme.muted }))
+            .when(current, |button| button.bg(rgb(theme.raised)))
+            .hover(|button| button.text_color(rgb(theme.text)))
             .tooltip(Tooltip::text(tab.label()))
             .on_click(cx.listener(move |this, _, _, cx| {
                 this.tray.tab = tab;
@@ -144,7 +146,7 @@ impl ConversationView {
                 svg()
                     .path(tab.icon().path())
                     .size(px(16.0))
-                    .text_color(rgb(if current { TEXT } else { MUTED })),
+                    .text_color(rgb(if current { theme.text } else { theme.muted })),
             )
             .child(tab.label())
     }

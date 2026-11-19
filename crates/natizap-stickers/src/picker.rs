@@ -6,7 +6,7 @@ use gpui::{
     Context, Div, Entity, EventEmitter, FontWeight, ObjectFit, SharedString, Stateful, Window, div,
     img, px, rgb, svg,
 };
-use natizap_ui::theme::{DEEP, MUTED, RAISED, TEXT};
+use natizap_ui::theme::ActiveTheme as _;
 use natizap_ui::{Icon, Tooltip};
 
 use crate::shelf::{Favorite, StickerShelf};
@@ -38,6 +38,7 @@ impl StickerPicker {
 
 impl Render for StickerPicker {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = *cx.theme();
         let favorites: Vec<Favorite> = self.shelf.read(cx).favorites().cloned().collect();
         // Unframed: it fills the tray it is shown in.
         div()
@@ -53,7 +54,7 @@ impl Render for StickerPicker {
                     .pb_2()
                     .text_size(px(13.0))
                     .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(rgb(MUTED))
+                    .text_color(rgb(theme.muted))
                     .child("Favorites"),
             )
             .child(if favorites.is_empty() {
@@ -61,7 +62,7 @@ impl Render for StickerPicker {
                     .px_3()
                     .pb_4()
                     .text_size(px(13.0))
-                    .text_color(rgb(MUTED))
+                    .text_color(rgb(theme.muted))
                     .child(
                         "No favorites yet. Click a sticker in a chat and add it \
                          to your favorites.",
@@ -87,6 +88,7 @@ impl Render for StickerPicker {
 
 /// A sticker to pick: the sticker itself, lit on hover.
 fn cell(index: usize, favorite: Favorite, cx: &mut Context<StickerPicker>) -> Stateful<Div> {
+    let theme = *cx.theme();
     let shown = favorite.file.clone().map(|file| {
         img(file)
             .id(SharedString::from(format!(
@@ -112,13 +114,13 @@ fn cell(index: usize, favorite: Favorite, cx: &mut Context<StickerPicker>) -> St
             svg()
                 .path(Icon::Sticker.path())
                 .size(px(24.0))
-                .text_color(rgb(MUTED))
+                .text_color(rgb(theme.muted))
                 .into_any_element()
         }))
         .when(sendable, |cell| {
             cell.cursor_pointer()
-                .hover(|cell| cell.bg(rgb(RAISED)))
-                .active(|cell| cell.bg(rgb(DEEP)))
+                .hover(|cell| cell.bg(rgb(theme.raised)))
+                .active(|cell| cell.bg(rgb(theme.deep)))
                 .on_click(cx.listener(move |_, _, _, cx| {
                     cx.emit(StickerPicked(favorite.clone()));
                 }))
@@ -128,5 +130,5 @@ fn cell(index: usize, favorite: Favorite, cx: &mut Context<StickerPicker>) -> St
                 "Only your phone still has this one. Send it once from your phone, in any chat, to have it here.",
             ))
         })
-        .text_color(rgb(TEXT))
+        .text_color(rgb(theme.text))
 }

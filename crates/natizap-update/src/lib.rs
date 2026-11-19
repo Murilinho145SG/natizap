@@ -14,7 +14,7 @@ use std::time::Duration;
 
 use gpui::prelude::*;
 use gpui::{Context, SharedString, Task, Window, div, px, rgb};
-use natizap_ui::theme::MUTED;
+use natizap_ui::theme::ActiveTheme as _;
 use natizap_ui::{Button, ButtonSize, ButtonVariant};
 use semver::Version;
 
@@ -214,6 +214,7 @@ fn find(
 
 impl Render for Updater {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = *cx.theme();
         let (note, action): (SharedString, Option<&'static str>) = match &self.stage {
             Stage::Current => return div().into_any_element(),
             Stage::Ready { version, .. } => (
@@ -229,7 +230,12 @@ impl Render for Updater {
             .flex()
             .items_center()
             .gap_2()
-            .child(div().text_size(px(12.5)).text_color(rgb(MUTED)).child(note))
+            .child(
+                div()
+                    .text_size(px(12.5))
+                    .text_color(rgb(theme.muted))
+                    .child(note),
+            )
             .children(action.map(|label| {
                 Button::new("update")
                     .label(label)

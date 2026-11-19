@@ -4,7 +4,7 @@
 use gpui::prelude::*;
 use gpui::{AnyElement, SharedString, WeakEntity};
 use natizap_ui::Icon;
-use natizap_ui::theme::TEXT;
+use natizap_ui::theme::Theme;
 
 use super::render::{badge, day, entry};
 use super::{MediaBrowser, MessageWanted};
@@ -13,7 +13,11 @@ use crate::library::Starred;
 /// How big the star beside each message is.
 const STAR: f32 = 40.0;
 
-pub(super) fn row(starred: &Starred, browser: &WeakEntity<MediaBrowser>) -> AnyElement {
+pub(super) fn row(
+    starred: &Starred,
+    browser: &WeakEntity<MediaBrowser>,
+    theme: Theme,
+) -> AnyElement {
     let who = starred
         .author
         .clone()
@@ -26,10 +30,11 @@ pub(super) fn row(starred: &Starred, browser: &WeakEntity<MediaBrowser>) -> AnyE
     let (id, sent_at, browser) = (starred.message_id.clone(), starred.sent_at, browser.clone());
     entry(
         SharedString::from(format!("starred-{}", starred.message_id)),
-        badge(Icon::Star, STAR),
+        badge(Icon::Star, STAR, theme),
         starred.summary.clone(),
-        TEXT,
+        theme.text,
         below,
+        theme,
     )
     .on_click(move |_, _, cx| {
         let id = id.clone();

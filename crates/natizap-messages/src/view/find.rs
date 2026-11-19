@@ -10,7 +10,7 @@ use gpui::{
     Context, Div, Entity, Focusable as _, KeyDownEvent, SharedString, Task, Window, div, px, rgb,
     svg,
 };
-use natizap_ui::theme::{LINE, MUTED, PANEL};
+use natizap_ui::theme::ActiveTheme as _;
 use natizap_ui::{Button, ButtonVariant, Icon, Submitted, TextInput};
 
 use super::ConversationView;
@@ -199,6 +199,7 @@ impl ConversationView {
 
     /// The bar under the header, while a search is open.
     pub(super) fn find_bar(&self, cx: &mut Context<Self>) -> Option<Div> {
+        let theme = *cx.theme();
         let find = self.find.as_ref()?;
         let count = match (&find.at, find.hits.len(), find.searched) {
             _ if find.query.is_empty() => String::new(),
@@ -215,16 +216,16 @@ impl ConversationView {
                 .flex()
                 .items_center()
                 .gap_2()
-                .bg(rgb(PANEL))
+                .bg(rgb(theme.panel))
                 .border_b_1()
-                .border_color(rgb(LINE))
+                .border_color(rgb(theme.line))
                 .capture_key_down(cx.listener(|this, event, _, cx| this.find_key(event, cx)))
                 .child(
                     svg()
                         .path(Icon::Search.path())
                         .size(px(15.0))
                         .flex_none()
-                        .text_color(rgb(MUTED)),
+                        .text_color(rgb(theme.muted)),
                 )
                 .child(
                     div()
@@ -237,7 +238,7 @@ impl ConversationView {
                     div()
                         .flex_none()
                         .text_size(px(12.5))
-                        .text_color(rgb(MUTED))
+                        .text_color(rgb(theme.muted))
                         .child(count),
                 )
                 .child(

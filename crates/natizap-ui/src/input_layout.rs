@@ -7,10 +7,7 @@ use gpui::{
 };
 
 use crate::input::TextInput;
-use crate::theme::{ACCENT, MUTED};
-
-/// Selection highlight: the accent at a quarter opacity.
-const SELECTION: u32 = (ACCENT << 8) | 0x40;
+use crate::theme::Theme;
 
 pub(crate) const CARET_WIDTH: Pixels = px(2.);
 
@@ -47,8 +44,13 @@ pub(crate) struct TextLayout {
 
 impl TextLayout {
     /// Lays out `input`'s text in `bounds`, scrolled as it was last.
-    pub(crate) fn new(input: &TextInput, bounds: Bounds<Pixels>, window: &Window) -> Self {
-        let (text, paragraphs) = shape(input, Some(bounds.size.width), window);
+    pub(crate) fn new(
+        input: &TextInput,
+        bounds: Bounds<Pixels>,
+        window: &Window,
+        theme: Theme,
+    ) -> Self {
+        let (text, paragraphs) = shape(input, Some(bounds.size.width), window, theme);
         Self {
             text,
             paragraphs,
@@ -60,8 +62,13 @@ impl TextLayout {
     }
 
     /// How many rows `input`'s text takes when wrapped at `width`.
-    pub(crate) fn rows(input: &TextInput, width: Option<Pixels>, window: &Window) -> usize {
-        shape(input, width, window)
+    pub(crate) fn rows(
+        input: &TextInput,
+        width: Option<Pixels>,
+        window: &Window,
+        theme: Theme,
+    ) -> usize {
+        shape(input, width, window, theme)
             .1
             .iter()
             .map(|paragraph| paragraph.line.wrap_boundaries().len() + 1)
@@ -212,7 +219,7 @@ impl TextLayout {
     }
 
     /// The selection's highlight, one rectangle per row it covers.
-    pub(crate) fn selection(&self, start: usize, end: usize) -> Vec<PaintQuad> {
+    pub(crate) fn selection(&self, start: usize, end: usize, theme: Theme) -> Vec<PaintQuad> {
         let start = self.position_for_index(start);
         let end = self.position_for_index(end);
         let (left, right) = (self.bounds.left(), self.bounds.right());
@@ -223,7 +230,7 @@ impl TextLayout {
             let to = if top >= end.y { end.x } else { right };
             rows.push(fill(
                 Bounds::from_corners(point(from, top), point(to, top + self.line_height)),
-                rgba(SELECTION),
+                rgba(theme.selection),
             ));
             top += self.line_height;
         }
@@ -251,10 +258,11 @@ fn shape(
     input: &TextInput,
     wrap_width: Option<Pixels>,
     window: &Window,
+    theme: Theme,
 ) -> (SharedString, Vec<Paragraph>) {
     let style = window.text_style();
     let (text, color): (SharedString, _) = if input.content.is_empty() {
-        (input.placeholder.clone(), rgb(MUTED).into())
+        (input.placeholder.clone(), rgb(theme.muted).into())
     } else {
         (input.content.clone(), style.color)
     };

@@ -13,7 +13,7 @@ use gpui::{
 };
 use natizap_protocol::{ChatId, ContentKind};
 use natizap_ui::motion::{fade_in, slide_in};
-use natizap_ui::theme::{DEEP, MUTED, TEXT};
+use natizap_ui::theme::ActiveTheme as _;
 use natizap_ui::{Button, ButtonSize, ButtonVariant, Icon, Menu};
 
 use super::ConversationView;
@@ -203,6 +203,7 @@ impl ConversationView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
+        let theme = *cx.theme();
         let carousel = self.carousel.as_ref()?;
         // It takes the keyboard as it opens, and back when the video
         // player that had it goes with the video.
@@ -218,8 +219,8 @@ impl ConversationView {
             .h(viewport.height)
             .flex()
             .flex_col()
-            .bg(rgb(DEEP))
-            .text_color(rgb(TEXT))
+            .bg(rgb(theme.deep))
+            .text_color(rgb(theme.text))
             .occlude()
             .child(Self::carousel_bar(carousel, cx))
             .child(self.carousel_stage(carousel, window, cx))
@@ -239,6 +240,7 @@ impl ConversationView {
     /// Where it is among the chat's photos and videos and when it was
     /// sent, then what can be done with it.
     fn carousel_bar(carousel: &Carousel, cx: &mut Context<Self>) -> Div {
+        let theme = *cx.theme();
         let media = carousel.current().clone();
         let items = carousel.shelf();
         let place = carousel.at().map(|at| {
@@ -271,7 +273,7 @@ impl ConversationView {
                     .min_w_0()
                     .truncate()
                     .text_size(px(13.5))
-                    .text_color(rgb(MUTED))
+                    .text_color(rgb(theme.muted))
                     .children(place),
             )
             .when(photo, |bar| {
@@ -358,6 +360,7 @@ impl ConversationView {
         window: &Window,
         cx: &mut Context<Self>,
     ) -> Div {
+        let theme = *cx.theme();
         let video = media.fetch.kind == ContentKind::Video;
         let file = on_disk(media).or_else(|| self.log.read(cx).saved_file(&media.fetch));
         let source: Option<ImageSource> = match file {
@@ -392,7 +395,7 @@ impl ConversationView {
                 svg()
                     .path(if video { Icon::Video } else { Icon::Camera }.path())
                     .size(px(40.0))
-                    .text_color(rgb(MUTED)),
+                    .text_color(rgb(theme.muted)),
             ),
         };
         // A video waits here for its download or its player.
@@ -404,9 +407,9 @@ impl ConversationView {
                     .px_3()
                     .py_1()
                     .rounded_full()
-                    .bg(rgb(DEEP))
+                    .bg(rgb(theme.deep))
                     .text_size(px(12.5))
-                    .text_color(rgb(MUTED))
+                    .text_color(rgb(theme.muted))
                     .child("Loading…"),
             )
         })

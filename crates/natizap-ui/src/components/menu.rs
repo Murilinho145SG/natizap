@@ -11,7 +11,7 @@ use gpui::{
 use crate::Icon;
 use crate::components::separator::separator;
 use crate::motion::rise_in;
-use crate::theme::{ALERT, MUTED, PANEL, RAISED, TEXT, glass};
+use crate::theme::{ActiveTheme as _, Theme};
 
 type Handler = Rc<dyn Fn(&mut Window, &mut App)>;
 
@@ -120,7 +120,8 @@ impl Menu {
 }
 
 impl RenderOnce for Menu {
-    fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        let theme = *cx.theme();
         let on_dismiss = self.on_dismiss;
         div()
             .id("menu")
@@ -129,8 +130,8 @@ impl RenderOnce for Menu {
             .flex()
             .flex_col()
             .rounded_xl()
-            .bg(rgb(PANEL))
-            .map(glass)
+            .bg(rgb(theme.panel))
+            .map(|surface| theme.glass(surface))
             .occlude()
             .when_some(on_dismiss, |menu, on_dismiss| {
                 menu.on_mouse_down_out(move |_, window, cx| on_dismiss(window, cx))
@@ -140,13 +141,13 @@ impl RenderOnce for Menu {
                     .into_iter()
                     .enumerate()
                     .map(|(index, entry)| match entry {
-                        Entry::Separator => div().mx_3().my_1().child(separator()),
+                        Entry::Separator => div().mx_3().my_1().child(separator(theme)),
                         Entry::Action {
                             icon,
                             label,
                             danger,
                             on_select,
-                        } => action_row(index, icon, label, danger, on_select),
+                        } => action_row(index, icon, label, danger, on_select, theme),
                     }),
             )
     }
@@ -158,11 +159,12 @@ fn action_row(
     label: SharedString,
     danger: bool,
     on_select: Handler,
+    theme: Theme,
 ) -> Div {
     let (ink, glyph) = if danger {
-        (ALERT, ALERT)
+        (theme.alert, theme.alert)
     } else {
-        (TEXT, MUTED)
+        (theme.text, theme.muted)
     };
     div().px_1().child(
         div()
@@ -176,7 +178,7 @@ fn action_row(
             .text_size(px(14.0))
             .text_color(rgb(ink))
             .cursor_pointer()
-            .hover(|row| row.bg(rgb(RAISED)))
+            .hover(|row| row.bg(rgb(theme.raised)))
             // On press, so the action runs even when the press also counts
             // as a click outside another floating element.
             .on_mouse_down(MouseButton::Left, move |_, window, cx| {

@@ -4,7 +4,7 @@
 use gpui::prelude::*;
 use gpui::{Context, Div, Entity, EventEmitter, Focusable as _, FontWeight, Window, div, px, rgb};
 use natizap_protocol::Poll;
-use natizap_ui::theme::{LINE, MUTED, PANEL, TEXT, glass};
+use natizap_ui::theme::{ActiveTheme as _, Theme};
 use natizap_ui::{Button, ButtonVariant, Switch, TextInput};
 
 /// WhatsApp allows at most this many choices.
@@ -81,90 +81,95 @@ impl PollComposer {
 
 impl Render for PollComposer {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = *cx.theme();
         let ready = self.poll(cx);
         let composer = cx.weak_entity();
-        glass(
-            div()
-                .id("poll-composer")
-                .w(px(400.0))
-                .max_h(px(560.0))
-                .overflow_y_scroll()
-                .flex()
-                .flex_col()
-                .gap_3()
-                .p_5()
-                .rounded_xl()
-                .bg(rgb(PANEL))
-                .text_color(rgb(TEXT))
-                // Clicks inside must not reach the scrim, which closes it.
-                .on_click(|_, _, cx| cx.stop_propagation()),
-        )
-        .child(
-            div()
-                .text_size(px(16.0))
-                .font_weight(FontWeight::SEMIBOLD)
-                .child("Create poll"),
-        )
-        .child(label("Question"))
-        .child(field(&self.question))
-        .child(label("Options"))
-        .children(self.options.iter().map(field))
-        .child(
-            div()
-                .pt_1()
-                .flex()
-                .items_center()
-                .justify_between()
-                .child(div().text_size(px(14.0)).child("Allow multiple answers"))
-                .child(
-                    Switch::new("poll-multiple", self.multiple).on_toggle(move |on, _, cx| {
-                        let _ = composer.update(cx, |composer, cx| {
-                            composer.multiple = on;
-                            cx.notify();
-                        });
-                    }),
-                ),
-        )
-        .child(
-            div()
-                .pt_2()
-                .flex()
-                .justify_end()
-                .gap_2()
-                .child(
-                    Button::new("poll-cancel")
-                        .label("Cancel")
-                        .variant(ButtonVariant::Secondary)
-                        .on_click(cx.listener(|_, _, _, cx| cx.emit(PollDropped))),
-                )
-                .child(
-                    Button::new("poll-send")
-                        .label("Send")
-                        .variant(if ready.is_some() {
-                            ButtonVariant::Primary
-                        } else {
-                            ButtonVariant::Secondary
-                        })
-                        .on_click(cx.listener(|composer, _, _, cx| {
-                            if let Some(poll) = composer.poll(cx) {
-                                cx.emit(PollWritten(poll));
-                            }
-                        })),
-                ),
-        )
+        theme
+            .glass(
+                div()
+                    .id("poll-composer")
+                    .w(px(400.0))
+                    .max_h(px(560.0))
+                    .overflow_y_scroll()
+                    .flex()
+                    .flex_col()
+                    .gap_3()
+                    .p_5()
+                    .rounded_xl()
+                    .bg(rgb(theme.panel))
+                    .text_color(rgb(theme.text))
+                    // Clicks inside must not reach the scrim, which closes it.
+                    .on_click(|_, _, cx| cx.stop_propagation()),
+            )
+            .child(
+                div()
+                    .text_size(px(16.0))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .child("Create poll"),
+            )
+            .child(label("Question", theme))
+            .child(field(&self.question, theme))
+            .child(label("Options", theme))
+            .children(self.options.iter().map(|option| field(option, theme)))
+            .child(
+                div()
+                    .pt_1()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .child(div().text_size(px(14.0)).child("Allow multiple answers"))
+                    .child(Switch::new("poll-multiple", self.multiple).on_toggle(
+                        move |on, _, cx| {
+                            let _ = composer.update(cx, |composer, cx| {
+                                composer.multiple = on;
+                                cx.notify();
+                            });
+                        },
+                    )),
+            )
+            .child(
+                div()
+                    .pt_2()
+                    .flex()
+                    .justify_end()
+                    .gap_2()
+                    .child(
+                        Button::new("poll-cancel")
+                            .label("Cancel")
+                            .variant(ButtonVariant::Secondary)
+                            .on_click(cx.listener(|_, _, _, cx| cx.emit(PollDropped))),
+                    )
+                    .child(
+                        Button::new("poll-send")
+                            .label("Send")
+                            .variant(if ready.is_some() {
+                                ButtonVariant::Primary
+                            } else {
+                                ButtonVariant::Secondary
+                            })
+                            .on_click(cx.listener(|composer, _, _, cx| {
+                                if let Some(poll) = composer.poll(cx) {
+                                    cx.emit(PollWritten(poll));
+                                }
+                            })),
+                    ),
+            )
     }
 }
 
-fn label(text: &'static str) -> Div {
-    div().text_size(px(12.5)).text_color(rgb(MUTED)).child(text)
+fn label(text: &'static str, theme: Theme) -> Div {
+    div()
+        .text_size(px(12.5))
+        .text_color(rgb(theme.muted))
+        .child(text)
 }
 
-fn field(input: &Entity<TextInput>) -> Div {
+fn field(input: &Entity<TextInput>, theme: Theme) -> Div {
     div()
         .px_3()
         .py_2()
         .rounded_lg()
         .border_1()
-        .border_color(rgb(LINE))
+        .border_color(rgb(theme.line))
         .child(input.clone())
 }

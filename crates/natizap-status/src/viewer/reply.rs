@@ -5,7 +5,7 @@ use gpui::prelude::*;
 use gpui::{Context, MouseButton, SharedString, Window, div, px, rgb, rgba};
 use natizap_playback::Recorder;
 use natizap_protocol::Reply;
-use natizap_ui::theme::{MUTED, TEXT};
+use natizap_ui::theme::ActiveTheme as _;
 use natizap_ui::{Button, ButtonVariant, Icon};
 
 use super::{QUICK, ReplyBody, StatusReply, StatusViewer};
@@ -100,6 +100,7 @@ impl StatusViewer {
 
     /// Replying with text, a quick reaction or a voice note.
     fn reply_bar(&self, bar: gpui::Div, cx: &mut Context<Self>) -> gpui::AnyElement {
+        let theme = *cx.theme();
         let recording = self.recorder.is_some();
         let quick = QUICK.iter().map(|emoji| {
             let (emoji, sent) = ((*emoji).to_owned(), (*emoji).to_owned());
@@ -132,7 +133,7 @@ impl StatusViewer {
                             .px_4()
                             .py_2p5()
                             .rounded_full()
-                            .bg(rgba((TEXT << 8) | 0x14))
+                            .bg(rgba((theme.text << 8) | 0x14))
                             .text_size(px(14.5))
                             .on_mouse_down(
                                 MouseButton::Left,
@@ -144,7 +145,7 @@ impl StatusViewer {
                             )
                             .child(if recording {
                                 div()
-                                    .text_color(rgb(MUTED))
+                                    .text_color(rgb(theme.muted))
                                     .child("Recording… press the microphone to send")
                                     .into_any_element()
                             } else {

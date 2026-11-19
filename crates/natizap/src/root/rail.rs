@@ -6,6 +6,7 @@ use gpui::{Context, px};
 use natizap_contacts::{OwnProfile, OwnProfileClosed};
 use natizap_messages::ChatSettings;
 use natizap_notifications::{NotificationSettings, SettingsClosed};
+use natizap_ui::theme::ActiveTheme as _;
 use natizap_ui::{Button, ButtonVariant, Icon, RAIL_AVATAR, Rail, avatar, rail_avatar};
 
 use super::{Place, Root};
@@ -13,6 +14,7 @@ use super::{Place, Root};
 impl Root {
     /// The rail, Chats lit unless your profile shows.
     pub(super) fn rail(&mut self, cx: &mut Context<Self>) -> Rail {
+        let theme = *cx.theme();
         let me = self.protocol.read(cx).me();
         let on_profile = self.own_shown;
         let unseen_status = self.status.read(cx).rings().values().any(|unseen| *unseen);
@@ -75,6 +77,7 @@ impl Root {
                     "rail-me",
                     avatar(me.phone.as_str(), &name, picture, px(RAIL_AVATAR)),
                     on_profile,
+                    theme,
                 )
                 .tooltip(natizap_ui::Tooltip::text("Profile"))
                 .on_click(cx.listener(|root, _, _, cx| root.toggle_own_profile(cx))),

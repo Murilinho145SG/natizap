@@ -9,7 +9,7 @@ use gpui::{
     rgba, svg,
 };
 use natizap_ui::Icon;
-use natizap_ui::theme::{ACCENT, LINE, MUTED, PANE, TEXT};
+use natizap_ui::theme::Theme;
 
 use crate::send_preview::MOST_FILES;
 
@@ -29,14 +29,14 @@ const BOB_HEIGHT: f32 = 6.0;
 /// Shown over the conversation while files are dragged over the window,
 /// so the user knows they can be dropped here: it fades in, its arrow
 /// keeps dropping into the tray, and it lights up once the files are over it.
-pub(super) fn drop_zone() -> impl IntoElement {
+pub(super) fn drop_zone(theme: Theme) -> impl IntoElement {
     div()
         .absolute()
         .inset_0()
         .p_3()
         // The messages show faintly through, so it reads as a layer over
         // the chat rather than a new screen.
-        .bg(rgba((PANE << 8) | 0xf5))
+        .bg(rgba((theme.pane << 8) | 0xf5))
         .child(
             div()
                 .size_full()
@@ -48,10 +48,10 @@ pub(super) fn drop_zone() -> impl IntoElement {
                 .rounded_xl()
                 .border_2()
                 .border_dashed()
-                .border_color(rgb(LINE))
+                .border_color(rgb(theme.line))
                 .group_drag_over::<ExternalPaths>("conversation", |zone| {
-                    zone.border_color(rgb(ACCENT))
-                        .bg(rgba((ACCENT << 8) | 0x0f))
+                    zone.border_color(rgb(theme.accent))
+                        .bg(rgba((theme.accent << 8) | 0x0f))
                 })
                 .child(
                     div()
@@ -62,7 +62,7 @@ pub(super) fn drop_zone() -> impl IntoElement {
                         .items_center()
                         .justify_center()
                         .rounded_full()
-                        .bg(rgba((ACCENT << 8) | 0x1f))
+                        .bg(rgba((theme.accent << 8) | 0x1f))
                         .child(
                             svg()
                                 .absolute()
@@ -70,7 +70,7 @@ pub(super) fn drop_zone() -> impl IntoElement {
                                 .left(px(ICON_INSET))
                                 .size(px(ICON))
                                 .path(Icon::Tray.path())
-                                .text_color(rgb(ACCENT)),
+                                .text_color(rgb(theme.accent)),
                         )
                         .child(
                             svg()
@@ -78,7 +78,7 @@ pub(super) fn drop_zone() -> impl IntoElement {
                                 .left(px(ICON_INSET))
                                 .size(px(ICON))
                                 .path(Icon::ArrowDown.path())
-                                .text_color(rgb(ACCENT))
+                                .text_color(rgb(theme.accent))
                                 .with_animation(
                                     "drop-bob",
                                     Animation::new(BOB)
@@ -92,13 +92,13 @@ pub(super) fn drop_zone() -> impl IntoElement {
                     div()
                         .text_size(px(16.0))
                         .font_weight(FontWeight::SEMIBOLD)
-                        .text_color(rgb(TEXT))
+                        .text_color(rgb(theme.text))
                         .child("Drop files to send them"),
                 )
                 .child(
                     div()
                         .text_size(px(13.0))
-                        .text_color(rgb(MUTED))
+                        .text_color(rgb(theme.muted))
                         .child(format!(
                             "Photos, videos and documents, up to {MOST_FILES} at once"
                         )),

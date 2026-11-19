@@ -5,7 +5,7 @@ use gpui::prelude::*;
 use gpui::{App, Window, anchored, deferred, div, point, px, rgba};
 
 use crate::motion::{fade_in, rise_in};
-use crate::theme::SCRIM;
+use crate::theme::Theme;
 
 /// `content` centered over the whole window, dimmed behind it. Pressing the
 /// dimmed part runs `on_dismiss`; `content` should occlude itself so presses
@@ -14,6 +14,7 @@ pub fn dialog(
     window: &Window,
     content: impl IntoElement,
     on_dismiss: impl Fn(&mut Window, &mut App) + 'static,
+    theme: Theme,
 ) -> impl IntoElement {
     let viewport = window.viewport_size();
     deferred(
@@ -26,7 +27,7 @@ pub fn dialog(
                 .flex()
                 .items_center()
                 .justify_center()
-                .bg(rgba(SCRIM))
+                .bg(rgba(theme.scrim))
                 .occlude()
                 .on_click(move |_, window, cx| on_dismiss(window, cx))
                 .child(rise_in("dialog-in", div().child(content), 14.0)),

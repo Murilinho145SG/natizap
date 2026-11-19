@@ -1,6 +1,7 @@
 //! The splash over the window while natizap opens: it plays its intro,
 //! stays while the app is still loading, then fades into the app.
 
+use natizap_ui::theme::ActiveTheme as _;
 use std::time::Instant;
 
 use gpui::prelude::*;
@@ -49,6 +50,7 @@ impl Root {
     /// The splash to lay over the window, while it shows: leaving once the
     /// intro played and the app is ready, gone once it faded.
     pub(super) fn opening_layer(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let theme = *cx.theme();
         let mut opening = self.opening?;
         if let Some(leaving) = opening.leaving {
             if leaving.elapsed() >= SPLASH_OUT {
@@ -65,7 +67,7 @@ impl Root {
                 .absolute()
                 .inset_0()
                 .occlude()
-                .child(splash(opening.leaving.is_some()))
+                .child(splash(opening.leaving.is_some(), theme))
                 .into_any_element(),
         )
     }

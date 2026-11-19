@@ -5,7 +5,7 @@ use gpui::prelude::*;
 use gpui::{AnyElement, Context, Pixels, SharedString, div, px, rgb};
 use natizap_session::SessionState;
 use natizap_ui::motion::slide_in;
-use natizap_ui::theme::LINE;
+use natizap_ui::theme::ActiveTheme as _;
 use natizap_ui::{Alert, AlertTone, RAIL_WIDTH};
 
 use super::{Place, Root};
@@ -19,6 +19,7 @@ const LEAST_CONVERSATION: f32 = 420.0;
 impl Root {
     /// The window's content, laid out for a window `width` wide.
     pub(super) fn content(&mut self, width: Pixels, cx: &mut Context<Self>) -> AnyElement {
+        let theme = *cx.theme();
         if !self.shows_chats(cx) {
             return self.pairing.clone().into_any_element();
         }
@@ -34,7 +35,7 @@ impl Root {
                     .h_full()
                     .flex_none()
                     .border_r_1()
-                    .border_color(rgb(LINE))
+                    .border_color(rgb(theme.line))
                     .map(
                         |pane| match self.own_profile.clone().filter(|_| self.own_shown) {
                             Some(profile) => pane.child(slide_in(
@@ -76,7 +77,7 @@ impl Root {
                         .w(px(SIDE_PANEL))
                         .h_full()
                         .border_l_1()
-                        .border_color(rgb(LINE))
+                        .border_color(rgb(theme.line))
                         .shadow_lg()
                         // Over the conversation: its clicks stay here, or
                         // the header below would open the profile again.

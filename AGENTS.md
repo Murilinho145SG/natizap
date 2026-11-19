@@ -212,11 +212,18 @@ Keep this table current when a crate is added, renamed or removed.
 - Every color, font and icon comes from `natizap-ui` (`theme`, `Icon`);
   feature crates never hard-code hex colors or font names, so the look
   changes in one place.
-- Palette: near-black graphite surfaces (`DEEP`, `PANEL`, `PANE`, `RAISED`,
-  `LINE`) with a single orange accent (`ACCENT`) reserved for unread counts
-  and primary actions. `MINT` and `ALERT` only signal state.
+- Colors come from the active `Theme`, a GPUI global: read it with
+  `cx.theme()` (`ActiveTheme`), copy it (`let theme = *cx.theme();`) and
+  pass it as a `Theme` to helpers that draw without a context. Data built
+  off the UI thread never holds colors: it holds what picks one (a name's
+  `Tint`), and the color is read from the theme when drawn.
+- The native themes (`theme::NATIVE`) start with Graphite, natizap's own:
+  near-black surfaces (`deep`, `panel`, `pane`, `raised`, `line`) with a
+  single orange accent (`accent`) reserved for unread counts and primary
+  actions. `mint` and `alert` only signal state. Every native theme keeps
+  text readable on its surfaces; a test checks the contrast.
 - Floating surfaces (bubbles, menus, the composer field) are glass:
-  `theme::glass` gives them a faint light rim (`EDGE`) and a soft shadow.
+  `Theme::glass` gives them a faint rim (`edge`) and a soft shadow.
   There is no backdrop blur: GPUI cannot blur behind an element, and GNOME
   does not blur behind windows.
 - Type: Figtree (`UI_FONT`) for interface text; Bricolage Grotesque

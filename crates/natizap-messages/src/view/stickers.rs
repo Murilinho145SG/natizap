@@ -10,7 +10,7 @@ use gpui::{
     svg,
 };
 use natizap_protocol::{ContentKind, Sticker};
-use natizap_ui::theme::MUTED;
+use natizap_ui::theme::ActiveTheme as _;
 use natizap_ui::{Button, ButtonVariant, Icon, Menu, dialog};
 
 use super::ConversationView;
@@ -74,6 +74,7 @@ impl ConversationView {
         window: &Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        let theme = *cx.theme();
         let file = media
             .file
             .clone()
@@ -98,7 +99,7 @@ impl ConversationView {
                     svg()
                         .path(Icon::Download.path())
                         .size(px(32.0))
-                        .text_color(rgb(MUTED)),
+                        .text_color(rgb(theme.muted)),
                 )
                 .into_any_element(),
         };
@@ -135,6 +136,7 @@ impl ConversationView {
                     cx.notify();
                 });
             },
+            theme,
         )
         .into_any_element()
     }

@@ -12,7 +12,7 @@ use gpui::{
 
 use crate::Icon;
 use crate::motion::{ease_out, rise_in_after};
-use crate::theme::{ACCENT, DEEP, DISPLAY_FONT, LINE, TEXT};
+use crate::theme::{DISPLAY_FONT, Theme};
 
 /// How long the mark takes to pop in.
 const MARK_IN: Duration = Duration::from_millis(520);
@@ -32,7 +32,7 @@ const TRACK: f32 = 120.0;
 const SEGMENT: f32 = 36.0;
 
 /// The splash filling the space it is given; `leaving` fades it away.
-pub fn splash(leaving: bool) -> impl IntoElement {
+pub fn splash(leaving: bool, theme: Theme) -> impl IntoElement {
     let layer = div()
         .size_full()
         .flex()
@@ -40,20 +40,20 @@ pub fn splash(leaving: bool) -> impl IntoElement {
         .items_center()
         .justify_center()
         .gap_4()
-        .bg(rgb(DEEP))
-        .child(mark(leaving))
+        .bg(rgb(theme.deep))
+        .child(mark(leaving, theme))
         .child(rise_in_after(
             "splash-name",
             div()
                 .font_family(DISPLAY_FONT)
                 .font_weight(FontWeight::BOLD)
                 .text_size(px(30.0))
-                .text_color(rgb(TEXT))
+                .text_color(rgb(theme.text))
                 .child("natizap"),
             10.0,
             NAME_AFTER,
         ))
-        .child(loading_bar());
+        .child(loading_bar(theme));
     if leaving {
         layer
             .with_animation(
@@ -69,11 +69,11 @@ pub fn splash(leaving: bool) -> impl IntoElement {
 
 /// The mark: popping in, overshooting a little and settling; growing a
 /// touch as the splash leaves, as if it opened into the app.
-fn mark(leaving: bool) -> impl IntoElement {
+fn mark(leaving: bool, theme: Theme) -> impl IntoElement {
     let mark = svg()
         .path(Icon::Logo.path())
         .size(px(MARK))
-        .text_color(rgb(ACCENT));
+        .text_color(rgb(theme.accent));
     if leaving {
         return mark
             .with_animation(
@@ -100,7 +100,7 @@ fn mark(leaving: bool) -> impl IntoElement {
 
 /// A thin track with a segment sweeping back and forth: still loading. It
 /// fades in late, so a quick start never shows it.
-fn loading_bar() -> impl IntoElement {
+fn loading_bar(theme: Theme) -> impl IntoElement {
     let travel = TRACK - SEGMENT;
     rise_in_after(
         "splash-bar",
@@ -111,9 +111,9 @@ fn loading_bar() -> impl IntoElement {
             .mt_4()
             .rounded_full()
             .overflow_hidden()
-            .bg(rgb(LINE))
+            .bg(rgb(theme.line))
             .child(
-                segment().with_animation(
+                segment(theme).with_animation(
                     "splash-sweep",
                     Animation::new(SWEEP)
                         .repeat()
@@ -126,14 +126,14 @@ fn loading_bar() -> impl IntoElement {
     )
 }
 
-fn segment() -> Div {
+fn segment(theme: Theme) -> Div {
     div()
         .absolute()
         .top_0()
         .h_full()
         .w(px(SEGMENT))
         .rounded_full()
-        .bg(rgb(ACCENT))
+        .bg(rgb(theme.accent))
 }
 
 /// Eases out past the end and back, so the mark lands with a small pop.

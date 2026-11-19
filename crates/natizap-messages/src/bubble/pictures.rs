@@ -3,7 +3,7 @@
 
 use gpui::prelude::*;
 use gpui::{Div, WeakEntity, div, px, rgb, rgba};
-use natizap_ui::theme::{SCRIM, TEXT};
+use natizap_ui::theme::Theme;
 
 use super::{author, forwarded, frame, jump_to_quoted};
 use crate::items::{Body, Bubble, MediaView};
@@ -20,24 +20,25 @@ pub(super) fn sticker_bubble(
     meta: Div,
     view: &WeakEntity<ConversationView>,
     downloading: Option<f32>,
+    theme: Theme,
 ) -> Div {
     div()
         .flex()
         .flex_col()
         .gap_1()
         .when(bubble.from_me, Styled::items_end)
-        .children(author(bubble, view).map(Styled::px_1))
-        .children(forwarded(bubble).map(Styled::px_1))
+        .children(author(bubble, view, theme).map(Styled::px_1))
+        .children(forwarded(bubble, theme).map(Styled::px_1))
         .children(
             bubble
                 .quote
                 .as_ref()
-                .map(|quote| jump_to_quoted(quote, view)),
+                .map(|quote| jump_to_quoted(quote, view, theme)),
         )
         .child(
             div()
                 .relative()
-                .child(render_media(media, view, downloading))
+                .child(render_media(media, view, downloading, theme))
                 .child(
                     div()
                         .absolute()
@@ -45,8 +46,8 @@ pub(super) fn sticker_bubble(
                         .right(px(4.0))
                         .px_1p5()
                         .rounded_full()
-                        .bg(rgba(SCRIM))
-                        .child(meta.text_color(rgb(TEXT))),
+                        .bg(rgba(theme.scrim))
+                        .child(meta.text_color(rgb(theme.text))),
                 ),
         )
 }
@@ -63,6 +64,7 @@ pub(super) fn picture_bubble(
     view: &WeakEntity<ConversationView>,
     focus: &TextFocus,
     downloading: Option<f32>,
+    theme: Theme,
 ) -> Div {
     let caption = match &bubble.body {
         Body::Content {
@@ -72,10 +74,10 @@ pub(super) fn picture_bubble(
     };
     let picture = div()
         .relative()
-        .child(render_media(media, view, downloading));
+        .child(render_media(media, view, downloading, theme));
     let (picture, caption) = match caption {
         Some(text) => {
-            let (shown, hits) = rich_text(&bubble.id, text, view, focus);
+            let (shown, hits) = rich_text(&bubble.id, text, view, focus, theme);
             // As wide as the bubble, which is as wide as the picture, so
             // long captions wrap under it instead of spilling past it.
             let caption = div()
@@ -102,8 +104,8 @@ pub(super) fn picture_bubble(
                     .right(px(6.0))
                     .px_1p5()
                     .rounded_full()
-                    .bg(rgba(SCRIM))
-                    .child(meta.text_color(rgb(TEXT))),
+                    .bg(rgba(theme.scrim))
+                    .child(meta.text_color(rgb(theme.text))),
             ),
             None,
         ),
@@ -111,18 +113,18 @@ pub(super) fn picture_bubble(
     // A width of its own, the picture's and its padding, narrowing with
     // the window: a caption measured against anything wider wraps into
     // more lines than were laid out and spills out of the bubble.
-    frame(bubble)
+    frame(bubble, theme)
         .w(px(media.size.0 + 2.0 * PICTURE_PADDING))
         .max_w_full()
         .p(px(PICTURE_PADDING))
         .gap_1()
-        .children(author(bubble, view).map(|name| name.px(px(7.0)).pt(px(2.0))))
-        .children(forwarded(bubble).map(|line| line.px(px(7.0))))
+        .children(author(bubble, view, theme).map(|name| name.px(px(7.0)).pt(px(2.0))))
+        .children(forwarded(bubble, theme).map(|line| line.px(px(7.0))))
         .children(
             bubble
                 .quote
                 .as_ref()
-                .map(|quote| jump_to_quoted(quote, view)),
+                .map(|quote| jump_to_quoted(quote, view, theme)),
         )
         .child(picture)
         .children(caption)

@@ -3,7 +3,7 @@
 
 use gpui::prelude::*;
 use gpui::{App, Div, Stateful, WeakEntity, div, px, rgb};
-use natizap_ui::theme::{LINE, MUTED, PANEL, RAISED, glass};
+use natizap_ui::theme::Theme;
 use natizap_ui::{Button, ButtonSize, ButtonVariant, Icon};
 
 use super::QUICK_REACTIONS;
@@ -42,6 +42,7 @@ fn hover_button(id: &'static str, icon: Icon, name: &'static str) -> Button {
 pub(super) fn quick_reactions(
     bubble: &Bubble,
     view: &WeakEntity<ConversationView>,
+    theme: Theme,
 ) -> Stateful<Div> {
     div()
         .id("quick-reactions")
@@ -55,8 +56,8 @@ pub(super) fn quick_reactions(
         .gap_0p5()
         .p_0p5()
         .rounded_full()
-        .bg(rgb(PANEL))
-        .map(glass)
+        .bg(rgb(theme.panel))
+        .map(|surface| theme.glass(surface))
         .children(QUICK_REACTIONS.iter().map(|&emoji| {
             let mine = bubble.my_reaction.as_deref() == Some(emoji);
             div()
@@ -67,8 +68,8 @@ pub(super) fn quick_reactions(
                 .justify_center()
                 .rounded_full()
                 .cursor_pointer()
-                .when(mine, |button| button.bg(rgb(RAISED)))
-                .hover(|style| style.bg(rgb(RAISED)))
+                .when(mine, |button| button.bg(rgb(theme.raised)))
+                .hover(|style| style.bg(rgb(theme.raised)))
                 .on_click({
                     let (view, bubble) = (view.clone(), bubble.clone());
                     move |_, _, cx| {
@@ -98,7 +99,7 @@ pub(super) fn quick_reactions(
         )
 }
 
-pub(super) fn reaction_chips(bubble: &Bubble) -> Div {
+pub(super) fn reaction_chips(bubble: &Bubble, theme: Theme) -> Div {
     div()
         .flex()
         .gap_1()
@@ -109,13 +110,17 @@ pub(super) fn reaction_chips(bubble: &Bubble) -> Div {
                 .gap_1()
                 .px_1p5()
                 .rounded_full()
-                .bg(rgb(PANEL))
+                .bg(rgb(theme.panel))
                 .border_1()
-                .border_color(rgb(LINE))
+                .border_color(rgb(theme.line))
                 .text_size(px(13.0))
                 .child(chip.emoji.clone())
                 .when(chip.count > 1, |chip_view| {
-                    chip_view.child(div().text_color(rgb(MUTED)).child(chip.count.to_string()))
+                    chip_view.child(
+                        div()
+                            .text_color(rgb(theme.muted))
+                            .child(chip.count.to_string()),
+                    )
                 })
         }))
 }

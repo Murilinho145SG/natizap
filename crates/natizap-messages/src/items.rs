@@ -6,10 +6,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use natizap_protocol::{ChatId, ContentKind, Extra, Forwarding, Mark, Marked, Reply};
-use natizap_ui::name_color;
-use natizap_ui::theme::{ACCENT, MUTED};
 
 pub(crate) use crate::authors::Members;
+use crate::authors::Tint;
 use crate::authors::{Author, Senders};
 use crate::media::Fetch;
 use crate::message::{Delivery, Message, Reaction};
@@ -123,7 +122,7 @@ pub(crate) struct QuotePreview {
     pub(crate) author: SharedString,
     /// The author's number beside a chosen name, in groups.
     pub(crate) phone: Option<SharedString>,
-    pub(crate) color: u32,
+    pub(crate) color: Tint,
     pub(crate) text: SharedString,
     /// What the quoted message carries, for its icon.
     pub(crate) kind: ContentKind,
@@ -283,14 +282,14 @@ fn quote_preview(
         .map(|quote| match by_id.get(quote.id.as_str()) {
             Some(quoted) => {
                 let (author, color, phone) = match (&quoted.sender, quoted.from_me) {
-                    (_, true) => ("You".into(), ACCENT, None),
+                    (_, true) => ("You".into(), Tint::Accent, None),
                     (Some(sender), false) => {
                         let author = Author::of(quoted, sender, senders);
                         (author.name, author.color, author.phone)
                     }
                     (None, false) => (
                         contact.to_owned().into(),
-                        name_color(quoted.chat.as_str()),
+                        Tint::person(quoted.chat.as_str()),
                         None,
                     ),
                 };
@@ -325,7 +324,7 @@ fn quote_preview(
                     .unwrap_or_else(|| "Message".to_owned())
                     .into(),
                 phone: None,
-                color: MUTED,
+                color: Tint::Muted,
                 text: quote
                     .summary
                     .as_deref()

@@ -4,7 +4,7 @@ use gpui::prelude::*;
 use gpui::{Animation, AnimationExt as _, App, ElementId, Window, div, px, rgb};
 
 use crate::motion;
-use crate::theme::{ACCENT, LINE, TEXT};
+use crate::theme::ActiveTheme as _;
 
 type ToggleHandler = Box<dyn Fn(bool, &mut Window, &mut App)>;
 
@@ -57,6 +57,7 @@ const TRAVEL: f32 = 38.0 - 2.0 * 3.0 - 16.0;
 
 impl RenderOnce for Switch {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let theme = *cx.theme();
         let on = self.on;
         let shown = window.use_keyed_state(self.id.clone(), cx, |_, _| Shown { on, changes: 0 });
         let changes = shown.update(cx, |shown, _| {
@@ -68,7 +69,7 @@ impl RenderOnce for Switch {
         });
         // It came from the other end, so it starts there.
         let from = if on { -TRAVEL } else { TRAVEL };
-        let knob = div().size(px(16.0)).rounded_full().bg(rgb(TEXT));
+        let knob = div().size(px(16.0)).rounded_full().bg(rgb(theme.text));
         div()
             .id(self.id)
             .w(px(38.0))
@@ -78,7 +79,7 @@ impl RenderOnce for Switch {
             .items_center()
             .px(px(3.0))
             .rounded_full()
-            .bg(rgb(if on { ACCENT } else { LINE }))
+            .bg(rgb(if on { theme.accent } else { theme.line }))
             .cursor_pointer()
             .when(on, Styled::justify_end)
             .when_some(self.on_toggle, |switch, handler| {

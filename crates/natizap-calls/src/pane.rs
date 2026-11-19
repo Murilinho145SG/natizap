@@ -10,7 +10,7 @@ use gpui::{
 };
 use natizap_profiles::ProfilePictures;
 use natizap_protocol::{CallOutcome, CallRecord, ChatId};
-use natizap_ui::theme::{ALERT, DISPLAY_FONT, HOVER, MUTED, PANEL, TEXT};
+use natizap_ui::theme::{ActiveTheme as _, DISPLAY_FONT, Theme};
 use natizap_ui::{Button, ButtonVariant, Icon, avatar};
 
 use crate::group::CallGroup;
@@ -55,6 +55,7 @@ impl CallsPane {
     }
 
     fn row(&self, group: &CallGroup, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let theme = *cx.theme();
         let call = group.latest().clone();
         let chat = call.group.clone().unwrap_or_else(|| call.peer.clone());
         let title = self.log.read(cx).title(&chat);
@@ -84,7 +85,7 @@ impl CallsPane {
                     .gap_3()
                     .rounded_lg()
                     .cursor_pointer()
-                    .hover(|row| row.bg(rgba(HOVER)))
+                    .hover(|row| row.bg(rgba(theme.hover)))
                     .on_click(cx.listener(move |_, _, _, cx| {
                         cx.emit(CallChatRequested(opening.clone()));
                     }))
@@ -100,11 +101,11 @@ impl CallsPane {
                                     .truncate()
                                     .font_weight(FontWeight::MEDIUM)
                                     .when(missed && call.incoming, |name| {
-                                        name.text_color(rgb(ALERT))
+                                        name.text_color(rgb(theme.alert))
                                     })
                                     .child(name),
                             )
-                            .child(summary(&call)),
+                            .child(summary(&call, theme)),
                     )
                     .when(count > 1, |row| {
                         row.child(
@@ -137,7 +138,7 @@ impl CallsPane {
                         .pl(px(AVATAR + 40.0))
                         .pr_5()
                         .pb_1()
-                        .child(summary(call))
+                        .child(summary(call, theme))
                 }))
             })
     }
@@ -145,6 +146,7 @@ impl CallsPane {
 
 impl Render for CallsPane {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = *cx.theme();
         let groups = self.log.read(cx).groups();
         let rows: Vec<_> = groups
             .iter()
@@ -155,8 +157,8 @@ impl Render for CallsPane {
             .size_full()
             .flex()
             .flex_col()
-            .bg(rgb(PANEL))
-            .text_color(rgb(TEXT))
+            .bg(rgb(theme.panel))
+            .text_color(rgb(theme.text))
             .child(
                 div()
                     .px_5()
@@ -181,7 +183,7 @@ impl Render for CallsPane {
                                 .px_5()
                                 .pt_6()
                                 .text_size(px(13.5))
-                                .text_color(rgb(MUTED))
+                                .text_color(rgb(theme.muted))
                                 .child("No calls yet."),
                         )
                     }),
@@ -190,7 +192,7 @@ impl Render for CallsPane {
 }
 
 /// One call's line: which way it went, voice or video, when, and how long.
-fn summary(call: &CallRecord) -> impl IntoElement + use<> {
+fn summary(call: &CallRecord, theme: Theme) -> impl IntoElement + use<> {
     let missed = call.outcome == CallOutcome::Missed;
     let (icon, word) = match (call.incoming, call.outcome) {
         (true, CallOutcome::Missed) => (Icon::CallMissed, "Missed"),
@@ -213,7 +215,7 @@ fn summary(call: &CallRecord) -> impl IntoElement + use<> {
         .items_center()
         .gap_1p5()
         .text_size(px(12.5))
-        .text_color(rgb(MUTED))
+        .text_color(rgb(theme.muted))
         .child(
             svg()
                 .path(if call.video {
@@ -224,9 +226,9 @@ fn summary(call: &CallRecord) -> impl IntoElement + use<> {
                 .size(px(14.0))
                 .flex_none()
                 .text_color(rgb(if missed && call.incoming {
-                    ALERT
+                    theme.alert
                 } else {
-                    MUTED
+                    theme.muted
                 })),
         )
         .child(format!(

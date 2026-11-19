@@ -6,7 +6,7 @@ use gpui::{
     div, img, px, rgb, rgba, svg,
 };
 use natizap_protocol::ContentKind;
-use natizap_ui::theme::{DEEP, MUTED, SCRIM, TEXT};
+use natizap_ui::theme::Theme;
 use natizap_ui::{Icon, progress};
 
 use crate::items::{MediaView, file_size};
@@ -25,8 +25,9 @@ pub(crate) fn render_media(
     media: &MediaView,
     view: &WeakEntity<ConversationView>,
     downloading: Option<f32>,
+    theme: Theme,
 ) -> AnyElement {
-    let shown = attachment(media, view);
+    let shown = attachment(media, view, theme);
     match downloading {
         // How far the download is, along the attachment's foot.
         Some(fraction) => div()
@@ -39,16 +40,16 @@ pub(crate) fn render_media(
                     .right_0()
                     .bottom_0()
                     .p_1p5()
-                    .child(progress(fraction)),
+                    .child(progress(fraction, theme)),
             )
             .into_any_element(),
         None => shown,
     }
 }
 
-fn attachment(media: &MediaView, view: &WeakEntity<ConversationView>) -> AnyElement {
+fn attachment(media: &MediaView, view: &WeakEntity<ConversationView>, theme: Theme) -> AnyElement {
     match media.fetch.kind {
-        ContentKind::Photo => picture(media)
+        ContentKind::Photo => picture(media, theme)
             .id("media")
             .map(pressable)
             .on_click({
@@ -58,8 +59,8 @@ fn attachment(media: &MediaView, view: &WeakEntity<ConversationView>) -> AnyElem
                 }
             })
             .into_any_element(),
-        ContentKind::Sticker => sticker(media, view),
-        ContentKind::Video => picture(media)
+        ContentKind::Sticker => sticker(media, view, theme),
+        ContentKind::Video => picture(media, theme)
             .relative()
             .child(
                 div()
@@ -68,7 +69,7 @@ fn attachment(media: &MediaView, view: &WeakEntity<ConversationView>) -> AnyElem
                     .flex()
                     .items_center()
                     .justify_center()
-                    .child(round_icon(Icon::Play, 48.0)),
+                    .child(round_icon(Icon::Play, 48.0, theme)),
             )
             .children(media.detail.clone().map(|duration| {
                 div()
@@ -76,7 +77,7 @@ fn attachment(media: &MediaView, view: &WeakEntity<ConversationView>) -> AnyElem
                     .bottom_1()
                     .left_2()
                     .text_size(px(12.0))
-                    .text_color(rgb(TEXT))
+                    .text_color(rgb(theme.text))
                     .child(duration)
             }))
             .id("media")
@@ -96,6 +97,7 @@ fn attachment(media: &MediaView, view: &WeakEntity<ConversationView>) -> AnyElem
                         Icon::Play
                     },
                     36.0,
+                    theme,
                 ))
                 .child(
                     div()
@@ -111,7 +113,7 @@ fn attachment(media: &MediaView, view: &WeakEntity<ConversationView>) -> AnyElem
                             div()
                                 .truncate()
                                 .text_size(px(12.5))
-                                .text_color(rgb(MUTED))
+                                .text_color(rgb(theme.muted))
                                 .child(detail)
                         })),
                 );
@@ -123,7 +125,7 @@ fn attachment(media: &MediaView, view: &WeakEntity<ConversationView>) -> AnyElem
                 .flex_col()
                 .rounded(px(10.0))
                 .overflow_hidden()
-                .bg(rgb(DEEP))
+                .bg(rgb(theme.deep))
                 .map(pressable)
                 .on_click(open(media, view))
                 // A document's first page, as its sender's phone drew it.
@@ -148,7 +150,7 @@ fn attachment(media: &MediaView, view: &WeakEntity<ConversationView>) -> AnyElem
 
 /// The downloaded image, else a video's still, else the inline preview,
 /// else an empty frame. A video's file is not an image, so it never shows.
-fn picture(media: &MediaView) -> Div {
+fn picture(media: &MediaView, theme: Theme) -> Div {
     let (width, height) = media.size;
     let is_image = matches!(media.fetch.kind, ContentKind::Photo | ContentKind::Sticker);
     let source: Option<ImageSource> = match (&media.file, &media.preview) {
@@ -168,7 +170,7 @@ fn picture(media: &MediaView) -> Div {
         .relative()
         .when(
             media.fetch.kind != ContentKind::Sticker || source.is_none(),
-            |frame| frame.bg(rgb(DEEP)),
+            |frame| frame.bg(rgb(theme.deep)),
         )
         // Nothing to show yet, such as a photo still downloading that came
         // without a preview: what it is, rather than an empty frame. Videos
@@ -180,13 +182,13 @@ fn picture(media: &MediaView) -> Div {
                     svg()
                         .path(Icon::Camera.path())
                         .size(px(32.0))
-                        .text_color(rgb(MUTED)),
+                        .text_color(rgb(theme.muted)),
                 )
             },
         )
         .children(
             (is_image && !on_disk(media) && media.fetch.media.link_expired())
-                .then(|| download_badge(media)),
+                .then(|| download_badge(media, theme)),
         )
         .children(source.map(|source| {
             let fit = if media.fetch.kind == ContentKind::Sticker {
@@ -212,7 +214,7 @@ fn picture(media: &MediaView) -> Div {
         }))
 }
 
-fn round_icon(icon: Icon, size: f32) -> Div {
+fn round_icon(icon: Icon, size: f32, theme: Theme) -> Div {
     div()
         .size(px(size))
         .flex_none()
@@ -220,12 +222,12 @@ fn round_icon(icon: Icon, size: f32) -> Div {
         .items_center()
         .justify_center()
         .rounded_full()
-        .bg(rgba(SCRIM))
+        .bg(rgba(theme.scrim))
         .child(
             svg()
                 .path(icon.path())
                 .size(px(size * 0.45))
-                .text_color(rgb(TEXT)),
+                .text_color(rgb(theme.text)),
         )
 }
 
@@ -251,9 +253,9 @@ fn pressable(media: Stateful<Div>) -> Stateful<Div> {
 
 /// A sticker: a click shows it large, downloading it first if it is not
 /// here yet, as on the phone.
-fn sticker(media: &MediaView, view: &WeakEntity<ConversationView>) -> AnyElement {
+fn sticker(media: &MediaView, view: &WeakEntity<ConversationView>, theme: Theme) -> AnyElement {
     let (media, view) = (media.clone(), view.clone());
-    picture(&media)
+    picture(&media, theme)
         .id("media")
         .map(pressable)
         .on_click(move |_, _, cx| {
@@ -269,7 +271,7 @@ fn on_disk(media: &MediaView) -> bool {
 
 /// What a photo or sticker whose link expired shows over itself: the
 /// download its click starts, with the file's size, as on the phone.
-fn download_badge(media: &MediaView) -> Div {
+fn download_badge(media: &MediaView, theme: Theme) -> Div {
     div()
         .absolute()
         .inset_0()
@@ -284,15 +286,15 @@ fn download_badge(media: &MediaView) -> Div {
                 .px_3()
                 .py_1p5()
                 .rounded_full()
-                .bg(rgba(SCRIM))
+                .bg(rgba(theme.scrim))
                 .text_size(px(13.0))
                 .font_weight(FontWeight::MEDIUM)
-                .text_color(rgb(TEXT))
+                .text_color(rgb(theme.text))
                 .child(
                     svg()
                         .path(Icon::Download.path())
                         .size(px(16.0))
-                        .text_color(rgb(TEXT)),
+                        .text_color(rgb(theme.text)),
                 )
                 .children(media.fetch.media.size.map(file_size)),
         )

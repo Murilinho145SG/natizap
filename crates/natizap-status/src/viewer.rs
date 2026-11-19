@@ -14,7 +14,7 @@ use gpui::{
 use natizap_playback::{Heard, Recorder};
 use natizap_profiles::ProfilePictures;
 use natizap_protocol::{ChatId, ContentKind, Reply, StatusLink};
-use natizap_ui::theme::{DEEP, MUTED, TEXT};
+use natizap_ui::theme::ActiveTheme as _;
 use natizap_ui::{Button, ButtonVariant, Icon, Submitted, TextInput, avatar};
 
 use crate::book::StatusBook;
@@ -337,6 +337,7 @@ impl StatusViewer {
 
 impl Render for StatusViewer {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = *cx.theme();
         // A video's player takes the keyboard and drops it when the next
         // post replaces it; the arrows must keep reaching the viewer.
         if !self.focus.contains_focused(window, cx) {
@@ -391,8 +392,8 @@ impl Render for StatusViewer {
             .h(viewport.height)
             .flex()
             .flex_col()
-            .bg(rgb(DEEP))
-            .text_color(rgb(TEXT))
+            .bg(rgb(theme.deep))
+            .text_color(rgb(theme.text))
             .occlude()
             .child(self.top(&poster, &post, progress, title, picture, cx))
             .child(self.stage(&post, cx))
@@ -413,6 +414,7 @@ impl StatusViewer {
         picture: Option<PathBuf>,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
+        let theme = *cx.theme();
         let bars = poster.posts.iter().enumerate().map(|(index, _)| {
             let filled = match index.cmp(&self.at_post) {
                 std::cmp::Ordering::Less => 1.0,
@@ -423,13 +425,13 @@ impl StatusViewer {
                 .flex_1()
                 .h(px(3.0))
                 .rounded_full()
-                .bg(rgba((TEXT << 8) | 0x40))
+                .bg(rgba((theme.text << 8) | 0x40))
                 .child(
                     div()
                         .h_full()
                         .w(relative(filled))
                         .rounded_full()
-                        .bg(rgb(TEXT)),
+                        .bg(rgb(theme.text)),
                 )
         });
         div()
@@ -459,7 +461,7 @@ impl StatusViewer {
                                     .items_center()
                                     .gap_2()
                                     .text_size(px(12.5))
-                                    .text_color(rgb(MUTED))
+                                    .text_color(rgb(theme.muted))
                                     .child(when(post.sent_at))
                                     .children(post.link.clone().map(link_button)),
                             ),

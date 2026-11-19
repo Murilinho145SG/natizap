@@ -9,7 +9,7 @@ use gpui::{
     ObjectFit, div, img, px, rgb, rgba, svg,
 };
 use natizap_protocol::ContentKind;
-use natizap_ui::theme::{MUTED, STATUS_BACKGROUNDS};
+use natizap_ui::theme::{ActiveTheme as _, STATUS_BACKGROUNDS, Theme};
 use natizap_ui::{Button, ButtonVariant, Icon};
 
 use super::{StatusClosed, StatusViewer, TAP};
@@ -44,7 +44,8 @@ impl StatusViewer {
     /// reach the stage; a press holds it, a tap on its left third steps
     /// back and anywhere else on.
     fn post_column(&self, post: &Post, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let content = self.content(post);
+        let theme = *cx.theme();
+        let content = self.content(post, theme);
         div()
             .flex_1()
             .min_w_0()
@@ -112,7 +113,7 @@ impl StatusViewer {
             )
     }
 
-    fn content(&self, post: &Post) -> AnyElement {
+    fn content(&self, post: &Post, theme: Theme) -> AnyElement {
         match (post.kind, &self.player, &post.file) {
             // The player's own controls take its clicks.
             (ContentKind::Video, Some((id, player)), _) if *id == post.id => div()
@@ -145,7 +146,7 @@ impl StatusViewer {
                     None => svg()
                         .path(Icon::Camera.path())
                         .size(px(48.0))
-                        .text_color(rgb(MUTED))
+                        .text_color(rgb(theme.muted))
                         .into_any_element(),
                 }
             }

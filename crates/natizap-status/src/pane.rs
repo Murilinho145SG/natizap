@@ -8,7 +8,7 @@ use gpui::{
 };
 use natizap_profiles::ProfilePictures;
 use natizap_protocol::ChatId;
-use natizap_ui::theme::{DISPLAY_FONT, HOVER, MUTED, PANEL, TEXT};
+use natizap_ui::theme::{ActiveTheme as _, DISPLAY_FONT, Theme};
 use natizap_ui::{Button, ButtonVariant, Icon, avatar, status_ring};
 
 use crate::book::StatusBook;
@@ -63,6 +63,7 @@ impl StatusPane {
         unseen: bool,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
+        let theme = *cx.theme();
         let picture = self
             .pictures
             .update(cx, |pictures, cx| pictures.picture(&poster.poster, cx));
@@ -86,11 +87,12 @@ impl StatusPane {
             .gap_3()
             .rounded_lg()
             .cursor_pointer()
-            .hover(|row| row.bg(rgba(HOVER)))
+            .hover(|row| row.bg(rgba(theme.hover)))
             .on_click(cx.listener(move |_, _, _, cx| cx.emit(StatusOpened(chat.clone()))))
             .child(status_ring(
                 avatar(poster.poster.as_str(), &title, picture, px(AVATAR)),
                 Some(unseen),
+                theme,
             ))
             .child(
                 div()
@@ -106,13 +108,14 @@ impl StatusPane {
                     .child(
                         div()
                             .text_size(px(12.5))
-                            .text_color(rgb(MUTED))
+                            .text_color(rgb(theme.muted))
                             .child(detail),
                     ),
             )
     }
 
     fn mine(&self, cx: &mut Context<Self>) -> Option<impl IntoElement + use<>> {
+        let theme = *cx.theme();
         let (me, name) = self.me.clone()?;
         let mine = self.book.read(cx).mine();
         let picture = self
@@ -134,7 +137,7 @@ impl StatusPane {
                 .gap_3()
                 .rounded_lg()
                 .cursor_pointer()
-                .hover(|row| row.bg(rgba(HOVER)))
+                .hover(|row| row.bg(rgba(theme.hover)))
                 .on_click(cx.listener(move |_, _, _, cx| {
                     if posted {
                         cx.emit(StatusOpened(me.clone()));
@@ -150,6 +153,7 @@ impl StatusPane {
                         px(AVATAR),
                     ),
                     posted.then_some(false),
+                    theme,
                 ))
                 .child(
                     div()
@@ -160,7 +164,7 @@ impl StatusPane {
                         .child(
                             div()
                                 .text_size(px(12.5))
-                                .text_color(rgb(MUTED))
+                                .text_color(rgb(theme.muted))
                                 .child(detail),
                         ),
                 ),
@@ -170,6 +174,7 @@ impl StatusPane {
 
 impl Render for StatusPane {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = *cx.theme();
         let others = self.book.read(cx).others();
         let (unseen, seen): (Vec<Poster>, Vec<Poster>) =
             others.into_iter().partition(Poster::unseen);
@@ -189,8 +194,8 @@ impl Render for StatusPane {
             .size_full()
             .flex()
             .flex_col()
-            .bg(rgb(PANEL))
-            .text_color(rgb(TEXT))
+            .bg(rgb(theme.panel))
+            .text_color(rgb(theme.text))
             .child(
                 div()
                     .flex()
@@ -224,10 +229,12 @@ impl Render for StatusPane {
                     .pb_3()
                     .children(self.mine(cx))
                     .when(!recent.is_empty(), |list| {
-                        list.child(heading("Recent updates")).children(recent)
+                        list.child(heading("Recent updates", theme))
+                            .children(recent)
                     })
                     .when(!viewed.is_empty(), |list| {
-                        list.child(heading("Viewed updates")).children(viewed)
+                        list.child(heading("Viewed updates", theme))
+                            .children(viewed)
                     })
                     .when(empty, |list| {
                         list.child(
@@ -235,7 +242,7 @@ impl Render for StatusPane {
                                 .px_5()
                                 .pt_6()
                                 .text_size(px(13.5))
-                                .text_color(rgb(MUTED))
+                                .text_color(rgb(theme.muted))
                                 .child("No status updates from your contacts in the last day."),
                         )
                     }),
@@ -243,14 +250,14 @@ impl Render for StatusPane {
     }
 }
 
-fn heading(label: &'static str) -> Div {
+fn heading(label: &'static str, theme: Theme) -> Div {
     div()
         .px_5()
         .pt_4()
         .pb_1()
         .text_size(px(13.0))
         .font_weight(FontWeight::SEMIBOLD)
-        .text_color(rgb(MUTED))
+        .text_color(rgb(theme.muted))
         .child(label)
 }
 

@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use gpui::prelude::*;
 use gpui::{Div, ElementId, FontWeight, SharedString, WeakEntity, div, px, relative, rgb, svg};
 use natizap_protocol::{ChatId, Poll};
-use natizap_ui::theme::{ACCENT, ACCENT_INK, MUTED, PANEL, TEXT};
+use natizap_ui::theme::Theme;
 use natizap_ui::{Icon, Tooltip, avatar};
 
 use crate::poll::{PollState, Voter};
@@ -29,6 +29,7 @@ pub(crate) fn poll_view(
     state: Option<&PollState>,
     faces: &Faces,
     view: &WeakEntity<ConversationView>,
+    theme: Theme,
 ) -> Div {
     let voters = state.map_or(0, |state| state.voters);
     let hint = match (
@@ -53,7 +54,7 @@ pub(crate) fn poll_view(
             div()
                 .pb_1()
                 .text_size(px(12.0))
-                .text_color(rgb(MUTED))
+                .text_color(rgb(theme.muted))
                 .child(hint),
         )
         .children(poll.options.iter().enumerate().map(|(index, option)| {
@@ -75,9 +76,9 @@ pub(crate) fn poll_view(
                 index,
                 option,
                 chosen_by,
-                (poll.multiple, chosen),
-                share,
+                (poll.multiple, chosen, share),
                 faces,
+                theme,
             );
             let ballot = state.and_then(|state| state.ballot.clone());
             match (ballot, state) {
@@ -95,7 +96,7 @@ pub(crate) fn poll_view(
                 _ => row.into_any_element(),
             }
         }))
-        .child(footer(id, voters, view))
+        .child(footer(id, voters, view, theme))
 }
 
 /// One option: filled behind as far as its `share` of the votes, in the
@@ -106,14 +107,14 @@ fn option_row(
     index: usize,
     option: &str,
     chosen_by: &[Voter],
-    (multiple, chosen): (bool, bool),
-    share: f32,
+    (multiple, chosen, share): (bool, bool, f32),
     faces: &Faces,
+    theme: Theme,
 ) -> gpui::Stateful<Div> {
     let fill = if chosen {
-        rgb(ACCENT).opacity(0.22)
+        rgb(theme.accent).opacity(0.22)
     } else {
-        rgb(TEXT).opacity(0.07)
+        rgb(theme.text).opacity(0.07)
     };
     div()
         .id(ElementId::NamedInteger(
@@ -124,7 +125,7 @@ fn option_row(
         .h(px(ROW_HEIGHT))
         .rounded_lg()
         .overflow_hidden()
-        .bg(rgb(TEXT).opacity(0.03))
+        .bg(rgb(theme.text).opacity(0.03))
         .child(
             div()
                 .absolute()
@@ -142,29 +143,29 @@ fn option_row(
                 .flex()
                 .items_center()
                 .gap_2p5()
-                .child(mark(multiple, chosen))
+                .child(mark(multiple, chosen, theme))
                 .child(
                     div()
                         .flex_1()
                         .min_w_0()
                         .truncate()
-                        .text_color(rgb(TEXT))
+                        .text_color(rgb(theme.text))
                         .child(option.to_owned()),
                 )
-                .child(stack(id, index, chosen_by, faces))
+                .child(stack(id, index, chosen_by, faces, theme))
                 .child(
                     div()
                         .min_w(px(16.0))
                         .text_size(px(12.5))
                         .text_right()
-                        .text_color(rgb(if chosen { TEXT } else { MUTED }))
+                        .text_color(rgb(if chosen { theme.text } else { theme.muted }))
                         .child(chosen_by.len().to_string()),
                 ),
         )
 }
 
 /// How many voted, and a way to every vote.
-fn footer(id: &str, voters: usize, view: &WeakEntity<ConversationView>) -> Div {
+fn footer(id: &str, voters: usize, view: &WeakEntity<ConversationView>, theme: Theme) -> Div {
     let poll = SharedString::from(id.to_owned());
     let view = view.clone();
     div()
@@ -172,7 +173,7 @@ fn footer(id: &str, voters: usize, view: &WeakEntity<ConversationView>) -> Div {
         .flex()
         .items_center()
         .text_size(px(12.0))
-        .text_color(rgb(MUTED))
+        .text_color(rgb(theme.muted))
         .child(div().flex_1().child(match voters {
             1 => "1 vote".to_owned(),
             voters => format!("{voters} votes"),
@@ -182,7 +183,7 @@ fn footer(id: &str, voters: usize, view: &WeakEntity<ConversationView>) -> Div {
                 div()
                     .id(SharedString::from(format!("{id}-votes")))
                     .font_weight(FontWeight::MEDIUM)
-                    .text_color(rgb(ACCENT))
+                    .text_color(rgb(theme.accent))
                     .cursor_pointer()
                     .hover(|link| link.opacity(0.8))
                     .on_click(move |_, _, cx| {
@@ -196,7 +197,7 @@ fn footer(id: &str, voters: usize, view: &WeakEntity<ConversationView>) -> Div {
 
 /// The faces of the first few who chose an option, overlapping, each
 /// naming its person under the pointer.
-fn stack(id: &str, option: usize, voters: &[Voter], faces: &Faces) -> Div {
+fn stack(id: &str, option: usize, voters: &[Voter], faces: &Faces, theme: Theme) -> Div {
     div()
         .flex()
         .items_center()
@@ -206,7 +207,7 @@ fn stack(id: &str, option: usize, voters: &[Voter], faces: &Faces) -> Div {
                 .take(MOST_FACES)
                 .enumerate()
                 .map(|(place, voter)| {
-                    face_sized(voter, faces, FACE)
+                    face_sized(voter, faces, FACE, theme)
                         .id(ElementId::NamedInteger(
                             format!("{id}-{option}-voter").into(),
                             place as u64,
@@ -218,23 +219,23 @@ fn stack(id: &str, option: usize, voters: &[Voter], faces: &Faces) -> Div {
 }
 
 /// A voter's round picture, ringed so overlapping faces stay apart.
-pub(crate) fn face(voter: &Voter, faces: &Faces) -> Div {
-    face_sized(voter, faces, 32.0)
+pub(crate) fn face(voter: &Voter, faces: &Faces, theme: Theme) -> Div {
+    face_sized(voter, faces, 32.0, theme)
 }
 
-fn face_sized(voter: &Voter, faces: &Faces, size: f32) -> Div {
+fn face_sized(voter: &Voter, faces: &Faces, size: f32, theme: Theme) -> Div {
     let seed = voter.id.as_ref().map_or("me", ChatId::as_str);
     let picture = voter.id.as_ref().and_then(|id| faces.get(id).cloned());
     div()
         .rounded_full()
         .border_2()
-        .border_color(rgb(PANEL))
+        .border_color(rgb(theme.panel))
         .child(avatar(seed, &voter.name, picture, px(size)))
 }
 
 /// The circle, or box when several may be chosen, beside an option: a
 /// faint ring, filled with a check once this account chose it.
-fn mark(multiple: bool, chosen: bool) -> Div {
+fn mark(multiple: bool, chosen: bool, theme: Theme) -> Div {
     div()
         .size(px(16.0))
         .flex_none()
@@ -243,13 +244,15 @@ fn mark(multiple: bool, chosen: bool) -> Div {
         .justify_center()
         .when(multiple, |mark| mark.rounded(px(4.0)))
         .when(!multiple, Styled::rounded_full)
-        .when(!chosen, |mark| mark.border_1().border_color(rgb(MUTED)))
+        .when(!chosen, |mark| {
+            mark.border_1().border_color(rgb(theme.muted))
+        })
         .when(chosen, |mark| {
-            mark.bg(rgb(ACCENT)).child(
+            mark.bg(rgb(theme.accent)).child(
                 svg()
                     .path(Icon::Check.path())
                     .size(px(11.0))
-                    .text_color(rgb(ACCENT_INK)),
+                    .text_color(rgb(theme.accent_ink)),
             )
         })
 }

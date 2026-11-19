@@ -7,7 +7,7 @@ use gpui::{
 
 use crate::Icon;
 use crate::components::tooltip::Tooltip;
-use crate::theme::{ALERT, DEEP, LINE, MUTED, RAISED, TEXT};
+use crate::theme::Theme;
 
 /// Width of the invisible band around the window that resizes it, also used
 /// for the shadow.
@@ -25,6 +25,7 @@ pub fn window_frame(
     window: &mut Window,
     title: impl IntoElement,
     content: impl IntoElement,
+    theme: Theme,
 ) -> impl IntoElement {
     let decorations = window.window_decorations();
     let body = div()
@@ -32,10 +33,10 @@ pub fn window_frame(
         .flex()
         .flex_col()
         .overflow_hidden()
-        .bg(rgb(DEEP))
+        .bg(rgb(theme.deep))
         .cursor(CursorStyle::Arrow)
         .on_mouse_move(|_, _, cx| cx.stop_propagation())
-        .child(title_bar(window, title, decorations))
+        .child(title_bar(window, title, decorations, theme))
         .child(div().flex_1().min_h_0().child(content));
 
     let Decorations::Client { tiling } = decorations else {
@@ -45,7 +46,7 @@ pub fn window_frame(
 
     window.set_client_inset(EDGE);
     let body = body
-        .border_color(rgb(LINE))
+        .border_color(rgb(theme.line))
         .when(!tiling.top, Styled::border_t_1)
         .when(!tiling.bottom, Styled::border_b_1)
         .when(!tiling.left, Styled::border_l_1)
@@ -94,7 +95,12 @@ pub fn window_frame(
         .into_any_element()
 }
 
-fn title_bar(window: &Window, title: impl IntoElement, decorations: Decorations) -> AnyElement {
+fn title_bar(
+    window: &Window,
+    title: impl IntoElement,
+    decorations: Decorations,
+    theme: Theme,
+) -> AnyElement {
     let maximized = window.is_maximized();
     div()
         .id("title-bar")
@@ -105,7 +111,7 @@ fn title_bar(window: &Window, title: impl IntoElement, decorations: Decorations)
         .pl_4()
         .pr_1()
         .border_b_1()
-        .border_color(rgb(LINE))
+        .border_color(rgb(theme.line))
         .on_mouse_down(MouseButton::Left, |event, window, _| {
             if event.click_count == 2 {
                 window.zoom_window();
@@ -126,10 +132,11 @@ fn title_bar(window: &Window, title: impl IntoElement, decorations: Decorations)
                         "minimize",
                         "Minimize",
                         Icon::Minimize,
-                        RAISED,
+                        theme.raised,
                         |window| {
                             window.minimize_window();
                         },
+                        theme,
                     ))
                     .child(window_button(
                         "maximize",
@@ -139,15 +146,17 @@ fn title_bar(window: &Window, title: impl IntoElement, decorations: Decorations)
                         } else {
                             Icon::Maximize
                         },
-                        RAISED,
+                        theme.raised,
                         |window| window.zoom_window(),
+                        theme,
                     ))
                     .child(window_button(
                         "close",
                         "Close",
                         Icon::Close,
-                        ALERT,
+                        theme.alert,
                         Window::remove_window,
+                        theme,
                     )),
             )
         })
@@ -160,6 +169,7 @@ fn window_button(
     icon: Icon,
     hover: u32,
     action: impl Fn(&mut Window) + 'static,
+    theme: Theme,
 ) -> impl IntoElement {
     div()
         .id(id)
@@ -169,8 +179,8 @@ fn window_button(
         .items_center()
         .justify_center()
         .rounded_md()
-        .text_color(rgb(MUTED))
-        .hover(move |style| style.bg(rgb(hover)).text_color(rgb(TEXT)))
+        .text_color(rgb(theme.muted))
+        .hover(move |style| style.bg(rgb(hover)).text_color(rgb(theme.text)))
         // Keep the title bar from starting a window move under the button.
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .on_click(move |_, window, _| action(window))
@@ -179,7 +189,7 @@ fn window_button(
             svg()
                 .path(icon.path())
                 .size(px(16.0))
-                .text_color(rgb(MUTED)),
+                .text_color(rgb(theme.muted)),
         )
 }
 

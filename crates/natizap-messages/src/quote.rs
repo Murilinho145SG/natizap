@@ -7,20 +7,21 @@ use gpui::prelude::*;
 use gpui::{Div, FontWeight, Image, ObjectFit, SharedString, div, img, px, rgb, svg};
 use natizap_protocol::ContentKind;
 use natizap_ui::Icon;
-use natizap_ui::theme::{DEEP, MUTED};
+use natizap_ui::theme::Theme;
 
 use crate::items::QuotePreview;
 
 /// A quoted message: who wrote it over one line of what they said, marked
 /// by a bar in their color.
-pub(crate) fn quoted(quote: &QuotePreview) -> Div {
+pub(crate) fn quoted(quote: &QuotePreview, theme: Theme) -> Div {
     quote_block(
         quote.author.clone(),
         quote.phone.clone(),
-        quote.color,
+        quote.color.of(theme),
         quote.text.clone(),
         quote.kind,
         quote.thumbnail.clone(),
+        theme,
     )
 }
 
@@ -34,6 +35,7 @@ pub(crate) fn quote_block(
     text: SharedString,
     kind: ContentKind,
     thumbnail: Option<Arc<Image>>,
+    theme: Theme,
 ) -> Div {
     let icon = match kind {
         ContentKind::Photo | ContentKind::Sticker => Some(Icon::Camera),
@@ -50,7 +52,7 @@ pub(crate) fn quote_block(
         .flex()
         .rounded(px(8.0))
         .overflow_hidden()
-        .bg(rgb(DEEP))
+        .bg(rgb(theme.deep))
         .child(div().w(px(3.0)).flex_none().bg(rgb(color)))
         .child(
             div()
@@ -60,20 +62,20 @@ pub(crate) fn quote_block(
                 .flex_col()
                 .px_2()
                 .py_1()
-                .child(name_and_phone(author, color, phone))
+                .child(name_and_phone(author, color, phone, theme))
                 .child(
                     div()
                         .flex()
                         .items_center()
                         .gap_1()
                         .text_size(px(13.0))
-                        .text_color(rgb(MUTED))
+                        .text_color(rgb(theme.muted))
                         .children(icon.map(|icon| {
                             svg()
                                 .path(icon.path())
                                 .size(px(14.0))
                                 .flex_none()
-                                .text_color(rgb(MUTED))
+                                .text_color(rgb(theme.muted))
                         }))
                         .child(div().min_w_0().truncate().child(text)),
                 ),
@@ -90,7 +92,12 @@ pub(crate) fn quote_block(
 
 /// A name in its color, and a number on the right beside it when there
 /// is one.
-pub(crate) fn name_and_phone(name: SharedString, color: u32, phone: Option<SharedString>) -> Div {
+pub(crate) fn name_and_phone(
+    name: SharedString,
+    color: u32,
+    phone: Option<SharedString>,
+    theme: Theme,
+) -> Div {
     div()
         .flex()
         .items_baseline()
@@ -109,7 +116,7 @@ pub(crate) fn name_and_phone(name: SharedString, color: u32, phone: Option<Share
             div()
                 .flex_none()
                 .text_size(px(12.0))
-                .text_color(rgb(MUTED))
+                .text_color(rgb(theme.muted))
                 .child(phone)
         }))
 }

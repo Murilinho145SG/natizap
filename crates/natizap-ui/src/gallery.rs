@@ -18,7 +18,7 @@ use crate::components::scrollbar::scrollbar;
 use crate::components::separator::separator;
 use crate::components::skeleton::skeleton;
 use crate::components::switch::Switch;
-use crate::theme::{DISPLAY_FONT, MUTED, PANE, PANEL, TEXT, base_font};
+use crate::theme::{ActiveTheme as _, DISPLAY_FONT, Theme, base_font};
 use crate::{Icon, avatar, window_frame};
 
 /// The components window's content.
@@ -31,6 +31,7 @@ pub struct Gallery {
 
 impl Render for Gallery {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = *cx.theme();
         let title = div()
             .font_family(DISPLAY_FONT)
             .font_weight(FontWeight::BOLD)
@@ -40,13 +41,13 @@ impl Render for Gallery {
             .id("gallery")
             .size_full()
             .overflow_y_scroll()
-            .bg(rgb(PANE))
+            .bg(rgb(theme.pane))
             .p_8()
             .flex()
             .flex_col()
             .gap_10()
-            .child(section("Button", buttons()))
-            .child(section("Badge", badges()))
+            .child(section("Button", buttons(), theme))
+            .child(section("Badge", badges(theme), theme))
             .child(section(
                 "Tooltip",
                 row().child(
@@ -56,27 +57,18 @@ impl Render for Gallery {
                         .round()
                         .tooltip("Reply"),
                 ),
+                theme,
             ))
+            .child(section("Switch", self.switches(cx), theme))
+            .child(section("Code block", code_sample(theme), theme))
+            .child(section("Avatar", avatars(), theme))
+            .child(section("Rail", rail_demo(theme), theme))
             .child(section(
-                "Switch",
-                row()
-                    .child(Switch::new("switch-demo", self.switch_on).on_toggle({
-                        let gallery = cx.weak_entity();
-                        move |on, _, cx| {
-                            let _ = gallery.update(cx, |gallery, cx| {
-                                gallery.switch_on = on;
-                                cx.notify();
-                            });
-                        }
-                    }))
-                    .child(Switch::new("switch-on", true))
-                    .child(Switch::new("switch-off", false)),
+                "Separator",
+                div().w(px(320.0)).child(separator(theme)),
+                theme,
             ))
-            .child(section("Code block", code_sample()))
-            .child(section("Avatar", avatars()))
-            .child(section("Rail", rail_demo()))
-            .child(section("Separator", div().w(px(320.0)).child(separator())))
-            .child(section("Skeleton", skeleton_row()))
+            .child(section("Skeleton", skeleton_row(theme), theme))
             .child(section(
                 "Progress",
                 div()
@@ -84,12 +76,13 @@ impl Render for Gallery {
                     .flex()
                     .flex_col()
                     .gap_4()
-                    .child(progress(0.0))
-                    .child(progress(0.35))
-                    .child(progress(1.0)),
+                    .child(progress(0.0, theme))
+                    .child(progress(0.35, theme))
+                    .child(progress(1.0, theme)),
+                theme,
             ))
-            .child(section("Scrollbar", self.scrolled(window, cx)))
-            .child(section("Alert", alerts()))
+            .child(section("Scrollbar", self.scrolled(window, cx), theme))
+            .child(section("Alert", alerts(), theme))
             .child(section(
                 "Menu",
                 Menu::new()
@@ -97,6 +90,7 @@ impl Render for Gallery {
                     .action(Icon::Copy, "Copy", |_, _| {})
                     .separator()
                     .danger(Icon::Trash, "Delete", |_, _| {}),
+                theme,
             ))
             .child(section(
                 "Alert dialog",
@@ -109,6 +103,7 @@ impl Render for Gallery {
                             cx.notify();
                         })),
                 ),
+                theme,
             ))
             .when(self.dialog_open, |sections| {
                 let gallery = cx.weak_entity();
@@ -128,20 +123,37 @@ impl Render for Gallery {
         div()
             .size_full()
             .font(base_font())
-            .text_color(rgb(TEXT))
-            .child(window_frame(window, title, sections))
+            .text_color(rgb(theme.text))
+            .child(window_frame(window, title, sections, theme))
     }
 }
 
 impl Gallery {
+    /// A switch that flips, beside one on and one off.
+    fn switches(&self, cx: &mut Context<Self>) -> Div {
+        row()
+            .child(Switch::new("switch-demo", self.switch_on).on_toggle({
+                let gallery = cx.weak_entity();
+                move |on, _, cx| {
+                    let _ = gallery.update(cx, |gallery, cx| {
+                        gallery.switch_on = on;
+                        cx.notify();
+                    });
+                }
+            }))
+            .child(Switch::new("switch-on", true))
+            .child(Switch::new("switch-off", false))
+    }
+
     /// A short list scrolled inside a box, with its scrollbar.
     fn scrolled(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
+        let theme = *cx.theme();
         div()
             .relative()
             .w(px(320.0))
             .h(px(160.0))
             .rounded_lg()
-            .bg(rgb(PANEL))
+            .bg(rgb(theme.panel))
             .child(
                 div()
                     .id("scrollbar-demo")
@@ -158,7 +170,7 @@ impl Gallery {
     }
 }
 
-fn section(name: &'static str, body: impl IntoElement) -> Div {
+fn section(name: &'static str, body: impl IntoElement, theme: Theme) -> Div {
     div()
         .flex()
         .flex_col()
@@ -167,7 +179,7 @@ fn section(name: &'static str, body: impl IntoElement) -> Div {
             div()
                 .text_size(px(13.0))
                 .font_weight(FontWeight::SEMIBOLD)
-                .text_color(rgb(MUTED))
+                .text_color(rgb(theme.muted))
                 .child(name),
         )
         .child(body)
@@ -231,13 +243,13 @@ fn buttons() -> Div {
         )
 }
 
-fn badges() -> Div {
+fn badges(theme: Theme) -> Div {
     row()
-        .child(badge("3", BadgeTone::Accent))
-        .child(badge(count_label(1500), BadgeTone::Accent))
-        .child(badge("12", BadgeTone::Muted))
-        .child(badge("", BadgeTone::Accent))
-        .child(verified_seal(18.0))
+        .child(badge("3", BadgeTone::Accent, theme))
+        .child(badge(count_label(1500), BadgeTone::Accent, theme))
+        .child(badge("12", BadgeTone::Muted, theme))
+        .child(badge("", BadgeTone::Accent, theme))
+        .child(verified_seal(18.0, theme))
 }
 
 fn avatars() -> Div {
@@ -247,7 +259,7 @@ fn avatars() -> Div {
         .child(avatar("c", "Carla", None, px(56.0)))
 }
 
-fn rail_demo() -> Div {
+fn rail_demo(theme: Theme) -> Div {
     div().h(px(260.0)).child(
         Rail::new()
             .top(
@@ -269,17 +281,22 @@ fn rail_demo() -> Div {
                 "rail-me",
                 avatar("me", "Dani", None, px(RAIL_AVATAR)),
                 false,
+                theme,
             )),
     )
 }
 
-fn skeleton_row() -> AnyElement {
+fn skeleton_row(theme: Theme) -> AnyElement {
     div()
         .w(px(320.0))
         .flex()
         .items_center()
         .gap_3()
-        .child(skeleton("avatar", div().size(px(48.0)).rounded_full()))
+        .child(skeleton(
+            "avatar",
+            div().size(px(48.0)).rounded_full(),
+            theme,
+        ))
         .child(
             div()
                 .flex_1()
@@ -289,8 +306,13 @@ fn skeleton_row() -> AnyElement {
                 .child(skeleton(
                     "title",
                     div().w(px(140.0)).h(px(12.0)).rounded_md(),
+                    theme,
                 ))
-                .child(skeleton("preview", div().w_full().h(px(10.0)).rounded_md())),
+                .child(skeleton(
+                    "preview",
+                    div().w_full().h(px(10.0)).rounded_md(),
+                    theme,
+                )),
         )
         .into_any_element()
 }
@@ -309,8 +331,7 @@ fn alerts() -> Div {
         .child(Alert::new(AlertTone::Error, "Not sent").description("Tap to try again."))
 }
 
-fn code_sample() -> Div {
+fn code_sample(theme: Theme) -> Div {
     div().w(px(420.0)).child(code_block(
-        "// Greets everyone in the chat\nfn greet(names: &[String]) -> usize {\n    for name in names {\n        println!(\"Hello, {name}!\");\n    }\n    names.len() * 2\n}",
-    ))
+        "// Greets everyone in the chat\nfn greet(names: &[String]) -> usize {\n    for name in names {\n        println!(\"Hello, {name}!\");\n    }\n    names.len() * 2\n}", theme))
 }

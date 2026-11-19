@@ -7,7 +7,7 @@ use chrono::{Local, TimeZone as _};
 use gpui::prelude::*;
 use gpui::{Context, Div, FontWeight, SharedString, Stateful, div, px, rgb};
 use natizap_protocol::{ChatId, GroupInfo, Member, PersonName, Role};
-use natizap_ui::theme::{MUTED, RAISED, TEXT};
+use natizap_ui::theme::{ActiveTheme as _, Theme};
 use natizap_ui::{BadgeTone, avatar, badge, separator};
 
 use crate::panel::ProfilePanel;
@@ -108,6 +108,7 @@ fn compare_names(a: &str, b: &str) -> Ordering {
 impl ProfilePanel {
     /// The group's member count heading, its members and how it began.
     pub(crate) fn members(&self, group: &GroupInfo, cx: &mut Context<Self>) -> Div {
+        let theme = *cx.theme();
         let listed = listed(&group.members, &self.names, |address| {
             self.protocol.read(cx).is_own(address)
         });
@@ -125,7 +126,7 @@ impl ProfilePanel {
                 let picture = self
                     .pictures
                     .update(cx, |pictures, cx| pictures.picture(&member.address, cx));
-                let row = member_row(member, picture).id(("member", index));
+                let row = member_row(member, picture, theme).id(("member", index));
                 if member.own {
                     return row;
                 }
@@ -134,7 +135,7 @@ impl ProfilePanel {
                     title: member.name.trim_start_matches("~ ").to_owned().into(),
                 };
                 row.cursor_pointer()
-                    .hover(|row| row.bg(rgb(RAISED)))
+                    .hover(|row| row.bg(rgb(theme.raised)))
                     .on_click(cx.listener(move |_, _, _, cx| cx.emit(opened.clone())))
             })
             .collect();
@@ -143,12 +144,12 @@ impl ProfilePanel {
             .flex()
             .flex_col()
             .gap_1()
-            .child(div().w_full().py_3().child(separator()))
+            .child(div().w_full().py_3().child(separator(theme)))
             .child(
                 div()
                     .pb_2()
                     .text_size(px(13.5))
-                    .text_color(rgb(MUTED))
+                    .text_color(rgb(theme.muted))
                     .child(format!("{total} members")),
             )
             .children(rows)
@@ -160,7 +161,7 @@ impl ProfilePanel {
                         .py_2()
                         .rounded_lg()
                         .cursor_pointer()
-                        .hover(|row| row.bg(rgb(RAISED)))
+                        .hover(|row| row.bg(rgb(theme.raised)))
                         .text_size(px(14.5))
                         .child(format!("View all ({} more)", total - shown))
                         .on_click(cx.listener(|panel, _, _, cx| {
@@ -173,13 +174,13 @@ impl ProfilePanel {
                 div()
                     .pt_4()
                     .text_size(px(12.5))
-                    .text_color(rgb(MUTED))
+                    .text_color(rgb(theme.muted))
                     .child(origin)
             }))
     }
 }
 
-fn member_row(member: &Listed, picture: Option<std::path::PathBuf>) -> Div {
+fn member_row(member: &Listed, picture: Option<std::path::PathBuf>, theme: Theme) -> Div {
     div()
         .px_2()
         .py_1p5()
@@ -199,7 +200,7 @@ fn member_row(member: &Listed, picture: Option<std::path::PathBuf>) -> Div {
                 .min_w_0()
                 .truncate()
                 .text_size(px(14.5))
-                .text_color(rgb(TEXT))
+                .text_color(rgb(theme.text))
                 .child(member.name.clone()),
         )
         .child(
@@ -209,12 +210,16 @@ fn member_row(member: &Listed, picture: Option<std::path::PathBuf>) -> Div {
                 .items_end()
                 .gap_0p5()
                 .when(member.role != Role::Member, |side| {
-                    side.child(badge(SharedString::from("Group admin"), BadgeTone::Muted))
+                    side.child(badge(
+                        SharedString::from("Group admin"),
+                        BadgeTone::Muted,
+                        theme,
+                    ))
                 })
                 .children(member.phone.clone().map(|phone| {
                     div()
                         .text_size(px(12.0))
-                        .text_color(rgb(MUTED))
+                        .text_color(rgb(theme.muted))
                         .child(phone)
                 })),
         )

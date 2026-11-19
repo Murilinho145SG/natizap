@@ -21,7 +21,7 @@ use natizap_protocol::{Card, ChatId, Extra, PersonName, Protocol};
 use natizap_session::{PairingView, Session, SessionState};
 use natizap_status::{StatusBook, StatusComposer, StatusPane, StatusViewer};
 use natizap_stickers::StickerShelf;
-use natizap_ui::theme::{ACCENT, ALERT, DISPLAY_FONT, LINE, MINT, MUTED, TEXT, base_font};
+use natizap_ui::theme::{ActiveTheme as _, DISPLAY_FONT, Theme, base_font};
 use natizap_ui::window_frame;
 use natizap_update::Updater;
 
@@ -447,8 +447,9 @@ impl Root {
 
 impl Render for Root {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let title =
-            wordmark(self.session.read(cx).state()).child(div().ml_4().child(self.updater.clone()));
+        let theme = *cx.theme();
+        let title = wordmark(self.session.read(cx).state(), theme)
+            .child(div().ml_4().child(self.updater.clone()));
         let opening = self.opening_layer(cx);
         let content = div()
             .size_full()
@@ -467,23 +468,23 @@ impl Render for Root {
                 cx.listener(|root, _, _, cx| root.go_forward(cx)),
             )
             .font(base_font())
-            .text_color(rgb(TEXT))
-            .child(window_frame(window, title, content))
+            .text_color(rgb(theme.text))
+            .child(window_frame(window, title, content, theme))
     }
 }
 
 /// The app name with a dot that tells, at a glance, whether natizap is
 /// connected; anything but connected is spelled out next to it.
-fn wordmark(state: &SessionState) -> Div {
+fn wordmark(state: &SessionState, theme: Theme) -> Div {
     let (dot, label) = match state {
-        SessionState::Connected => (MINT, None),
-        SessionState::Starting | SessionState::Reconnecting => (ACCENT, Some("Connecting…")),
-        SessionState::Paired => (ACCENT, Some("Syncing chats…")),
+        SessionState::Connected => (theme.mint, None),
+        SessionState::Starting | SessionState::Reconnecting => (theme.accent, Some("Connecting…")),
+        SessionState::Paired => (theme.accent, Some("Syncing chats…")),
         SessionState::AwaitingPairing(_) | SessionState::PairingExpired => {
-            (LINE, Some("Not linked"))
+            (theme.line, Some("Not linked"))
         }
-        SessionState::LoggedOut => (ALERT, Some("Unlinked")),
-        SessionState::Failed(_) => (ALERT, Some("Offline")),
+        SessionState::LoggedOut => (theme.alert, Some("Unlinked")),
+        SessionState::Failed(_) => (theme.alert, Some("Offline")),
     };
     div()
         .flex()
@@ -500,7 +501,7 @@ fn wordmark(state: &SessionState) -> Div {
         .children(label.map(|label| {
             div()
                 .text_size(px(12.5))
-                .text_color(rgb(MUTED))
+                .text_color(rgb(theme.muted))
                 .child(label)
         }))
 }

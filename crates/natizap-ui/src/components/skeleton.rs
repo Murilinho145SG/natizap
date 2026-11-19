@@ -7,12 +7,12 @@ use gpui::{
     Animation, AnimationElement, AnimationExt as _, Div, ElementId, pulsating_between, rgb,
 };
 
-use crate::theme::RAISED;
+use crate::theme::Theme;
 
 /// `shape`, sized and rounded by the caller, filled and gently pulsing.
 /// `id` must be unique among skeletons on screen so each keeps its pulse.
-pub fn skeleton(id: impl Into<ElementId>, shape: Div) -> AnimationElement<Div> {
-    shape.bg(rgb(RAISED)).with_animation(
+pub fn skeleton(id: impl Into<ElementId>, shape: Div, theme: Theme) -> AnimationElement<Div> {
+    shape.bg(rgb(theme.raised)).with_animation(
         id,
         Animation::new(Duration::from_millis(1400))
             .repeat()

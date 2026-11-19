@@ -7,7 +7,7 @@ use gpui::{
 };
 use natizap_protocol::{ContentKind, Extra, Forwarding};
 use natizap_ui::motion::ease_out;
-use natizap_ui::theme::{ACCENT, ALERT, DEEP, MINT, MUTED, OUTGOING, PANEL, RAISED, glass};
+use natizap_ui::theme::Theme;
 use natizap_ui::{Icon, avatar};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -37,6 +37,8 @@ pub(crate) struct Attachments {
     pub(crate) downloads: HashMap<String, f32>,
     /// The pictures of people who voted on polls.
     pub(crate) faces: Faces,
+    /// The theme drawn in.
+    pub(crate) theme: Theme,
 }
 
 impl Attachments {
@@ -57,13 +59,13 @@ pub(crate) const LIT_FOR: Duration = Duration::from_millis(1600);
 
 /// A bubble just gone to: its rim glows in the accent and fades back,
 /// marking where the eye should land without moving anything around it.
-fn lit_up(id: &str, shape: Div) -> AnyElement {
+fn lit_up(id: &str, shape: Div, theme: Theme) -> AnyElement {
     shape
         .with_animation(
             SharedString::from(format!("lit-{id}")),
             Animation::new(LIT_FOR).with_easing(ease_out),
-            |shape, delta| {
-                let mut rim: Hsla = rgb(ACCENT).into();
+            move |shape, delta| {
+                let mut rim: Hsla = rgb(theme.accent).into();
                 rim.a = 1.0 - delta;
                 let mut glow = rim;
                 glow.a = 0.5 * (1.0 - delta);
@@ -88,6 +90,7 @@ pub(crate) fn render_item(
     picture: Option<PathBuf>,
     lit: bool,
 ) -> AnyElement {
+    let theme = shown.theme;
     match item {
         Item::Day(label) => div()
             .w_full()
@@ -100,9 +103,9 @@ pub(crate) fn render_item(
                     .px_3()
                     .py_1()
                     .rounded_full()
-                    .bg(rgb(PANEL))
+                    .bg(rgb(theme.panel))
                     .text_size(px(12.0))
-                    .text_color(rgb(MUTED))
+                    .text_color(rgb(theme.muted))
                     .child(label.clone()),
             )
             .into_any_element(),
@@ -127,6 +130,7 @@ fn render_bubble(
     picture: Option<PathBuf>,
     lit: bool,
 ) -> AnyElement {
+    let theme = shown.theme;
     // In groups, others' messages make room on the left for their sender's
     // picture, shown beside the first of a burst, as on the phone.
     let gutter = bubble
@@ -163,16 +167,16 @@ fn render_bubble(
         .child({
             let shape = shape(bubble, view, shown, focus).max_w_full();
             if lit {
-                lit_up(&bubble.id, shape)
+                lit_up(&bubble.id, shape, theme)
             } else {
                 shape.into_any_element()
             }
         })
         .when(!bubble.reactions.is_empty(), |message| {
-            message.child(reaction_chips(bubble))
+            message.child(reaction_chips(bubble, theme))
         });
     let actions = if reacting {
-        quick_reactions(bubble, view).into_any_element()
+        quick_reactions(bubble, view, theme).into_any_element()
     } else {
         hover_actions(bubble, view).into_any_element()
     };
@@ -208,25 +212,35 @@ fn render_bubble(
 
 /// The bubble itself: author, attachment, quote, content and time.
 /// A business's buttons, which go under the text and time.
-fn buttons_under(bubble: &Bubble, view: &WeakEntity<ConversationView>) -> Option<Div> {
+fn buttons_under(
+    bubble: &Bubble,
+    view: &WeakEntity<ConversationView>,
+    theme: Theme,
+) -> Option<Div> {
     match &bubble.body {
         Body::Content {
             extra: Some(Extra::Buttons(buttons)),
             ..
-        } => Some(render_buttons(&bubble.id, buttons, &bubble.reply, view)),
+        } => Some(render_buttons(
+            &bubble.id,
+            buttons,
+            &bubble.reply,
+            view,
+            theme,
+        )),
         _ => None,
     }
 }
 
 /// The bubble's time, with its edited mark, star and ticks.
-fn meta(bubble: &Bubble) -> Div {
+fn meta(bubble: &Bubble, theme: Theme) -> Div {
     div()
         .flex()
         .items_center()
         .justify_end()
         .gap_1p5()
         .text_size(px(11.0))
-        .text_color(rgb(MUTED))
+        .text_color(rgb(theme.muted))
         .when(
             matches!(bubble.body, Body::Content { edited: true, .. }),
             |meta| meta.child("edited"),
@@ -236,13 +250,64 @@ fn meta(bubble: &Bubble) -> Div {
                 svg()
                     .path(Icon::Star.path())
                     .size(px(12.0))
-                    .text_color(rgb(MUTED)),
+                    .text_color(rgb(theme.muted)),
             )
         })
         .child(bubble.time.clone())
         .when(bubble.from_me, |meta| {
-            meta.child(delivery_mark(bubble.delivery))
+            meta.child(delivery_mark(bubble.delivery, theme))
         })
+}
+
+/// What a text bubble holds above its time: a deleted note, a missed
+/// call, or its shared contacts or poll, attachment name and text.
+fn body(
+    bubble: &Bubble,
+    view: &WeakEntity<ConversationView>,
+    shown: &Attachments,
+    focus: &TextFocus,
+) -> Div {
+    let theme = shown.theme;
+    match &bubble.body {
+        Body::Deleted => div()
+            .italic()
+            .text_color(rgb(theme.muted))
+            .child("This message was deleted"),
+        Body::MissedCall { video } => missed_call(*video, theme),
+        Body::Content {
+            media, text, extra, ..
+        } => div()
+            .flex()
+            .flex_col()
+            .gap_0p5()
+            .children(extra.as_ref().and_then(|extra| {
+                render_extra(
+                    &bubble.id,
+                    extra,
+                    bubble.poll.as_ref(),
+                    &shown.faces,
+                    view,
+                    theme,
+                )
+            }))
+            .children(media.map(|media| {
+                div()
+                    .text_size(px(12.5))
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(rgb(theme.muted))
+                    .child(media)
+            }))
+            .map(|body| {
+                let (shown, hits) = match text {
+                    Some(text) => {
+                        let (shown, hits) = rich_text(&bubble.id, text, view, focus, theme);
+                        (Some(shown), hits)
+                    }
+                    None => (None, Vec::new()),
+                };
+                selectable(body.children(shown), hits, view)
+            }),
+    }
 }
 
 fn shape(
@@ -251,7 +316,8 @@ fn shape(
     shown: &Attachments,
     focus: &TextFocus,
 ) -> Div {
-    let meta = meta(bubble);
+    let theme = shown.theme;
+    let meta = meta(bubble, theme);
     // A voice note carries no text, so its time and ticks sit inside the
     // player instead of on a line of their own, as on the phone.
     let voice_note = bubble.media.as_ref().filter(|media| {
@@ -262,12 +328,13 @@ fn shape(
     });
     if let Some(media) = voice_note {
         let downloading = shown.progress(media);
-        return padded(bubble, view).child(render_voice(
+        return padded(bubble, view, theme).child(render_voice(
             media,
             &shown.voice,
             downloading,
             meta,
             view,
+            theme,
         ));
     }
     if let Some(sticker) = bubble
@@ -275,62 +342,38 @@ fn shape(
         .as_ref()
         .filter(|media| media.fetch.kind == ContentKind::Sticker)
     {
-        return sticker_bubble(bubble, sticker, meta, view, shown.progress(sticker));
+        return sticker_bubble(bubble, sticker, meta, view, shown.progress(sticker), theme);
     }
     let picture = bubble
         .media
         .as_ref()
         .filter(|media| matches!(media.fetch.kind, ContentKind::Photo | ContentKind::Video));
     if let Some(media) = picture {
-        return picture_bubble(bubble, media, meta, view, focus, shown.progress(media));
+        return picture_bubble(
+            bubble,
+            media,
+            meta,
+            view,
+            focus,
+            shown.progress(media),
+            theme,
+        );
     }
 
-    let body = match &bubble.body {
-        Body::Deleted => div()
-            .italic()
-            .text_color(rgb(MUTED))
-            .child("This message was deleted"),
-        Body::MissedCall { video } => missed_call(*video),
-        Body::Content {
-            media, text, extra, ..
-        } => div()
-            .flex()
-            .flex_col()
-            .gap_0p5()
-            .children(extra.as_ref().and_then(|extra| {
-                render_extra(&bubble.id, extra, bubble.poll.as_ref(), &shown.faces, view)
-            }))
-            .children(media.map(|media| {
-                div()
-                    .text_size(px(12.5))
-                    .font_weight(FontWeight::MEDIUM)
-                    .text_color(rgb(MUTED))
-                    .child(media)
-            }))
-            .map(|body| {
-                let (shown, hits) = match text {
-                    Some(text) => {
-                        let (shown, hits) = rich_text(&bubble.id, text, view, focus);
-                        (Some(shown), hits)
-                    }
-                    None => (None, Vec::new()),
-                };
-                selectable(body.children(shown), hits, view)
-            }),
-    };
+    let body = body(bubble, view, shown, focus);
 
-    padded(bubble, view)
+    padded(bubble, view, theme)
         .children(
             bubble
                 .media
                 .as_ref()
-                .map(|media| render_media(media, view, shown.progress(media))),
+                .map(|media| render_media(media, view, shown.progress(media), theme)),
         )
         .children(
             bubble
                 .quote
                 .as_ref()
-                .map(|quote| jump_to_quoted(quote, view)),
+                .map(|quote| jump_to_quoted(quote, view, theme)),
         )
         // Time sits beside short text and drops below text that fills the
         // bubble, as in WhatsApp.
@@ -345,11 +388,11 @@ fn shape(
                 .child(body.min_w_0().max_w_full())
                 .child(meta.ml_auto().pb(px(1.0))),
         )
-        .children(buttons_under(bubble, view))
+        .children(buttons_under(bubble, view, theme))
 }
 
 /// The body of a call nobody answered: its icon and what it was.
-fn missed_call(video: bool) -> Div {
+fn missed_call(video: bool, theme: Theme) -> Div {
     div()
         .flex()
         .items_center()
@@ -362,12 +405,12 @@ fn missed_call(video: bool) -> Div {
                 .items_center()
                 .justify_center()
                 .rounded_full()
-                .bg(rgb(DEEP))
+                .bg(rgb(theme.deep))
                 .child(
                     svg()
                         .path(Icon::CallMissed.path())
                         .size(px(15.0))
-                        .text_color(rgb(ALERT)),
+                        .text_color(rgb(theme.alert)),
                 ),
         )
         .child(div().font_weight(FontWeight::MEDIUM).child(if video {
@@ -378,17 +421,17 @@ fn missed_call(video: bool) -> Div {
 }
 
 /// [`frame`] with the room text needs around it.
-fn padded(bubble: &Bubble, view: &WeakEntity<ConversationView>) -> Div {
-    frame(bubble)
+fn padded(bubble: &Bubble, view: &WeakEntity<ConversationView>, theme: Theme) -> Div {
+    frame(bubble, theme)
         .gap_1()
         .px(px(10.0))
         .py(px(6.0))
-        .children(author(bubble, view))
-        .children(forwarded(bubble))
+        .children(author(bubble, view, theme))
+        .children(forwarded(bubble, theme))
 }
 
 /// "Forwarded", or "Forwarded many times", as the phone marks them.
-fn forwarded(bubble: &Bubble) -> Option<Div> {
+fn forwarded(bubble: &Bubble, theme: Theme) -> Option<Div> {
     let label = match bubble.forwarding? {
         Forwarding::Once => "Forwarded",
         Forwarding::Often => "Forwarded many times",
@@ -400,25 +443,29 @@ fn forwarded(bubble: &Bubble) -> Option<Div> {
             .gap_1()
             .text_size(px(12.5))
             .italic()
-            .text_color(rgb(MUTED))
+            .text_color(rgb(theme.muted))
             .child(
                 svg()
                     .path(Icon::Forward.path())
                     .size(px(13.0))
-                    .text_color(rgb(MUTED)),
+                    .text_color(rgb(theme.muted)),
             )
             .child(label),
     )
 }
 
 /// The bubble's background and corners.
-fn frame(bubble: &Bubble) -> Div {
+fn frame(bubble: &Bubble, theme: Theme) -> Div {
     div()
         .flex()
         .flex_col()
         .rounded(px(14.0))
-        .bg(rgb(if bubble.from_me { OUTGOING } else { RAISED }))
-        .map(glass)
+        .bg(rgb(if bubble.from_me {
+            theme.outgoing
+        } else {
+            theme.raised
+        }))
+        .map(|surface| theme.glass(surface))
         .text_size(px(14.5))
         .line_height(relative(1.4))
         .map(|shape| match (bubble.starts_burst, bubble.from_me) {
@@ -449,9 +496,13 @@ fn open_author(
 }
 
 /// The quoted message's block; clicking it goes to the quoted message.
-fn jump_to_quoted(quote: &QuotePreview, view: &WeakEntity<ConversationView>) -> Stateful<Div> {
+fn jump_to_quoted(
+    quote: &QuotePreview,
+    view: &WeakEntity<ConversationView>,
+    theme: Theme,
+) -> Stateful<Div> {
     let (id, view) = (quote.id.clone(), view.clone());
-    quoted(quote)
+    quoted(quote, theme)
         .id(SharedString::from(format!("quote-{id}")))
         .cursor_pointer()
         .hover(|quote| quote.opacity(0.85))
@@ -465,7 +516,7 @@ fn jump_to_quoted(quote: &QuotePreview, view: &WeakEntity<ConversationView>) -> 
 /// Who wrote a group message: their name in their color, and their
 /// number on the right beside a chosen name. Their name opens their
 /// profile.
-fn author(bubble: &Bubble, view: &WeakEntity<ConversationView>) -> Option<Div> {
+fn author(bubble: &Bubble, view: &WeakEntity<ConversationView>, theme: Theme) -> Option<Div> {
     bubble.author.as_ref().map(|author| {
         div()
             .flex()
@@ -478,42 +529,43 @@ fn author(bubble: &Bubble, view: &WeakEntity<ConversationView>) -> Option<Div> {
                     .on_click(open_author(author, view))
                     .child(name_and_phone(
                         author.name.clone(),
-                        author.color,
+                        author.color.of(theme),
                         author.phone.clone(),
+                        theme,
                     )),
             )
-            .children(
-                author
-                    .role
-                    .clone()
-                    .map(|role| div().text_size(px(12.0)).text_color(rgb(MUTED)).child(role)),
-            )
+            .children(author.role.clone().map(|role| {
+                div()
+                    .text_size(px(12.0))
+                    .text_color(rgb(theme.muted))
+                    .child(role)
+            }))
     })
 }
 
 /// Where a sent message stands, as WhatsApp shows it: a clock while
 /// sending, one check when sent, two when delivered, tinted once read.
-fn delivery_mark(delivery: Delivery) -> AnyElement {
+fn delivery_mark(delivery: Delivery, theme: Theme) -> AnyElement {
     let (icon, color) = match delivery {
         Delivery::Failed => {
             return div()
                 .flex()
                 .items_center()
                 .gap_1()
-                .text_color(rgb(ALERT))
+                .text_color(rgb(theme.alert))
                 .child(
                     svg()
                         .path(Icon::Alert.path())
                         .size(px(13.0))
-                        .text_color(rgb(ALERT)),
+                        .text_color(rgb(theme.alert)),
                 )
                 .child("Not sent")
                 .into_any_element();
         }
-        Delivery::Sending => (Icon::Clock, MUTED),
-        Delivery::Sent => (Icon::Check, MUTED),
-        Delivery::Delivered => (Icon::Checks, MUTED),
-        Delivery::Read => (Icon::Checks, MINT),
+        Delivery::Sending => (Icon::Clock, theme.muted),
+        Delivery::Sent => (Icon::Check, theme.muted),
+        Delivery::Delivered => (Icon::Checks, theme.muted),
+        Delivery::Read => (Icon::Checks, theme.mint),
     };
     svg()
         .path(icon.path())

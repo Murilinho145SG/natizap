@@ -4,7 +4,7 @@ use gpui::{
     AnyElement, AnyView, Context, Div, Entity, EventEmitter, FontWeight, SharedString, Stateful,
     UniformListScrollHandle, Window, div, px, relative, rgb, svg, uniform_list,
 };
-use natizap_ui::theme::{ACCENT, DISPLAY_FONT, LINE, MUTED, PANEL, RAISED, TEXT};
+use natizap_ui::theme::{ActiveTheme as _, DISPLAY_FONT, Theme};
 use natizap_ui::{
     BadgeTone, Button, ButtonVariant, Icon, TextInput, avatar, badge, count_label, scrollbar,
     separator, skeleton, status_ring, verified_seal,
@@ -126,6 +126,7 @@ impl ChatListView {
 
 impl Render for ChatListView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = *cx.theme();
         let list = self.list.read(cx);
         let source = if self.in_archive {
             list.archived()
@@ -146,9 +147,9 @@ impl Render for ChatListView {
         let body = if let Some(searching) = self.searching(rows.clone(), cx) {
             searching
         } else if rows.is_empty() && nothing_yet && self.syncing {
-            placeholder_rows().into_any_element()
+            placeholder_rows(theme).into_any_element()
         } else if rows.is_empty() && !narrowing && !self.in_archive {
-            empty_state().into_any_element()
+            empty_state(theme).into_any_element()
         } else {
             div()
                 .relative()
@@ -166,8 +167,8 @@ impl Render for ChatListView {
             .size_full()
             .flex()
             .flex_col()
-            .bg(rgb(PANEL))
-            .text_color(rgb(TEXT))
+            .bg(rgb(theme.panel))
+            .text_color(rgb(theme.text))
             .child(if self.in_archive {
                 archive_header(cx)
             } else {
@@ -180,29 +181,30 @@ impl Render for ChatListView {
                         .child("Chats"),
                 )
             })
-            .child(search_field(&self.search))
+            .child(search_field(&self.search, theme))
             .when(!self.in_archive, |panel| {
-                panel.child(
-                    div()
-                        .pt_2p5()
-                        .child(chips(self.filter, unread, move |filter, cx| {
-                            let _ = view.update(cx, |view, cx| {
-                                view.filter = filter;
-                                cx.notify();
-                            });
-                        })),
-                )
+                panel.child(div().pt_2p5().child(chips(
+                    self.filter,
+                    unread,
+                    move |filter, cx| {
+                        let _ = view.update(cx, |view, cx| {
+                            view.filter = filter;
+                            cx.notify();
+                        });
+                    },
+                    theme,
+                )))
             })
             .child(div().h_2())
             .when(!self.in_archive && !narrowing && archived > 0, |panel| {
                 panel
                     .child(
-                        archive_row(archived).on_click(cx.listener(|view, _, _, cx| {
+                        archive_row(archived, theme).on_click(cx.listener(|view, _, _, cx| {
                             view.in_archive = true;
                             cx.notify();
                         })),
                     )
-                    .child(div().mx_5().my_1().child(separator()))
+                    .child(div().mx_5().my_1().child(separator(theme)))
             })
             .child(body)
     }
@@ -215,6 +217,7 @@ impl ChatListView {
         scroll: &UniformListScrollHandle,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
+        let theme = *cx.theme();
         let count = rows.len();
         uniform_list(
             "chats",
@@ -239,7 +242,7 @@ impl ChatListView {
                         let face = match ring {
                             Some(unseen) => {
                                 let poster = row.id.clone();
-                                status_ring(face, Some(unseen))
+                                status_ring(face, Some(unseen), theme)
                                     .id(SharedString::from(format!("ring-{}", row.id.as_str())))
                                     .on_click(cx.listener(move |_, _, _, cx| {
                                         // The row behind would open the chat.
@@ -248,12 +251,12 @@ impl ChatListView {
                                     }))
                                     .into_any_element()
                             }
-                            None => status_ring(face, None).into_any_element(),
+                            None => status_ring(face, None, theme).into_any_element(),
                         };
                         let typing = this.list.read(cx).typing_line(row);
                         div().w_full().px_2().child(
-                            chat_row(row, face, typing, now)
-                                .when(selected, |row| row.bg(rgb(RAISED)))
+                            chat_row(row, face, typing, now, theme)
+                                .when(selected, |row| row.bg(rgb(theme.raised)))
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     this.select(clicked.clone(), cx);
                                 })),
@@ -270,6 +273,7 @@ impl ChatListView {
 
 /// The archived chats' heading, with the way back to the rest.
 fn archive_header(cx: &mut Context<ChatListView>) -> Div {
+    let theme = *cx.theme();
     div()
         .flex()
         .flex_col()
@@ -304,7 +308,7 @@ fn archive_header(cx: &mut Context<ChatListView>) -> Div {
             div()
                 .px_2()
                 .text_size(px(13.0))
-                .text_color(rgb(MUTED))
+                .text_color(rgb(theme.muted))
                 .child(
                     "These chats stay archived when new messages arrive. To change this, \
                      open WhatsApp on your phone: Settings > Chats.",
@@ -313,7 +317,7 @@ fn archive_header(cx: &mut Context<ChatListView>) -> Div {
 }
 
 /// Chat-shaped placeholders while the first sync fills the list.
-fn placeholder_rows() -> Div {
+fn placeholder_rows(theme: Theme) -> Div {
     div()
         .flex_1()
         .flex()
@@ -329,6 +333,7 @@ fn placeholder_rows() -> Div {
                 .child(skeleton(
                     ("chat-avatar", index),
                     div().size(px(AVATAR_SIZE)).flex_none().rounded_full(),
+                    theme,
                 ))
                 .child(
                     div()
@@ -339,16 +344,18 @@ fn placeholder_rows() -> Div {
                         .child(skeleton(
                             ("chat-title", index),
                             div().w(relative(0.45)).h(px(12.0)).rounded_md(),
+                            theme,
                         ))
                         .child(skeleton(
                             ("chat-preview", index),
                             div().w(relative(0.8)).h(px(10.0)).rounded_md(),
+                            theme,
                         )),
                 )
         }))
 }
 
-fn empty_state() -> Div {
+fn empty_state(theme: Theme) -> Div {
     div()
         .flex_1()
         .flex()
@@ -362,7 +369,7 @@ fn empty_state() -> Div {
             svg()
                 .path(Icon::Chats.path())
                 .size(px(40.0))
-                .text_color(rgb(LINE)),
+                .text_color(rgb(theme.line)),
         )
         .child(
             div()
@@ -374,12 +381,12 @@ fn empty_state() -> Div {
             div()
                 .text_size(px(13.5))
                 .text_center()
-                .text_color(rgb(MUTED))
+                .text_color(rgb(theme.muted))
                 .child("Messages you send or receive on your phone will show up here."),
         )
 }
 
-fn archive_row(count: usize) -> Stateful<Div> {
+fn archive_row(count: usize, theme: Theme) -> Stateful<Div> {
     div()
         .id("archived")
         .mx_2()
@@ -390,17 +397,17 @@ fn archive_row(count: usize) -> Stateful<Div> {
         .gap_3()
         .rounded_xl()
         .cursor_pointer()
-        .hover(|row| row.bg(rgb(RAISED)))
-        .text_color(rgb(MUTED))
+        .hover(|row| row.bg(rgb(theme.raised)))
+        .text_color(rgb(theme.muted))
         .child(
             div().w(px(AVATAR_SIZE)).flex().justify_center().child(
                 svg()
                     .path(Icon::Archive.path())
                     .size(px(18.0))
-                    .text_color(rgb(MUTED)),
+                    .text_color(rgb(theme.muted)),
             ),
         )
-        .child(div().flex_1().text_color(rgb(TEXT)).child("Archived"))
+        .child(div().flex_1().text_color(rgb(theme.text)).child("Archived"))
         .child(div().text_size(px(12.5)).child(count.to_string()))
 }
 
@@ -411,6 +418,7 @@ fn chat_row(
     face: AnyElement,
     typing: Option<SharedString>,
     now: DateTime<Local>,
+    theme: Theme,
 ) -> Stateful<Div> {
     let has_unread = row.unread > 0 || row.marked_unread;
     let typed = typing.is_some();
@@ -418,21 +426,7 @@ fn chat_row(
         .sent_at
         .map_or_default(|sent_at| time_label(sent_at, now));
 
-    let badge = has_unread.then(|| {
-        let label = if row.unread > 0 {
-            count_label(row.unread)
-        } else {
-            String::new()
-        };
-        badge(
-            label,
-            if row.muted {
-                BadgeTone::Muted
-            } else {
-                BadgeTone::Accent
-            },
-        )
-    });
+    let badge = has_unread.then(|| unread_badge(row, theme));
 
     div()
         .id(SharedString::from(row.id.as_str().to_owned()))
@@ -444,8 +438,8 @@ fn chat_row(
         .gap_3()
         .rounded_xl()
         .cursor_pointer()
-        .hover(|style| style.bg(rgb(RAISED)))
-        .active(|style| style.bg(rgb(LINE)))
+        .hover(|style| style.bg(rgb(theme.raised)))
+        .active(|style| style.bg(rgb(theme.line)))
         .child(face)
         .child(
             div()
@@ -473,15 +467,17 @@ fn chat_row(
                                     FontWeight::MEDIUM
                                 })
                                 .child(div().min_w_0().truncate().child(row.title.clone()))
-                                .when(row.verified, |title| title.child(verified_seal(15.0))),
+                                .when(row.verified, |title| {
+                                    title.child(verified_seal(15.0, theme))
+                                }),
                         )
                         .child(
                             div()
                                 .text_size(px(12.0))
                                 .text_color(rgb(if has_unread && !row.muted {
-                                    ACCENT
+                                    theme.accent
                                 } else {
-                                    MUTED
+                                    theme.muted
                                 }))
                                 .child(time),
                         ),
@@ -493,9 +489,13 @@ fn chat_row(
                         .gap_1p5()
                         .text_size(px(13.5))
                         .line_height(relative(1.3))
-                        .text_color(rgb(MUTED))
+                        .text_color(rgb(theme.muted))
                         .when(!typed, |line| {
-                            line.children(row.preview_kind.and_then(kind_icon).map(status_icon))
+                            line.children(
+                                row.preview_kind
+                                    .and_then(kind_icon)
+                                    .map(|icon| status_icon(icon, theme)),
+                            )
                         })
                         .child(
                             div()
@@ -503,23 +503,43 @@ fn chat_row(
                                 .min_w_0()
                                 .truncate()
                                 .map(|line| match typing {
-                                    Some(typing) => line.text_color(rgb(ACCENT)).child(typing),
+                                    Some(typing) => {
+                                        line.text_color(rgb(theme.accent)).child(typing)
+                                    }
                                     None => line.children(row.preview.clone()),
                                 }),
                         )
-                        .when(row.muted, |line| line.child(status_icon(Icon::Muted)))
-                        .when(row.pinned, |line| line.child(status_icon(Icon::Pin)))
+                        .when(row.muted, |line| {
+                            line.child(status_icon(Icon::Muted, theme))
+                        })
+                        .when(row.pinned, |line| line.child(status_icon(Icon::Pin, theme)))
                         .children(badge),
                 ),
         )
 }
 
-fn status_icon(icon: Icon) -> impl IntoElement {
+/// How many messages are unread, or a dot for a chat marked unread; grey
+/// when the chat is muted.
+fn unread_badge(row: &ChatRow, theme: Theme) -> impl IntoElement + use<> {
+    let label = if row.unread > 0 {
+        count_label(row.unread)
+    } else {
+        String::new()
+    };
+    let tone = if row.muted {
+        BadgeTone::Muted
+    } else {
+        BadgeTone::Accent
+    };
+    badge(label, tone, theme)
+}
+
+fn status_icon(icon: Icon, theme: Theme) -> impl IntoElement {
     svg()
         .path(icon.path())
         .size(px(15.0))
         .flex_none()
-        .text_color(rgb(MUTED))
+        .text_color(rgb(theme.muted))
 }
 
 /// When a message was sent, as the chat list shows it: the time today,

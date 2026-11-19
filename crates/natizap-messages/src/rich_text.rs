@@ -12,9 +12,7 @@ use gpui::{
 };
 use natizap_protocol::{ChatId, LinkKind, Mark};
 use natizap_ui::code_block;
-use natizap_ui::theme::{
-    ACCENT, ACCENT_INK, DEEP, LINK, MONO_FONT, MUTED, SELECTION, TEXT, base_font,
-};
+use natizap_ui::theme::{MONO_FONT, Theme, base_font};
 
 use crate::items::Text;
 use crate::text_search::{Case, occurrences};
@@ -143,6 +141,7 @@ pub(crate) fn rich_text(
     text: &Text,
     view: &WeakEntity<ConversationView>,
     focus: &TextFocus,
+    theme: Theme,
 ) -> (AnyElement, Vec<TextHit>) {
     let shown = Shown { id, view, focus };
     let mut blocks = text
@@ -155,7 +154,7 @@ pub(crate) fn rich_text(
     // Plain text stays a bare text element: wrapped in a column, the
     // bubble's wrapping row squeezes it to one letter per line.
     if blocks.is_empty() {
-        return match shown.prose(0, text, 0..text.text.len()) {
+        return match shown.prose(0, text, 0..text.text.len(), theme) {
             Some((element, hit)) => (element.into_any_element(), vec![hit]),
             None => (div().into_any_element(), Vec::new()),
         };
@@ -164,14 +163,16 @@ pub(crate) fn rich_text(
     let mut column = div().w_full().flex().flex_col().gap_1p5();
     let mut prose_start = 0;
     for (index, block) in blocks.iter().enumerate() {
-        if let Some((element, hit)) = shown.prose(index, text, prose_start..block.start) {
+        if let Some((element, hit)) = shown.prose(index, text, prose_start..block.start, theme) {
             column = column.child(element);
             hits.push(hit);
         }
-        column = column.child(code_block(text.text[block.clone()].to_owned()));
+        column = column.child(code_block(text.text[block.clone()].to_owned(), theme));
         prose_start = block.end;
     }
-    if let Some((element, hit)) = shown.prose(blocks.len(), text, prose_start..text.text.len()) {
+    if let Some((element, hit)) =
+        shown.prose(blocks.len(), text, prose_start..text.text.len(), theme)
+    {
         column = column.child(element);
         hits.push(hit);
     }
@@ -193,6 +194,7 @@ impl Shown<'_> {
         index: usize,
         text: &Text,
         range: Range<usize>,
+        theme: Theme,
     ) -> Option<(InteractiveText, TextHit)> {
         let slice = &text.text[range.clone()];
         let start = range.start + (slice.len() - slice.trim_start_matches('\n').len());
@@ -238,7 +240,7 @@ impl Shown<'_> {
             found: &found,
             current,
         };
-        let runs = runs(shown.len(), &marks, &lit);
+        let runs = runs(shown.len(), &marks, &lit, theme);
         let links: Vec<(Range<usize>, LinkKind)> = marks
             .iter()
             .filter_map(|(range, mark)| match mark {
@@ -309,7 +311,7 @@ struct Lit<'a> {
 /// One text run per stretch of `len` bytes that `marks` style alike, with
 /// the selected text behind a highlight, the hovered link lit up and what
 /// a search found marked.
-fn runs(len: usize, marks: &[(Range<usize>, Mark)], lit: &Lit<'_>) -> Vec<TextRun> {
+fn runs(len: usize, marks: &[(Range<usize>, Mark)], lit: &Lit<'_>, theme: Theme) -> Vec<TextRun> {
     let selected = lit.selected.clone().filter(|range| !range.is_empty());
     let hovered = lit.hovered.clone().filter(|range| !range.is_empty());
     let mut edges: Vec<usize> = marks
@@ -330,41 +332,41 @@ fn runs(len: usize, marks: &[(Range<usize>, Mark)], lit: &Lit<'_>) -> Vec<TextRu
                 .iter()
                 .filter(|(range, _)| range.start <= edge[0] && range.end >= edge[1])
                 .map(|(_, mark)| *mark);
-            let mut run = run(edge[1] - edge[0], covering);
+            let mut run = run(edge[1] - edge[0], covering, theme);
             let covers = |range: &Range<usize>| range.start <= edge[0] && range.end >= edge[1];
             if lit.found.iter().any(covers) {
                 // The message the search is on stands out from the others
                 // holding the same words.
                 let alpha = if lit.current { 0xb0 } else { 0x48 };
-                run.background_color = Some(rgba((ACCENT << 8) | alpha).into());
+                run.background_color = Some(rgba((theme.accent << 8) | alpha).into());
                 if lit.current {
-                    run.color = rgb(ACCENT_INK).into();
+                    run.color = rgb(theme.accent_ink).into();
                 }
             }
             if hovered
                 .as_ref()
                 .is_some_and(|range| range.start <= edge[0] && range.end >= edge[1])
             {
-                run.color = rgb(ACCENT).into();
-                run.background_color = Some(rgba((ACCENT << 8) | 0x24).into());
+                run.color = rgb(theme.accent).into();
+                run.background_color = Some(rgba((theme.accent << 8) | 0x24).into());
             }
             if selected
                 .as_ref()
                 .is_some_and(|range| range.start <= edge[0] && range.end >= edge[1])
             {
-                run.background_color = Some(rgba(SELECTION).into());
+                run.background_color = Some(rgba(theme.selection).into());
             }
             run
         })
         .collect()
 }
 
-fn run(len: usize, marks: impl Iterator<Item = Mark>) -> TextRun {
+fn run(len: usize, marks: impl Iterator<Item = Mark>, theme: Theme) -> TextRun {
     let mut font = base_font();
     let mut run = TextRun {
         len,
         font: font.clone(),
-        color: rgb(TEXT).into(),
+        color: rgb(theme.text).into(),
         background_color: None,
         underline: None,
         strikethrough: None,
@@ -381,11 +383,11 @@ fn run(len: usize, marks: impl Iterator<Item = Mark>) -> TextRun {
             }
             Mark::Code | Mark::CodeBlock => {
                 font.family = MONO_FONT.into();
-                run.background_color = Some(rgb(DEEP).into());
+                run.background_color = Some(rgb(theme.deep).into());
             }
-            Mark::Quote => run.color = rgb(MUTED).into(),
+            Mark::Quote => run.color = rgb(theme.muted).into(),
             Mark::Link(_) => {
-                run.color = rgb(LINK).into();
+                run.color = rgb(theme.link).into();
                 run.underline = Some(UnderlineStyle {
                     thickness: px(1.0),
                     color: None,
@@ -404,8 +406,9 @@ mod tests {
 
     #[test]
     fn splits_text_where_its_styles_change() {
+        let theme = natizap_ui::theme::GRAPHITE;
         let marks = [(0..4, Mark::Bold), (2..8, Mark::Link(LinkKind::Web))];
-        let runs: Vec<(usize, bool, bool)> = runs(10, &marks, &Lit::default())
+        let runs: Vec<(usize, bool, bool)> = runs(10, &marks, &Lit::default(), theme)
             .iter()
             .map(|run| {
                 (
@@ -428,6 +431,7 @@ mod tests {
 
     #[test]
     fn lights_up_only_the_hovered_link() {
+        let theme = natizap_ui::theme::GRAPHITE;
         let marks = [
             (0..4, Mark::Link(LinkKind::Web)),
             (6..10, Mark::Link(LinkKind::Web)),
@@ -436,7 +440,7 @@ mod tests {
             hovered: Some(6..10),
             ..Lit::default()
         };
-        let lit: Vec<(usize, bool)> = runs(10, &marks, &hovering)
+        let lit: Vec<(usize, bool)> = runs(10, &marks, &hovering, theme)
             .iter()
             .map(|run| (run.len, run.background_color.is_some()))
             .collect();
@@ -445,12 +449,13 @@ mod tests {
 
     #[test]
     fn marks_what_a_search_found() {
+        let theme = natizap_ui::theme::GRAPHITE;
         let found = [Range { start: 2, end: 5 }];
         let searching = Lit {
             found: &found,
             ..Lit::default()
         };
-        let marked: Vec<(usize, bool)> = runs(8, &[], &searching)
+        let marked: Vec<(usize, bool)> = runs(8, &[], &searching, theme)
             .iter()
             .map(|run| (run.len, run.background_color.is_some()))
             .collect();

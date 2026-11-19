@@ -6,7 +6,7 @@ use gpui::{
     AnyView, App, Context, Div, Entity, EventEmitter, FontWeight, SharedString, Stateful, Window,
     div, px, rgb, svg,
 };
-use natizap_ui::theme::{ACCENT, LINE, MUTED, PANEL, RAISED, TEXT, glass};
+use natizap_ui::theme::ActiveTheme as _;
 use natizap_ui::{Button, ButtonVariant, Icon, Switch, dialog, separator};
 
 use crate::{Alert, Notifier, Preferences, Tone};
@@ -53,6 +53,7 @@ impl NotificationSettings {
 
     /// One kind of message's sound: whether it plays, and its tone.
     fn alert(kind: Kind, alert: Alert, cx: &mut Context<Self>) -> Div {
+        let theme = *cx.theme();
         let this = cx.weak_entity();
         div()
             .flex()
@@ -64,7 +65,7 @@ impl NotificationSettings {
                 div()
                     .text_size(px(13.0))
                     .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(rgb(MUTED))
+                    .text_color(rgb(theme.muted))
                     .child(kind.heading()),
             )
             .child(
@@ -95,8 +96,9 @@ impl NotificationSettings {
 
     /// A tone to choose; choosing it plays it.
     fn tone_chip(kind: Kind, tone: Tone, chosen: Tone, cx: &mut Context<Self>) -> Stateful<Div> {
+        let theme = *cx.theme();
         let selected = tone == chosen;
-        let tint = if selected { ACCENT } else { TEXT };
+        let tint = if selected { theme.accent } else { theme.text };
         div()
             .id(SharedString::from(format!(
                 "{}-{}",
@@ -110,11 +112,11 @@ impl NotificationSettings {
             .py_1p5()
             .rounded_full()
             .border_1()
-            .border_color(rgb(if selected { ACCENT } else { LINE }))
+            .border_color(rgb(if selected { theme.accent } else { theme.line }))
             .text_size(px(13.0))
             .text_color(rgb(tint))
             .cursor_pointer()
-            .hover(|chip| chip.bg(rgb(RAISED)))
+            .hover(|chip| chip.bg(rgb(theme.raised)))
             .on_click(cx.listener(move |this, _, _, cx| {
                 this.change(|preferences| kind.alert(preferences).tone = tone, cx);
                 this.notifier.read(cx).preview(tone);
@@ -132,6 +134,7 @@ impl NotificationSettings {
 impl NotificationSettings {
     /// A setting that is on or off, with what it does below its name.
     fn switch_row(setting: Setting, on: bool, cx: &mut Context<Self>) -> Div {
+        let theme = *cx.theme();
         let this = cx.weak_entity();
         let (label, description) = setting.text();
         div()
@@ -151,7 +154,7 @@ impl NotificationSettings {
                     .child(
                         div()
                             .text_size(px(12.5))
-                            .text_color(rgb(MUTED))
+                            .text_color(rgb(theme.muted))
                             .child(description),
                     ),
             )
@@ -231,6 +234,7 @@ impl Kind {
 
 impl Render for NotificationSettings {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = *cx.theme();
         let preferences = self.notifier.read(cx).preferences();
         let panel = div()
             .id("notification-settings")
@@ -239,11 +243,11 @@ impl Render for NotificationSettings {
             .flex_col()
             .pb_3()
             .rounded_xl()
-            .bg(rgb(PANEL))
-            .map(glass)
+            .bg(rgb(theme.panel))
+            .map(|surface| theme.glass(surface))
             .occlude()
             .text_size(px(14.0))
-            .text_color(rgb(TEXT))
+            .text_color(rgb(theme.text))
             .child(
                 div()
                     .flex()
@@ -269,13 +273,13 @@ impl Render for NotificationSettings {
             )
             .child(Self::alert(Kind::Messages, preferences.messages, cx))
             .child(Self::alert(Kind::Groups, preferences.groups, cx))
-            .child(div().px_5().py_1().child(separator()))
+            .child(div().px_5().py_1().child(separator(theme)))
             .child(Self::switch_row(
                 Setting::OtherChats,
                 preferences.other_chats,
                 cx,
             ))
-            .child(div().px_5().py_1().child(separator()))
+            .child(div().px_5().py_1().child(separator(theme)))
             .child(Self::switch_row(Setting::Popups, preferences.popups, cx))
             .when(preferences.popups, |panel| {
                 panel.child(Self::switch_row(
@@ -288,12 +292,17 @@ impl Render for NotificationSettings {
                 div()
                     .flex()
                     .flex_col()
-                    .child(div().px_5().py_1().child(separator()))
+                    .child(div().px_5().py_1().child(separator(theme)))
                     .child(section.clone())
             }));
         let settings = cx.weak_entity();
-        dialog(window, panel, move |_, cx| {
-            let _ = settings.update(cx, |_, cx| cx.emit(SettingsClosed));
-        })
+        dialog(
+            window,
+            panel,
+            move |_, cx| {
+                let _ = settings.update(cx, |_, cx| cx.emit(SettingsClosed));
+            },
+            theme,
+        )
     }
 }

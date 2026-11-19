@@ -13,9 +13,7 @@ use gpui::{
 };
 use natizap_protocol::ContentKind;
 use natizap_ui::motion::rise_in_after;
-use natizap_ui::theme::{
-    ACCENT, ACCENT_INK, DEEP, HOVER, LINE, LINK, MUTED, PANEL, RAISED, SCRIM, TEXT, glass,
-};
+use natizap_ui::theme::{ActiveTheme as _, Theme};
 use natizap_ui::{Button, ButtonVariant, Icon, dialog};
 
 use super::menu::{RIGHT, on_right_click};
@@ -41,6 +39,7 @@ const INSET: f32 = 20.0;
 
 impl Render for MediaBrowser {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = *cx.theme();
         if !std::mem::replace(&mut self.focused, true) {
             window.focus(&self.search.focus_handle(cx), cx);
         }
@@ -56,23 +55,29 @@ impl Render for MediaBrowser {
             .flex()
             .flex_col()
             .rounded_xl()
-            .bg(rgb(PANEL))
-            .map(glass)
+            .bg(rgb(theme.panel))
+            .map(|surface| theme.glass(surface))
             .occlude()
-            .text_color(rgb(TEXT))
+            .text_color(rgb(theme.text))
             .child(self.header(cx))
             .child(self.toolbar(cx))
             .child(self.body(cx));
         let panel = panel.children(self.menu(cx));
         let browser = cx.weak_entity();
-        dialog(window, panel, move |_, cx| {
-            let _ = browser.update(cx, |_, cx| cx.emit(BrowserClosed));
-        })
+        dialog(
+            window,
+            panel,
+            move |_, cx| {
+                let _ = browser.update(cx, |_, cx| cx.emit(BrowserClosed));
+            },
+            theme,
+        )
     }
 }
 
 impl MediaBrowser {
     fn header(&self, cx: &mut Context<Self>) -> Div {
+        let theme = *cx.theme();
         div()
             .flex()
             .items_center()
@@ -96,7 +101,7 @@ impl MediaBrowser {
                         div()
                             .truncate()
                             .text_size(px(12.5))
-                            .text_color(rgb(MUTED))
+                            .text_color(rgb(theme.muted))
                             .child(self.title.clone()),
                     ),
             )
@@ -112,6 +117,7 @@ impl MediaBrowser {
 
     /// The tabs, each with how many it holds, and the search field.
     fn toolbar(&self, cx: &mut Context<Self>) -> Div {
+        let theme = *cx.theme();
         let library = self.library.clone();
         div()
             .flex()
@@ -120,7 +126,7 @@ impl MediaBrowser {
             .px(px(INSET))
             .pb_3()
             .border_b_1()
-            .border_color(rgb(LINE))
+            .border_color(rgb(theme.line))
             .children(Tab::ALL.into_iter().map(|tab| {
                 let on = tab == self.tab;
                 let label: SharedString = match &library {
@@ -140,13 +146,13 @@ impl MediaBrowser {
                     .cursor_pointer()
                     .map(|chip| {
                         if on {
-                            chip.bg(rgb(ACCENT))
-                                .border_color(rgb(ACCENT))
-                                .text_color(rgb(ACCENT_INK))
+                            chip.bg(rgb(theme.accent))
+                                .border_color(rgb(theme.accent))
+                                .text_color(rgb(theme.accent_ink))
                         } else {
-                            chip.border_color(rgb(LINE))
-                                .text_color(rgb(MUTED))
-                                .hover(|chip| chip.text_color(rgb(TEXT)))
+                            chip.border_color(rgb(theme.line))
+                                .text_color(rgb(theme.muted))
+                                .hover(|chip| chip.text_color(rgb(theme.text)))
                         }
                     })
                     .on_click(cx.listener(move |this, _, window, cx| {
@@ -164,14 +170,14 @@ impl MediaBrowser {
                     .px_3()
                     .py_1p5()
                     .rounded_full()
-                    .bg(rgb(RAISED))
+                    .bg(rgb(theme.raised))
                     .text_size(px(13.5))
                     .child(
                         svg()
                             .path(Icon::Search.path())
                             .size(px(14.0))
                             .flex_none()
-                            .text_color(rgb(MUTED)),
+                            .text_color(rgb(theme.muted)),
                     )
                     .child(div().flex_1().min_w_0().child(self.search.clone())),
             )
@@ -179,18 +185,22 @@ impl MediaBrowser {
 
     /// The chosen tab's items, or why there are none.
     fn body(&self, cx: &mut Context<Self>) -> AnyElement {
+        let theme = *cx.theme();
         let Some(library) = self.library.clone() else {
-            return notice("Reading the chat…");
+            return notice("Reading the chat…", theme);
         };
         if self.lines.is_empty() {
             let searching = !self.search.read(cx).text().trim().is_empty();
-            return notice(match (searching, self.tab) {
-                (true, _) => "Nothing matches the search",
-                (false, Tab::Media) => "No photos or videos yet",
-                (false, Tab::Docs) => "No documents yet",
-                (false, Tab::Links) => "No links yet",
-                (false, Tab::Starred) => "No starred messages",
-            });
+            return notice(
+                match (searching, self.tab) {
+                    (true, _) => "Nothing matches the search",
+                    (false, Tab::Media) => "No photos or videos yet",
+                    (false, Tab::Docs) => "No documents yet",
+                    (false, Tab::Links) => "No links yet",
+                    (false, Tab::Starred) => "No starred messages",
+                },
+                theme,
+            );
         }
         let (lines, made) = (Arc::clone(&self.lines), Arc::clone(&self.made));
         let browser = cx.weak_entity();
@@ -202,7 +212,7 @@ impl MediaBrowser {
             let Some(line) = lines.get(index) else {
                 return div().into_any_element();
             };
-            let shown = render_line(line, &library, &made, &browser);
+            let shown = render_line(line, &library, &made, &browser, theme);
             match entering {
                 Some(count) if index < ENTERING_LINES => rise_in_after(
                     SharedString::from(format!("line-{count}-{index}")),
@@ -222,14 +232,14 @@ impl MediaBrowser {
     }
 }
 
-fn notice(text: &'static str) -> AnyElement {
+fn notice(text: &'static str, theme: Theme) -> AnyElement {
     div()
         .flex_1()
         .flex()
         .items_center()
         .justify_center()
         .text_size(px(14.0))
-        .text_color(rgb(MUTED))
+        .text_color(rgb(theme.muted))
         .child(text)
         .into_any_element()
 }
@@ -239,6 +249,7 @@ fn render_line(
     library: &Library,
     made: &HashMap<usize, PathBuf>,
     browser: &WeakEntity<MediaBrowser>,
+    theme: Theme,
 ) -> AnyElement {
     match line {
         Line::Month(month) => div()
@@ -246,7 +257,7 @@ fn render_line(
             .pb_2()
             .text_size(px(12.5))
             .font_weight(FontWeight::SEMIBOLD)
-            .text_color(rgb(MUTED))
+            .text_color(rgb(theme.muted))
             .child(month.clone())
             .into_any_element(),
         Line::Tiles(indices) => div()
@@ -255,20 +266,26 @@ fn render_line(
             .pb(px(GAP))
             .children(indices.iter().filter_map(|&index| {
                 let item = library.media.get(index)?;
-                Some(tile(item, made.get(&index), browser, Pick::Media(index)))
+                Some(tile(
+                    item,
+                    made.get(&index),
+                    browser,
+                    Pick::Media(index),
+                    theme,
+                ))
             }))
             .into_any_element(),
         Line::Doc(index) => library.docs.get(*index).map_or_else(
             || div().into_any_element(),
-            |item| doc(item, browser, Pick::Doc(*index)),
+            |item| doc(item, browser, Pick::Doc(*index), theme),
         ),
         Line::Link(index) => library.links.get(*index).map_or_else(
             || div().into_any_element(),
-            |shown| link(shown, browser, Pick::Link(*index)),
+            |shown| link(shown, browser, Pick::Link(*index), theme),
         ),
         Line::Starred(index) => library.starred.get(*index).map_or_else(
             || div().into_any_element(),
-            |starred| super::starred::row(starred, browser),
+            |starred| super::starred::row(starred, browser, theme),
         ),
     }
 }
@@ -283,6 +300,7 @@ fn tile(
     made: Option<&PathBuf>,
     browser: &WeakEntity<MediaBrowser>,
     pick: Pick,
+    theme: Theme,
 ) -> AnyElement {
     let right_click = on_right_click(browser, pick);
     let media = item.media.clone();
@@ -298,7 +316,7 @@ fn tile(
         .justify_center()
         .overflow_hidden()
         .rounded_lg()
-        .bg(rgb(DEEP))
+        .bg(rgb(theme.deep))
         .cursor_pointer()
         .hover(|tile| tile.opacity(0.85))
         .active(|tile| tile.opacity(0.7))
@@ -311,7 +329,7 @@ fn tile(
             None => svg()
                 .path(if video { Icon::Video } else { Icon::Camera }.path())
                 .size(px(24.0))
-                .text_color(rgb(MUTED))
+                .text_color(rgb(theme.muted))
                 .into_any_element(),
         })
         .when(video, |tile| {
@@ -325,14 +343,14 @@ fn tile(
                     .gap_1()
                     .px_1()
                     .rounded_md()
-                    .bg(rgba(SCRIM))
+                    .bg(rgba(theme.scrim))
                     .text_size(px(11.0))
-                    .text_color(rgb(TEXT))
+                    .text_color(rgb(theme.text))
                     .child(
                         svg()
                             .path(Icon::Video.path())
                             .size(px(11.0))
-                            .text_color(rgb(TEXT)),
+                            .text_color(rgb(theme.text)),
                     )
                     .children(media.detail.clone()),
             )
@@ -350,6 +368,7 @@ pub(super) fn entry(
     title: SharedString,
     title_color: u32,
     below: Vec<SharedString>,
+    theme: Theme,
 ) -> Stateful<Div> {
     div()
         .id(id)
@@ -364,8 +383,8 @@ pub(super) fn entry(
         .py_2()
         .rounded_lg()
         .cursor_pointer()
-        .hover(|row| row.bg(rgba(HOVER)))
-        .active(|row| row.bg(rgb(RAISED)))
+        .hover(|row| row.bg(rgba(theme.hover)))
+        .active(|row| row.bg(rgb(theme.raised)))
         .child(leading)
         .child(
             div()
@@ -385,14 +404,14 @@ pub(super) fn entry(
                     div()
                         .truncate()
                         .text_size(px(12.5))
-                        .text_color(rgb(MUTED))
+                        .text_color(rgb(theme.muted))
                         .child(line)
                 })),
         )
 }
 
 /// A rounded square holding `icon`, `side` pixels wide.
-pub(super) fn badge(icon: Icon, side: f32) -> AnyElement {
+pub(super) fn badge(icon: Icon, side: f32, theme: Theme) -> AnyElement {
     div()
         .size(px(side))
         .flex_none()
@@ -400,17 +419,17 @@ pub(super) fn badge(icon: Icon, side: f32) -> AnyElement {
         .items_center()
         .justify_center()
         .rounded_lg()
-        .bg(rgb(RAISED))
+        .bg(rgb(theme.raised))
         .child(
             svg()
                 .path(icon.path())
                 .size(px(18.0))
-                .text_color(rgb(MUTED)),
+                .text_color(rgb(theme.muted)),
         )
         .into_any_element()
 }
 
-fn doc(item: &Shelved, browser: &WeakEntity<MediaBrowser>, pick: Pick) -> AnyElement {
+fn doc(item: &Shelved, browser: &WeakEntity<MediaBrowser>, pick: Pick, theme: Theme) -> AnyElement {
     let right_click = on_right_click(browser, pick);
     let media = item.media.clone();
     let browser = browser.clone();
@@ -430,10 +449,11 @@ fn doc(item: &Shelved, browser: &WeakEntity<MediaBrowser>, pick: Pick) -> AnyEle
     .join(" · ");
     entry(
         SharedString::from(media.fetch.message_id.clone()),
-        badge(if audio { Icon::Waveform } else { Icon::File }, 40.0),
+        badge(if audio { Icon::Waveform } else { Icon::File }, 40.0, theme),
         title,
-        TEXT,
+        theme.text,
         vec![below.into()],
+        theme,
     )
     .on_mouse_down(RIGHT, right_click)
     .on_click(move |_, _, cx| choose(&browser, &media, cx))
@@ -446,7 +466,12 @@ const LINK_PICTURE: f32 = 56.0;
 /// A link as the phone lists it: the page's picture and title, what it
 /// says about itself, and where it leads; a link without a preview shows
 /// itself and the message it came in.
-fn link(link: &SharedLink, browser: &WeakEntity<MediaBrowser>, pick: Pick) -> AnyElement {
+fn link(
+    link: &SharedLink,
+    browser: &WeakEntity<MediaBrowser>,
+    pick: Pick,
+    theme: Theme,
+) -> AnyElement {
     let right_click = on_right_click(browser, pick);
     let target = link.target.clone();
     let preview = link.preview.as_ref();
@@ -457,7 +482,7 @@ fn link(link: &SharedLink, browser: &WeakEntity<MediaBrowser>, pick: Pick) -> An
             .rounded_lg()
             .object_fit(ObjectFit::Cover)
             .into_any_element(),
-        None => badge(Icon::Link, LINK_PICTURE),
+        None => badge(Icon::Link, LINK_PICTURE, theme),
     };
     let title = preview.and_then(|preview| preview.title.clone());
     let about = preview
@@ -473,8 +498,13 @@ fn link(link: &SharedLink, browser: &WeakEntity<MediaBrowser>, pick: Pick) -> An
         SharedString::from(format!("{}-{}", link.sent_at, link.target)),
         leading,
         title.clone().unwrap_or_else(|| link.shown.clone()),
-        if title.is_some() { TEXT } else { LINK },
+        if title.is_some() {
+            theme.text
+        } else {
+            theme.link
+        },
         below,
+        theme,
     )
     .on_mouse_down(RIGHT, right_click)
     .on_click(move |_, _, cx| cx.open_url(&target))

@@ -13,7 +13,7 @@ use gpui::{
     ease_in_out, px, relative, rgb, svg,
 };
 use natizap_playback::Speed;
-use natizap_ui::theme::{ACCENT, ACCENT_INK, DEEP, LINE, MUTED, PANEL, RAISED, TEXT, glass};
+use natizap_ui::theme::Theme;
 use natizap_ui::{Icon, progress};
 
 use crate::items::MediaView;
@@ -33,6 +33,7 @@ pub(crate) fn render_voice(
     downloading: Option<f32>,
     footer: impl IntoElement,
     view: &WeakEntity<ConversationView>,
+    theme: Theme,
 ) -> Div {
     let id = SharedString::from(media.fetch.message_id.clone());
     let voice = ui.playing.as_ref().filter(|voice| voice.message_id == id);
@@ -72,7 +73,7 @@ pub(crate) fn render_voice(
         .flex()
         .items_center()
         .gap_2p5()
-        .child(play_button(state, toggle))
+        .child(play_button(state, toggle, theme))
         .child(
             div()
                 .flex_1()
@@ -85,8 +86,8 @@ pub(crate) fn render_voice(
                         .flex()
                         .items_center()
                         .gap_2()
-                        .child(track(&id, progress, view))
-                        .child(speed_menu(&id, ui, view)),
+                        .child(track(&id, progress, view, theme))
+                        .child(speed_menu(&id, ui, view, theme)),
                 )
                 .child(
                     div()
@@ -98,9 +99,9 @@ pub(crate) fn render_voice(
                             svg()
                                 .path(Icon::Waveform.path())
                                 .size(px(14.0))
-                                .text_color(rgb(MUTED)),
+                                .text_color(rgb(theme.muted)),
                         )
-                        .child(div().text_color(rgb(TEXT)).child(time))
+                        .child(div().text_color(rgb(theme.text)).child(time))
                         .child(div().flex_1())
                         .child(footer),
                 ),
@@ -123,6 +124,7 @@ enum Button {
 fn play_button(
     state: Button,
     toggle: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
+    theme: Theme,
 ) -> impl IntoElement {
     let icon = match state {
         Button::Download | Button::Downloading => Icon::Download,
@@ -132,7 +134,7 @@ fn play_button(
     let glyph = svg()
         .path(icon.path())
         .size(px(14.0))
-        .text_color(rgb(ACCENT_INK));
+        .text_color(rgb(theme.accent_ink));
     let glyph = if state == Button::Downloading {
         glyph
             .with_animation(
@@ -153,7 +155,7 @@ fn play_button(
         .items_center()
         .justify_center()
         .rounded_full()
-        .bg(rgb(DEEP).opacity(0.55))
+        .bg(rgb(theme.deep).opacity(0.55))
         .child(
             div()
                 .id("voice-toggle")
@@ -162,7 +164,7 @@ fn play_button(
                 .items_center()
                 .justify_center()
                 .rounded_full()
-                .bg(rgb(ACCENT))
+                .bg(rgb(theme.accent))
                 .cursor_pointer()
                 .hover(|button| button.opacity(0.9))
                 .on_click(toggle)
@@ -176,6 +178,7 @@ fn track(
     id: &SharedString,
     fraction: f32,
     view: &WeakEntity<ConversationView>,
+    theme: Theme,
 ) -> impl IntoElement {
     let bounds: TrackBounds = Rc::default();
     let measure = Rc::clone(&bounds);
@@ -211,7 +214,7 @@ fn track(
                 .absolute()
                 .size_full(),
         )
-        .child(progress(fraction))
+        .child(progress(fraction, theme))
         .child(
             div()
                 .absolute()
@@ -220,7 +223,7 @@ fn track(
                 .ml(px(-6.0))
                 .size(px(12.0))
                 .rounded_full()
-                .bg(rgb(TEXT))
+                .bg(rgb(theme.text))
                 .shadow_sm(),
         )
 }
@@ -239,7 +242,12 @@ fn seek_to(
 }
 
 /// The speed pill and, when open, the list of speeds floating above it.
-fn speed_menu(id: &SharedString, ui: &VoiceUi, view: &WeakEntity<ConversationView>) -> Div {
+fn speed_menu(
+    id: &SharedString,
+    ui: &VoiceUi,
+    view: &WeakEntity<ConversationView>,
+    theme: Theme,
+) -> Div {
     let open = ui.speed_menu.as_ref() == Some(id);
     let toggle = {
         let (id, view) = (id.clone(), view.clone());
@@ -260,21 +268,21 @@ fn speed_menu(id: &SharedString, ui: &VoiceUi, view: &WeakEntity<ConversationVie
                 .pr_1p5()
                 .py_0p5()
                 .rounded_full()
-                .bg(rgb(DEEP))
+                .bg(rgb(theme.deep))
                 .border_1()
-                .border_color(rgb(LINE))
+                .border_color(rgb(theme.line))
                 .text_size(px(12.0))
                 .font_weight(FontWeight::SEMIBOLD)
-                .text_color(rgb(TEXT))
+                .text_color(rgb(theme.text))
                 .cursor_pointer()
-                .hover(|pill| pill.border_color(rgb(MUTED)))
+                .hover(|pill| pill.border_color(rgb(theme.muted)))
                 .on_click(toggle)
                 .child(ui.speed.label())
                 .child(
                     svg()
                         .path(Icon::ChevronDown.path())
                         .size(px(12.0))
-                        .text_color(rgb(MUTED)),
+                        .text_color(rgb(theme.muted)),
                 ),
         )
         .when(open, |pill| {
@@ -284,13 +292,17 @@ fn speed_menu(id: &SharedString, ui: &VoiceUi, view: &WeakEntity<ConversationVie
             pill.on_mouse_down_out(move |_, _, cx| {
                 let _ = close.update(cx, ConversationView::close_popups);
             })
-            .child(speed_list(ui.speed, view))
+            .child(speed_list(ui.speed, view, theme))
         })
 }
 
 /// Floats above the pill so it stays clear of the composer below the last
 /// message.
-fn speed_list(current: Speed, view: &WeakEntity<ConversationView>) -> impl IntoElement {
+fn speed_list(
+    current: Speed,
+    view: &WeakEntity<ConversationView>,
+    theme: Theme,
+) -> impl IntoElement {
     deferred(
         div()
             .absolute()
@@ -302,8 +314,8 @@ fn speed_list(current: Speed, view: &WeakEntity<ConversationView>) -> impl IntoE
             .flex()
             .flex_col()
             .rounded_lg()
-            .bg(rgb(PANEL))
-            .map(glass)
+            .bg(rgb(theme.panel))
+            .map(|surface| theme.glass(surface))
             .occlude()
             .children(Speed::ALL.into_iter().map(|speed| {
                 let view = view.clone();
@@ -314,9 +326,13 @@ fn speed_list(current: Speed, view: &WeakEntity<ConversationView>) -> impl IntoE
                     .rounded_md()
                     .text_size(px(12.0))
                     .font_weight(FontWeight::MEDIUM)
-                    .text_color(rgb(if speed == current { ACCENT } else { TEXT }))
+                    .text_color(rgb(if speed == current {
+                        theme.accent
+                    } else {
+                        theme.text
+                    }))
                     .cursor_pointer()
-                    .hover(|row| row.bg(rgb(RAISED)))
+                    .hover(|row| row.bg(rgb(theme.raised)))
                     // On press, not click: the press already closed the menu as
                     // a click outside the pill, and the release would land on
                     // nothing.

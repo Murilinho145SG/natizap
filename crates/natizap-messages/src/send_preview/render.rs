@@ -9,7 +9,7 @@ use gpui::{
     rgb, svg,
 };
 use natizap_protocol::ContentKind;
-use natizap_ui::theme::{ACCENT, LINE, MUTED, PANE, PANEL, RAISED, TEXT, glass};
+use natizap_ui::theme::{ActiveTheme as _, Theme};
 use natizap_ui::{Button, ButtonSize, ButtonVariant, Icon};
 
 use super::{MOST_FILES, PreviewClosed, SendPreview, Staged};
@@ -21,6 +21,7 @@ const THUMB: f32 = 56.0;
 
 impl Render for SendPreview {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = *cx.theme();
         let Some(file) = self.files.get(self.selected).cloned() else {
             return div();
         };
@@ -28,7 +29,7 @@ impl Render for SendPreview {
             .size_full()
             .flex()
             .flex_col()
-            .bg(rgb(PANE))
+            .bg(rgb(theme.pane))
             .child(top_bar(&file, cx))
             .child(
                 div()
@@ -38,7 +39,7 @@ impl Render for SendPreview {
                     .items_center()
                     .justify_center()
                     .p_6()
-                    .child(big_preview(&file)),
+                    .child(big_preview(&file, theme)),
             )
             .child(self.caption_bar(window, cx))
             .child(self.strip(cx))
@@ -48,6 +49,7 @@ impl Render for SendPreview {
 impl SendPreview {
     /// The caption field and the send button.
     fn caption_bar(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
+        let theme = *cx.theme();
         let count = self.files.len();
         div()
             .flex()
@@ -89,12 +91,12 @@ impl SendPreview {
                                 .items_center()
                                 .justify_center()
                                 .rounded_full()
-                                .bg(rgb(PANEL))
+                                .bg(rgb(theme.panel))
                                 .border_1()
-                                .border_color(rgb(ACCENT))
+                                .border_color(rgb(theme.accent))
                                 .text_size(px(11.0))
                                 .font_weight(FontWeight::BOLD)
-                                .text_color(rgb(TEXT))
+                                .text_color(rgb(theme.text))
                                 .child(count.to_string()),
                         )
                     }),
@@ -104,6 +106,7 @@ impl SendPreview {
     /// Every file's thumbnail, the selected one marked, and a tile to add
     /// more.
     fn strip(&self, cx: &mut Context<Self>) -> Div {
+        let theme = *cx.theme();
         div()
             .flex()
             .justify_center()
@@ -128,15 +131,15 @@ impl SendPreview {
                         .justify_center()
                         .rounded_lg()
                         .border_1()
-                        .border_color(rgb(LINE))
+                        .border_color(rgb(theme.line))
                         .cursor_pointer()
-                        .hover(|tile| tile.bg(rgb(RAISED)))
+                        .hover(|tile| tile.bg(rgb(theme.raised)))
                         .on_click(cx.listener(|_, _, _, cx| Self::add_more(cx)))
                         .child(
                             svg()
                                 .path(Icon::Plus.path())
                                 .size(px(20.0))
-                                .text_color(rgb(MUTED)),
+                                .text_color(rgb(theme.muted)),
                         ),
                 )
             })
@@ -145,6 +148,7 @@ impl SendPreview {
 
 /// Close, and the selected file's name and size.
 fn top_bar(file: &Staged, cx: &mut Context<SendPreview>) -> Div {
+    let theme = *cx.theme();
     div()
         .flex()
         .items_center()
@@ -174,7 +178,7 @@ fn top_bar(file: &Staged, cx: &mut Context<SendPreview>) -> Div {
                 .children(file.size.map(|size| {
                     div()
                         .text_size(px(12.5))
-                        .text_color(rgb(MUTED))
+                        .text_color(rgb(theme.muted))
                         .child(file_size(size))
                 })),
         )
@@ -182,7 +186,7 @@ fn top_bar(file: &Staged, cx: &mut Context<SendPreview>) -> Div {
 
 /// The selected file, as large as fits: photos and video stills as
 /// pictures, anything else as a card with its kind.
-fn big_preview(file: &Staged) -> Div {
+fn big_preview(file: &Staged, theme: Theme) -> Div {
     let picture: Option<ImageSource> = match (file.kind, &file.still) {
         (ContentKind::Photo, _) => Some(file.path.clone().into()),
         (ContentKind::Video, Some(still)) => Some(Arc::clone(still).into()),
@@ -210,13 +214,13 @@ fn big_preview(file: &Staged) -> Div {
                         .items_center()
                         .justify_center()
                         .rounded_full()
-                        .bg(rgb(PANEL))
+                        .bg(rgb(theme.panel))
                         .opacity(0.85)
                         .child(
                             svg()
                                 .path(Icon::Play.path())
                                 .size(px(22.0))
-                                .text_color(rgb(TEXT)),
+                                .text_color(rgb(theme.text)),
                         ),
                 )
             });
@@ -229,13 +233,13 @@ fn big_preview(file: &Staged) -> Div {
         .gap_3()
         .p_8()
         .rounded_xl()
-        .bg(rgb(PANEL))
-        .map(glass)
+        .bg(rgb(theme.panel))
+        .map(|surface| theme.glass(surface))
         .child(
             svg()
                 .path(kind_icon(file.kind).path())
                 .size(px(56.0))
-                .text_color(rgb(MUTED)),
+                .text_color(rgb(theme.muted)),
         )
         .child(
             div()
@@ -248,7 +252,7 @@ fn big_preview(file: &Staged) -> Div {
         .child(
             div()
                 .text_size(px(13.0))
-                .text_color(rgb(MUTED))
+                .text_color(rgb(theme.muted))
                 .child(kind_line(file)),
         )
 }
@@ -260,6 +264,7 @@ fn thumbnail(
     selected: bool,
     cx: &mut Context<SendPreview>,
 ) -> Stateful<Div> {
+    let theme = *cx.theme();
     let group = SharedString::from(format!("staged-{index}"));
     let picture: Option<ImageSource> = match (file.kind, &file.still) {
         (ContentKind::Photo, _) => Some(file.path.clone().into()),
@@ -275,9 +280,9 @@ fn thumbnail(
         .items_center()
         .justify_center()
         .rounded_lg()
-        .bg(rgb(PANEL))
+        .bg(rgb(theme.panel))
         .border_2()
-        .border_color(rgb(if selected { ACCENT } else { LINE }))
+        .border_color(rgb(if selected { theme.accent } else { theme.line }))
         .cursor_pointer()
         .on_click(cx.listener(move |this, _, window, cx| this.select(index, window, cx)))
         .child(match picture {
@@ -289,7 +294,7 @@ fn thumbnail(
             None => svg()
                 .path(kind_icon(file.kind).path())
                 .size(px(22.0))
-                .text_color(rgb(MUTED))
+                .text_color(rgb(theme.muted))
                 .into_any_element(),
         })
         .child(
@@ -303,9 +308,9 @@ fn thumbnail(
                 .items_center()
                 .justify_center()
                 .rounded_full()
-                .bg(rgb(RAISED))
+                .bg(rgb(theme.raised))
                 .border_1()
-                .border_color(rgb(LINE))
+                .border_color(rgb(theme.line))
                 .invisible()
                 .group_hover(group, Styled::visible)
                 .on_click(cx.listener(move |this, _, window, cx| {
@@ -316,7 +321,7 @@ fn thumbnail(
                     svg()
                         .path(Icon::Close.path())
                         .size(px(11.0))
-                        .text_color(rgb(TEXT)),
+                        .text_color(rgb(theme.text)),
                 ),
         )
 }

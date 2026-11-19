@@ -6,7 +6,7 @@ use std::time::Duration;
 use gpui::prelude::*;
 use gpui::{Context, Div, div, px, rgb};
 use natizap_playback::Recorder;
-use natizap_ui::theme::{ALERT, MUTED, TEXT};
+use natizap_ui::theme::ActiveTheme as _;
 use natizap_ui::{Button, ButtonSize, ButtonVariant, Icon};
 
 use super::ConversationView;
@@ -77,6 +77,7 @@ impl ConversationView {
 
     /// The composer while recording: throw it away, how long it is, send.
     pub(super) fn recording_bar(&self, cx: &mut Context<Self>) -> Div {
+        let theme = *cx.theme();
         let seconds = self
             .recorder
             .as_ref()
@@ -100,8 +101,8 @@ impl ConversationView {
                     .flex()
                     .items_center()
                     .gap_2()
-                    .child(div().size(px(10.0)).rounded_full().bg(rgb(ALERT)))
-                    .child(div().text_color(rgb(TEXT)).child(format!(
+                    .child(div().size(px(10.0)).rounded_full().bg(rgb(theme.alert)))
+                    .child(div().text_color(rgb(theme.text)).child(format!(
                         "{}:{:02}",
                         seconds / 60,
                         seconds % 60
@@ -109,7 +110,7 @@ impl ConversationView {
                     .child(
                         div()
                             .text_size(px(13.0))
-                            .text_color(rgb(MUTED))
+                            .text_color(rgb(theme.muted))
                             .child("Recording"),
                     ),
             )
