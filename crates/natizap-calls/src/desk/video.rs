@@ -2,7 +2,7 @@
 //! it is on, and turning a voice call into a video call either way.
 
 use gpui::{AppContext as _, Context, Entity, Task};
-use natizap_playback::{AccessUnits, Camera, ScreenShare, VideoError, decode_video};
+use natizap_playback::{AccessUnits, Camera, Inset, ScreenShare, VideoError, decode_video};
 use natizap_protocol::Video;
 
 use super::lifecycle::logged;
@@ -34,16 +34,19 @@ pub(super) struct CallVideo {
     pub(super) camera: CameraState,
     /// The open camera, while it is on.
     open: Option<Camera>,
-    /// The call's own end of the pictures sent, fed by the camera or the
-    /// shared screen.
+    /// The call's own end of the pictures sent, fed by the camera, or by
+    /// the shared screen with the camera in its corner.
     pub(super) sent: async_channel::Sender<Vec<u8>>,
-    pub(super) feeding: Option<Task<()>>,
-    /// Whether the screen is shared, in place of the camera.
+    feeding: Option<Task<()>>,
+    /// Where the camera lends its pictures to the shared screen.
+    pub(super) inset: Inset,
+    /// Whether the screen is shared.
     pub(super) sharing: Sharing,
-    /// The screen shared, while it is.
+    /// The screen shared, while it is, what feeds the call from it, and
+    /// what the user sees of it.
     pub(super) shared: Option<ScreenShare>,
-    /// The camera was on when sharing began: it comes back after.
-    pub(super) camera_after: bool,
+    pub(super) screen_feeding: Option<Task<()>>,
+    pub(super) shared_preview: Option<Entity<Screen>>,
     /// Where the other end's pictures go, to hand the call again when the
     /// camera comes back on.
     screen: AccessUnits,
@@ -69,9 +72,11 @@ impl CallVideo {
                 open: None,
                 sent,
                 feeding: None,
+                inset: Inset::default(),
                 sharing: Sharing::Off,
                 shared: None,
-                camera_after: false,
+                screen_feeding: None,
+                shared_preview: None,
                 screen: screen.clone(),
                 sending: true,
                 peer_on: true,
@@ -100,7 +105,7 @@ impl CallVideo {
         }
     }
 
-    pub(super) fn camera_off(&mut self) {
+    fn camera_off(&mut self) {
         self.open = None;
         self.feeding = None;
         self.preview = None;
@@ -133,6 +138,11 @@ impl CallDesk {
         match call.video.as_mut() {
             Some(video) if matches!(video.camera, CameraState::On | CameraState::Opening) => {
                 video.camera_off();
+                // The shared screen goes on alone.
+                if video.sharing != Sharing::Off {
+                    cx.notify();
+                    return;
+                }
                 video.sending = false;
                 let stopped = self.protocol.read(cx).stop_video(&live, cx);
                 logged(
@@ -225,7 +235,8 @@ impl CallDesk {
         video.camera = CameraState::Opening;
         cx.notify();
         let device = self.choices.devices.camera.clone();
-        let opening = cx.background_spawn(async move { Camera::start(device.as_deref()) });
+        let inset = video.inset.clone();
+        let opening = cx.background_spawn(async move { Camera::start(device.as_deref(), inset) });
         cx.spawn(async move |this, cx| {
             let opened = opening.await;
             let _ = this.update(cx, |desk, cx| {

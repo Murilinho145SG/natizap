@@ -1,6 +1,7 @@
-//! Sharing the screen in a call, in place of the camera: in a video call,
-//! or in a voice call, which becomes a video call for it. Unlike WhatsApp,
-//! no camera is needed: the screen is the call's picture by itself.
+//! Sharing the screen in a call: in a video call, or in a voice call,
+//! which becomes a video call for it. Unlike WhatsApp, no camera is
+//! needed; with one on, it shows in the shared screen's corner, since a
+//! call carries one picture.
 
 use gpui::{AppContext as _, Context};
 use natizap_playback::ScreenShare;
@@ -18,7 +19,7 @@ pub enum Sharing {
     Off,
     /// The desktop asks the user what to share.
     Choosing,
-    /// It is, in place of the camera.
+    /// It is, with the camera in its corner while it is on.
     On,
 }
 
@@ -69,7 +70,8 @@ impl CallDesk {
         video.sharing = Sharing::Choosing;
         cx.notify();
         // The desktop's dialog waits for the user: never on the UI thread.
-        let choosing = cx.background_spawn(async { ScreenShare::start() });
+        let inset = video.inset.clone();
+        let choosing = cx.background_spawn(async move { ScreenShare::start(inset) });
         let live = live.clone();
         cx.spawn(async move |this, cx| {
             let chosen = choosing.await;
@@ -103,14 +105,13 @@ impl CallDesk {
                 return self.stop_sharing(live, cx);
             }
         };
-        video.camera_after = matches!(video.camera, CameraState::On | CameraState::Opening);
-        video.camera_off();
+        video.inset.set_lending(true);
         let preview = cx.new(|cx| Screen::new(share.preview(), cx));
         cx.observe(&preview, |_, _, cx| cx.notify()).detach();
-        video.preview = Some(preview);
+        video.shared_preview = Some(preview);
         let sent = video.sent.clone();
         let ending = live.clone();
-        video.feeding = Some(cx.spawn(async move |this, cx| {
+        video.screen_feeding = Some(cx.spawn(async move |this, cx| {
             while let Ok(unit) = units.recv().await {
                 if sent.send(unit).await.is_err() {
                     return;
@@ -130,18 +131,18 @@ impl CallDesk {
         cx.notify();
     }
 
-    /// Stops sharing the screen: the camera comes back if it was on, else
-    /// the call stops sending pictures.
+    /// Stops sharing the screen: the camera, if on, sends its own pictures
+    /// again, else the call stops sending pictures.
     fn stop_sharing(&mut self, live: &LiveCall, cx: &mut Context<Self>) {
         let Some(video) = self.call.as_mut().and_then(|call| call.video.as_mut()) else {
             return;
         };
         let was_on = video.sharing == Sharing::On;
         video.sharing = Sharing::Off;
+        video.inset.set_lending(false);
         video.shared = None;
-        video.feeding = None;
-        video.preview = None;
-        let camera_after = std::mem::take(&mut video.camera_after);
+        video.screen_feeding = None;
+        video.shared_preview = None;
         if was_on {
             let told = self.protocol.read(cx).share_screen(live, false, cx);
             logged(
@@ -150,12 +151,8 @@ impl CallDesk {
                 cx,
             );
         }
-        if camera_after {
-            self.open_camera(cx);
-        } else if let Some(video) = self.call.as_mut().and_then(|call| call.video.as_mut())
-            && video.sending
-            && video.camera == CameraState::Off
-        {
+        let camera_on = matches!(video.camera, CameraState::On | CameraState::Opening);
+        if !camera_on && video.sending {
             video.sending = false;
             let stopped = self.protocol.read(cx).stop_video(live, cx);
             logged(

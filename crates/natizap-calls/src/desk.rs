@@ -307,9 +307,11 @@ impl CallDesk {
                     .peer_on
                     .then(|| video.remote.read(cx).image())
                     .flatten(),
+                // While the screen is shared, the user sees what they share.
                 preview: video
-                    .preview
+                    .shared_preview
                     .as_ref()
+                    .or(video.preview.as_ref())
                     .and_then(|preview| preview.read(cx).image()),
                 camera: video.camera,
                 sharing: video.sharing,
