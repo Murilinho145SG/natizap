@@ -479,8 +479,26 @@ impl Render for Root {
         if let Some(call) = self.full_screen_call(window, cx) {
             return call;
         }
-        let title = wordmark(self.session.read(cx).state(), theme)
-            .child(div().ml_4().child(self.updater.clone()));
+        // The call sits in the title bar, in its middle, rather than in a
+        // second bar of its own.
+        let title = div()
+            .w_full()
+            .flex()
+            .items_center()
+            .child(
+                wordmark(self.session.read(cx).state(), theme)
+                    .flex_none()
+                    .child(div().ml_4().child(self.updater.clone())),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .px_4()
+                    .flex()
+                    .justify_center()
+                    .child(self.call_views.bar.clone()),
+            );
         let opening = self.opening_layer(cx);
         let content = div()
             .size_full()

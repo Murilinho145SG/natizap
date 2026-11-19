@@ -1,5 +1,5 @@
-//! The call under way across the top of the main window: who, how long,
-//! and its controls; and the controls the call's other views share.
+//! The call under way in the main window's title bar: who, how long, and
+//! its controls; and the controls the call's other views share.
 
 use gpui::prelude::*;
 use gpui::{
@@ -21,7 +21,7 @@ use crate::quality::Quality;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CallPoppedOut;
 
-/// The call under way, as a bar across the top of the window: who, how
+/// The call under way, as a pill in the window's title bar: who, how
 /// long, and its controls. Draws nothing without a call.
 pub struct CallBar {
     desk: Entity<CallDesk>,
@@ -71,23 +71,31 @@ impl Render for CallBar {
             CallLayout::Docked | CallLayout::Filled
         );
         let peer = call.peer.clone();
+        // A pill in the window's title bar: the call takes no row of its
+        // own above the chats.
         div()
-            .h(px(52.0))
-            .flex_none()
+            .id("call-bar")
+            .h(px(32.0))
+            .max_w_full()
             .flex()
             .items_center()
-            .gap_3()
-            .px_4()
+            .gap_2()
+            .pl_1()
+            .pr_1()
+            .rounded_full()
             .bg(rgb(theme.raised))
-            .border_b_1()
+            .border_1()
             .border_color(rgb(theme.line))
+            // Pressing it is not moving the window by its title bar.
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .child(
                 div()
                     .id("call-bar-peer")
                     .flex()
                     .items_center()
-                    .gap_3()
+                    .gap_2()
                     .min_w_0()
+                    .pr_1()
                     .cursor_pointer()
                     .on_click(cx.listener(move |_, _, _, cx| {
                         cx.emit(CallChatRequested(peer.clone()));
@@ -102,31 +110,20 @@ impl Render for CallBar {
                     )
                     .child(ringed(
                         "call-bar-speaking",
-                        avatar(call.peer.as_str(), &call.title, picture, px(32.0)),
-                        32.0,
+                        avatar(call.peer.as_str(), &call.title, picture, px(24.0)),
+                        24.0,
                         call.speaking,
                         theme,
                     ))
                     .child(
                         div()
-                            .min_w_0()
-                            .flex()
-                            .flex_col()
-                            .child(
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .gap_1()
-                                    .child(
-                                        div()
-                                            .truncate()
-                                            .font_weight(FontWeight::MEDIUM)
-                                            .child(call.title.clone()),
-                                    )
-                                    .children(peer_marks(&call, theme)),
-                            )
-                            .child(phase_line(&call, theme)),
-                    ),
+                            .truncate()
+                            .text_size(px(13.5))
+                            .font_weight(FontWeight::MEDIUM)
+                            .child(call.title.clone()),
+                    )
+                    .children(peer_marks(&call, theme))
+                    .child(phase_line(&call, theme)),
             )
             // A call docked or filling the chat's area has its controls on
             // its stage.
@@ -147,35 +144,34 @@ impl Render for CallBar {
 }
 
 impl CallBar {
-    /// The call's controls, at the bar's right end.
+    /// The call's controls, at the pill's right end.
     fn controls(&self, call: &CallShown, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let layout = self.desk.read(cx).layout();
         let call = call.clone();
         div()
-            .ml_auto()
             .flex()
             .items_center()
-            .gap_1()
+            .gap_0p5()
             .when(call.video_requested, |controls| {
                 controls.child(video_request(cx))
             })
             .child(mute_button(
                 &call,
-                ButtonSize::Medium,
+                ButtonSize::Small,
                 cx.listener(|bar, _, _, cx| {
                     bar.desk.update(cx, CallDesk::toggle_muted);
                 }),
             ))
             .child(camera_button(
                 &call,
-                ButtonSize::Medium,
+                ButtonSize::Small,
                 cx.listener(|bar, _, _, cx| {
                     bar.desk.update(cx, CallDesk::toggle_camera);
                 }),
             ))
             .child(screen_button(
                 &call,
-                ButtonSize::Medium,
+                ButtonSize::Small,
                 cx.listener(|bar, _, _, cx| {
                     bar.desk.update(cx, CallDesk::toggle_screen);
                 }),
@@ -185,6 +181,7 @@ impl CallBar {
                 Button::new("call-pop-out")
                     .icon(Icon::PopOut)
                     .variant(ButtonVariant::Ghost)
+                    .size(ButtonSize::Small)
                     .round()
                     .tooltip("Open in its own window")
                     .on_click(cx.listener(|_, _, _, cx| cx.emit(CallPoppedOut))),
@@ -193,6 +190,7 @@ impl CallBar {
                 Button::new("call-hang-up")
                     .icon(Icon::CallEnd)
                     .variant(ButtonVariant::Danger)
+                    .size(ButtonSize::Small)
                     .round()
                     .tooltip(HANG_UP.tip("Hang up"))
                     .on_click(cx.listener(|bar, _, _, cx| {
@@ -277,6 +275,7 @@ fn show_button(layout: CallLayout, cx: &mut Context<CallBar>) -> Button {
     Button::new("call-show")
         .icon(icon)
         .variant(ButtonVariant::Ghost)
+        .size(ButtonSize::Small)
         .round()
         .tooltip(tip)
         .on_click(cx.listener(move |bar, _, _, cx| {

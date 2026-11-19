@@ -44,7 +44,6 @@ impl Root {
             .relative()
             .flex()
             .flex_col()
-            .child(self.call_views.bar.clone())
             .child(self.places(width, cx))
             .child(self.call_views.panel.clone())
             .child(self.call_views.card.clone())
