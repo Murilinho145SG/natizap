@@ -11,6 +11,7 @@ use cpal::traits::{DeviceTrait as _, HostTrait as _, StreamTrait as _};
 use cpal::{Stream, StreamConfig};
 
 use crate::audio::closest_f32;
+use crate::opus::OpusDecoder;
 use crate::resample::Resampler;
 
 /// Frames waiting for the call before new ones are dropped.
@@ -55,6 +56,10 @@ pub struct CallPorts {
     pub microphone: async_channel::Receiver<Vec<i16>>,
     /// Frames for the speaker to play.
     pub speaker: async_channel::Sender<Vec<i16>>,
+    /// Opus packets for the speaker to play, decoded on a thread of their
+    /// own: the other end may send Opus where the call expects its own
+    /// codec.
+    pub opus: async_channel::Sender<Vec<u8>>,
 }
 
 /// The microphone and speaker open for a call. Dropping it closes both.
@@ -89,11 +94,20 @@ impl CallAudio {
             _microphone: listen(&input, format, heard)?,
             _speaker: play(&output, format, said)?,
         };
+        let (opus, packets) = async_channel::bounded(SPEAKER_BACKLOG);
+        let decoded = speaker.clone();
+        // A plain thread: FFmpeg blocks, and the card's callbacks must not.
+        // It ends once the call drops its end of `opus`.
+        std::thread::Builder::new()
+            .name("natizap-call-opus".into())
+            .spawn(move || decode_opus(&packets, &decoded, format))
+            .map_err(device_error)?;
         Ok((
             calls,
             CallPorts {
                 microphone,
                 speaker,
+                opus,
             },
         ))
     }
@@ -143,6 +157,43 @@ fn play(
         .map_err(device_error)?;
     stream.play().map_err(device_error)?;
     Ok(stream)
+}
+
+/// Plays `packets` through `speaker`, at the call's rate.
+fn decode_opus(
+    packets: &async_channel::Receiver<Vec<u8>>,
+    speaker: &async_channel::Sender<Vec<i16>>,
+    format: CallFormat,
+) {
+    let mut decoder = match OpusDecoder::new() {
+        Ok(decoder) => decoder,
+        Err(error) => {
+            tracing::warn!(%error, "no Opus decoder: Opus from the other end stays silent");
+            return;
+        }
+    };
+    let mut resampler: Option<(u32, Resampler)> = None;
+    let (mut sound, mut converted) = (Vec::new(), Vec::new());
+    while let Ok(packet) = packets.recv_blocking() {
+        sound.clear();
+        let rate = match decoder.decode(&packet, &mut sound) {
+            Ok(Some(rate)) => rate,
+            Ok(None) => continue,
+            Err(error) => {
+                // A damaged packet is a moment of silence, as on a bad line.
+                tracing::debug!(%error, "dropped an Opus packet");
+                continue;
+            }
+        };
+        let resampler = match &mut resampler {
+            Some((from, resampler)) if *from == rate => resampler,
+            slot => &mut slot.insert((rate, Resampler::new(rate, format.rate))).1,
+        };
+        converted.clear();
+        resampler.push(&sound, &mut converted);
+        // Full means the speaker is behind: this piece is lost.
+        let _ = speaker.try_send(converted.iter().copied().map(to_i16).collect());
+    }
 }
 
 fn device_error(error: impl std::fmt::Display) -> CallAudioError {

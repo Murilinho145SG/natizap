@@ -15,6 +15,7 @@ mod call_audio;
 mod clip;
 mod clock;
 mod decode;
+mod opus;
 mod poster;
 mod probe;
 mod record;

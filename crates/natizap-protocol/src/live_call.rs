@@ -8,7 +8,7 @@ use futures::StreamExt as _;
 use gpui::{App, AppContext as _, Task};
 use whatsapp_rust::prelude::{Event, EventKind};
 use whatsapp_rust::voip::audio::{WA_FRAME_SAMPLES, WA_SAMPLE_RATE};
-use whatsapp_rust::voip::{CallEvent, CallHandle};
+use whatsapp_rust::voip::{CallEvent, CallHandle, depacketize_opus_from_mlow};
 use whatsapp_rust::wacore::types::call::{CallAction, IncomingCall};
 
 use crate::actions::{self, ActionError};
@@ -131,6 +131,10 @@ pub struct Voice {
     pub microphone: async_channel::Receiver<Vec<i16>>,
     /// Where frames received go to be played.
     pub speaker: async_channel::Sender<Vec<i16>>,
+    /// Where standard Opus packets received go to be decoded and played:
+    /// the other end's phone may send Opus instead of the call's own
+    /// codec, which only it can tell.
+    pub opus: async_channel::Sender<Vec<u8>>,
 }
 
 /// How far a call has come.
@@ -221,6 +225,7 @@ impl Protocol {
             Err(error) => return Task::ready(Err(error)),
         };
         let signals = self.subscribe(&[EventKind::IncomingCall]);
+        let opus = voice.opus.clone();
         let started = self.connection.run(cx, move |client| async move {
             client
                 .voip()
@@ -230,7 +235,7 @@ impl Protocol {
                 .await
                 .map_err(|error| ActionError::refused(&error))
         });
-        follow(started, signals, false, cx)
+        follow(started, signals, opus, false, cx)
     }
 
     /// Answers `ring`, with `voice` as the call's sound.
@@ -241,6 +246,7 @@ impl Protocol {
         cx: &App,
     ) -> Task<Result<LiveCall, ActionError>> {
         let signals = self.subscribe(&[EventKind::IncomingCall]);
+        let opus = voice.opus.clone();
         // Before answering: the caller may hang up before the answer
         // returns, and that call was not missed either.
         self.answered.insert(&ring.id);
@@ -264,7 +270,7 @@ impl Protocol {
             }
             started.map_err(|error| ActionError::refused(&error))
         });
-        follow(started, signals, true, cx)
+        follow(started, signals, opus, true, cx)
     }
 
     /// Turns `ring` down.
@@ -306,6 +312,7 @@ impl Protocol {
 fn follow(
     started: Task<Result<CallHandle, ActionError>>,
     signals: async_channel::Receiver<Arc<Event>>,
+    opus: async_channel::Sender<Vec<u8>>,
     answered: bool,
     cx: &App,
 ) -> Task<Result<LiveCall, ActionError>> {
@@ -315,7 +322,7 @@ fn follow(
         let (tell, progress) = async_channel::unbounded();
         let watch = Watch::new(handle.call_id(), answered);
         executor
-            .spawn(watch.run(handle.clone(), signals, tell))
+            .spawn(watch.run(handle.clone(), signals, opus, tell))
             .detach();
         Ok(LiveCall { handle, progress })
     })
@@ -349,6 +356,7 @@ impl Watch {
         mut self,
         handle: CallHandle,
         signals: async_channel::Receiver<Arc<Event>>,
+        opus: async_channel::Sender<Vec<u8>>,
         tell: async_channel::Sender<CallProgress>,
     ) {
         let ending = handle.clone();
@@ -364,6 +372,13 @@ impl Watch {
         );
         futures::pin_mut!(heard);
         while let Some(heard) = heard.next().await {
+            if let Heard::Media(CallEvent::ForeignAudio(packet)) = &heard {
+                if let Some(packet) = standard_opus(packet) {
+                    // Full means the speaker is behind: this piece is lost.
+                    let _ = opus.try_send(packet);
+                }
+                continue;
+            }
             let Some(progress) = self.hear(&heard) else {
                 continue;
             };
@@ -446,10 +461,19 @@ impl Watch {
     }
 }
 
+/// `packet`, Opus wrapped the way the call's own codec carries it, as a
+/// stock Opus decoder takes it.
+fn standard_opus(packet: &[u8]) -> Option<Vec<u8>> {
+    let mut packet = packet.to_vec();
+    depacketize_opus_from_mlow(&mut packet).ok()?;
+    Some(packet)
+}
+
 #[cfg(test)]
 mod tests {
     use whatsapp_rust::Jid;
     use whatsapp_rust::chrono::Utc;
+    use whatsapp_rust::voip::packetize_opus_for_mlow;
 
     use super::*;
 
@@ -514,6 +538,17 @@ mod tests {
             watch.hear(&Heard::Ended),
             Some(CallProgress::Ended(CallEnd::Finished))
         );
+    }
+
+    #[test]
+    fn opus_from_the_other_end_is_unwrapped_for_a_stock_decoder() {
+        // A 20 ms wideband CELT frame's table of contents, then its data:
+        // the escape carries CELT only.
+        let stock = vec![0xB8, 0x11, 0x22, 0x33, 0x44];
+        let mut carried = stock.clone();
+        assert!(packetize_opus_for_mlow(&mut carried).is_ok());
+        assert_ne!(carried, stock);
+        assert_eq!(standard_opus(&carried), Some(stock));
     }
 
     #[test]

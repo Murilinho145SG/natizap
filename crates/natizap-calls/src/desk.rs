@@ -533,6 +533,7 @@ fn voice(ports: CallPorts) -> Voice {
     Voice {
         microphone: ports.microphone,
         speaker: ports.speaker,
+        opus: ports.opus,
     }
 }
 
