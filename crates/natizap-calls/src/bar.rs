@@ -57,6 +57,10 @@ impl Render for CallBar {
             .pictures
             .update(cx, |pictures, cx| pictures.picture(&call.peer, cx));
         let ended = matches!(call.phase, Phase::Ended(_));
+        let stage_shown = matches!(
+            self.desk.read(cx).layout(),
+            CallLayout::Docked | CallLayout::Filled
+        );
         let peer = call.peer.clone();
         div()
             .h(px(52.0))
@@ -100,7 +104,11 @@ impl Render for CallBar {
                             .child(phase_line(&call, theme)),
                     ),
             )
-            .when(!ended, |bar| bar.child(self.controls(&call, cx)))
+            // A call docked or filling the chat's area has its controls on
+            // its stage.
+            .when(!ended && !stage_shown, |bar| {
+                bar.child(self.controls(&call, cx))
+            })
             .into_any_element()
     }
 }

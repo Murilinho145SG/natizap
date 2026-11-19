@@ -1,7 +1,7 @@
 //! The call shown large: over the chat in the main window, docked with the
 //! chat below it or filling the chat's area, and in a window of its own. A
-//! voice call shows the person in the middle with the call's clock under
-//! them; a video call fills the stage with the other end's picture, the
+//! voice call shows the person in the middle, with the call's clock under
+//! them in the call's own window (the main window's bar shows it there); a video call fills the stage with the other end's picture, the
 //! user's own in its corner. The controls sit at the bottom; in the main
 //! window, its arrangement's buttons sit at the top right, and a docked
 //! stage's foot is dragged to make it taller or shorter.
@@ -118,17 +118,21 @@ impl CallStage {
                 call.speaking,
                 theme,
             ))
-            .child(
-                div()
-                    .pt_1()
-                    .max_w_full()
-                    .truncate()
-                    .font_family(DISPLAY_FONT)
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .text_size(px(22.0))
-                    .child(call.title.clone()),
-            )
-            .child(phase_line(call, theme))
+            // The main window's bar already says who and how long.
+            .when(self.home == Home::Window, |person| {
+                person
+                    .child(
+                        div()
+                            .pt_1()
+                            .max_w_full()
+                            .truncate()
+                            .font_family(DISPLAY_FONT)
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_size(px(22.0))
+                            .child(call.title.clone()),
+                    )
+                    .child(phase_line(call, theme))
+            })
     }
 
     /// The call's controls, in a row.
