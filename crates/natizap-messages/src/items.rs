@@ -5,7 +5,9 @@ use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use natizap_protocol::{ChatId, ContentKind, Extra, Forwarding, Mark, Marked, Reply};
+use natizap_protocol::{
+    CallDetails, CallOutcome, ChatId, ContentKind, Extra, Forwarding, Mark, Marked, Reply,
+};
 
 pub(crate) use crate::authors::Members;
 use crate::authors::Tint;
@@ -73,10 +75,11 @@ pub(crate) struct Bubble {
 pub(crate) enum Body {
     /// The message was deleted for everyone.
     Deleted,
-    /// A call nobody answered; natizap cannot take calls yet.
-    MissedCall {
+    /// A call, made or that rang, and how it went.
+    Call {
         /// It was a video call.
         video: bool,
+        details: CallDetails,
     },
     /// The message's content.
     Content {
@@ -252,10 +255,8 @@ fn bubble(
         forwarding: message.forwarding,
         body: if message.deleted {
             Body::Deleted
-        } else if let ContentKind::MissedVoiceCall | ContentKind::MissedVideoCall = message.kind {
-            Body::MissedCall {
-                video: message.kind == ContentKind::MissedVideoCall,
-            }
+        } else if let Some((video, details)) = call_of(message) {
+            Body::Call { video, details }
         } else {
             Body::Content {
                 // Downloadable attachments render themselves; the rest
@@ -513,6 +514,24 @@ fn day_label(day: NaiveDate, now: DateTime<Local>) -> String {
 }
 
 mod album;
+
+/// Whether `message` is a call, and how it went: the missed calls the
+/// phone's history marks carry no more than that they were missed.
+fn call_of(message: &Message) -> Option<(bool, CallDetails)> {
+    let missed = CallDetails {
+        incoming: true,
+        outcome: CallOutcome::Missed,
+        seconds: None,
+    };
+    match (message.kind, &message.extra) {
+        (ContentKind::VoiceCall | ContentKind::VideoCall, Some(Extra::Call(details))) => {
+            Some((message.kind == ContentKind::VideoCall, *details))
+        }
+        (ContentKind::MissedVoiceCall | ContentKind::VoiceCall, _) => Some((false, missed)),
+        (ContentKind::MissedVideoCall | ContentKind::VideoCall, _) => Some((true, missed)),
+        _ => None,
+    }
+}
 
 #[cfg(test)]
 mod tests;

@@ -14,6 +14,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::authors::Author;
+use crate::call_bubble::call_body;
 use crate::extra_view::{render_buttons, render_extra};
 use crate::items::{Body, Bubble, Item, MediaView, QuotePreview};
 use crate::media_view::render_media;
@@ -254,13 +255,14 @@ fn meta(bubble: &Bubble, theme: Theme) -> Div {
             )
         })
         .child(bubble.time.clone())
-        .when(bubble.from_me, |meta| {
-            meta.child(delivery_mark(bubble.delivery, theme))
-        })
+        // A call was not sent: it has no ticks.
+        .when(
+            bubble.from_me && !matches!(bubble.body, Body::Call { .. }),
+            |meta| meta.child(delivery_mark(bubble.delivery, theme)),
+        )
 }
 
-/// What a text bubble holds above its time: a deleted note, a missed
-/// call, or its shared contacts or poll, attachment name and text.
+/// What a text bubble holds above its time: a deleted note, a call, or its shared contacts or poll, attachment name and text.
 fn body(
     bubble: &Bubble,
     view: &WeakEntity<ConversationView>,
@@ -273,7 +275,7 @@ fn body(
             .italic()
             .text_color(rgb(theme.muted))
             .child("This message was deleted"),
-        Body::MissedCall { video } => missed_call(*video, theme),
+        Body::Call { video, details } => call_body(&bubble.id, *video, *details, view, theme),
         Body::Content {
             media, text, extra, ..
         } => div()
@@ -392,35 +394,6 @@ fn shape(
                 .child(meta.ml_auto().pb(px(1.0))),
         )
         .children(buttons_under(bubble, view, theme))
-}
-
-/// The body of a call nobody answered: its icon and what it was.
-fn missed_call(video: bool, theme: Theme) -> Div {
-    div()
-        .flex()
-        .items_center()
-        .gap_2()
-        .child(
-            div()
-                .size(px(30.0))
-                .flex_none()
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded_full()
-                .bg(rgb(theme.deep))
-                .child(
-                    svg()
-                        .path(Icon::CallMissed.path())
-                        .size(px(15.0))
-                        .text_color(rgb(theme.alert)),
-                ),
-        )
-        .child(div().font_weight(FontWeight::MEDIUM).child(if video {
-            ContentKind::MissedVideoCall.label()
-        } else {
-            ContentKind::MissedVoiceCall.label()
-        }))
 }
 
 /// [`frame`] with the room text needs around it.

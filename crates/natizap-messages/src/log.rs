@@ -22,6 +22,7 @@ use crate::text_search::Case;
 
 mod actions;
 mod backlog;
+pub(crate) mod calls;
 mod downloads;
 mod members;
 mod sending;

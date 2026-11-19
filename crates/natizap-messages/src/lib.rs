@@ -7,6 +7,7 @@
 
 mod authors;
 mod bubble;
+mod call_bubble;
 mod carousel;
 mod emoji;
 mod extra_view;

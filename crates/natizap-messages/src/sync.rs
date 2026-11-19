@@ -5,6 +5,7 @@ use natizap_protocol::whatsapp_rust::types::events::{InboundMessage, LazyHistory
 use natizap_protocol::whatsapp_rust::types::presence::ReceiptType;
 use natizap_protocol::{ChatId, Content, ContentKind, Extra, MissedCall, Ringing, SealedVote};
 
+use crate::log::calls::missed_message;
 use crate::message::{Delivery, Message, MessageChange};
 
 /// Protocol events the message store learns from, besides the calls
@@ -49,34 +50,13 @@ impl Sync {
 
 /// A call nobody answered, as a message in its chat.
 fn missed_call(call: MissedCall) -> MessageChange {
-    MessageChange::Received(Message {
-        chat: call.chat,
-        // The call's id: a call reported twice is filed once.
-        id: call.id,
-        from_me: false,
-        sender: call.caller,
-        author: None,
-        sent_at: call.at,
-        kind: if call.video {
-            ContentKind::MissedVideoCall
-        } else {
-            ContentKind::MissedVoiceCall
-        },
-        text: None,
-        quote: None,
-        media: None,
-        extra: None,
-        forwarding: None,
-        link: None,
-        secret: None,
-        media_file: None,
-        media_poster: None,
-        starred: false,
-        sender_phone: None,
-        edited: false,
-        deleted: false,
-        delivery: Delivery::Sent,
-    })
+    MessageChange::Received(missed_message(
+        call.chat,
+        call.id,
+        call.caller,
+        call.at,
+        call.video,
+    ))
 }
 
 /// Everything `event` says about messages, calls aside.

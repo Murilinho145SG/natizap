@@ -611,3 +611,16 @@ fn placeholder(theme: Theme) -> Div {
                 .child("End-to-end encrypted"),
         )
 }
+
+impl ConversationView {
+    /// Calls the open chat back, with the camera on (`video`) or not, as a
+    /// call's bubble does when clicked; groups cannot be called yet.
+    pub(crate) fn call_back(&mut self, video: bool, cx: &mut Context<Self>) {
+        let Some(chat) = self.log.read(cx).open_chat().map(|chat| chat.id.clone()) else {
+            return;
+        };
+        if !chat.is_group() {
+            cx.emit(CallRequested { peer: chat, video });
+        }
+    }
+}
