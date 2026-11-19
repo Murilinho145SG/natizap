@@ -1,33 +1,36 @@
-//! A video call inside the main window: a small floating picture, the
-//! other end's video with the user's own in its corner, so chatting goes on
-//! beside it. It starts in the top right corner, clear of the composer,
-//! and can be dragged anywhere in the window; clicking it moves the call to
-//! a window of its own, where the video is large.
+//! A call floating over the main window as a small picture: the other
+//! end's video, or their picture, with the user's own in its corner, so
+//! chatting goes on all around it. It starts in the top right corner, clear
+//! of the composer; it moves where it is dragged and grows or shrinks from
+//! its bottom left corner. Clicking it docks the call back over the chat.
 
 use std::cell::Cell;
 use std::rc::Rc;
 
 use gpui::prelude::*;
 use gpui::{
-    Bounds, Context, DispatchPhase, Entity, EventEmitter, FontWeight, MouseButton, MouseDownEvent,
-    MouseMoveEvent, MouseUpEvent, Pixels, Point, Window, canvas, div, point, px, rgb, rgba,
+    Bounds, Context, Entity, EventEmitter, FontWeight, MouseButton, MouseDownEvent, Pixels, Point,
+    Size, Window, div, point, px, rgb, rgba, size,
 };
 use natizap_profiles::ProfilePictures;
 use natizap_ui::theme::{ActiveTheme as _, Theme};
 use natizap_ui::{Button, ButtonSize, ButtonVariant, Icon, avatar};
 
 use crate::bar::{CallPoppedOut, camera_button, mute_button};
-use crate::desk::{CallDesk, CallShown, CameraState, Phase, VideoShown};
+use crate::desk::{CallDesk, CallLayout, CallShown, CameraState, Phase, VideoShown};
 use crate::keys::HANG_UP;
 use crate::look::ringed;
+use crate::pointer::{Held, follower};
 use crate::screen::Painted;
 
-const WIDTH: f32 = 340.0;
-const HEIGHT: f32 = 220.0;
 const CORNERS: f32 = 14.0;
+/// The smallest the picture shrinks to: its controls still fit.
+const LEAST: (f32, f32) = (220.0, 140.0);
+/// How far the pointer goes before holding the panel is dragging it.
+const DRAG_SLOP: f32 = 4.0;
 
-/// The video of the call under way, floating over the window. Draws
-/// nothing without video.
+/// The call under way, floating over the window while it is arranged so.
+/// Draws nothing otherwise.
 pub struct VideoPanel {
     desk: Entity<CallDesk>,
     pictures: Entity<ProfilePictures>,
@@ -42,26 +45,26 @@ pub struct VideoPanel {
     area: Rc<Cell<Bounds<Pixels>>>,
 }
 
-/// The pointer holding the panel down. The panel follows it by hand,
-/// rather than as one of GPUI's drags: those tell every view a drag is on,
-/// and the conversation takes any drag for files and offers to drop them.
+/// The pointer holding the panel down.
 #[derive(Debug, Clone, Copy)]
 struct Hold {
-    /// Where in the panel the pointer took hold of it.
-    grip: Point<Pixels>,
     /// Where the pointer went down, in the window.
     from: Point<Pixels>,
     /// Whether it went far enough to be a drag rather than a click.
     moved: bool,
+    grip: Grip,
 }
 
-/// How far the pointer goes before holding the panel is dragging it.
-const DRAG_SLOP: f32 = 4.0;
-
-/// The panel's default place: the area's top right corner, clear of the
-/// composer at the bottom.
-fn corner(area: Bounds<Pixels>) -> Point<Pixels> {
-    point(area.size.width - px(WIDTH + 16.0), px(16.0))
+/// What the pointer took hold of.
+#[derive(Debug, Clone, Copy)]
+enum Grip {
+    /// The panel, this far into it.
+    Body(Point<Pixels>),
+    /// Its bottom left corner, with the panel's place and size when taken.
+    Corner {
+        place: Point<Pixels>,
+        size: Size<Pixels>,
+    },
 }
 
 impl std::fmt::Debug for VideoPanel {
@@ -73,7 +76,7 @@ impl std::fmt::Debug for VideoPanel {
 impl EventEmitter<CallPoppedOut> for VideoPanel {}
 
 impl VideoPanel {
-    /// Shows `desk`'s call video.
+    /// Shows `desk`'s call while it floats.
     pub fn new(
         desk: Entity<CallDesk>,
         pictures: Entity<ProfilePictures>,
@@ -92,25 +95,31 @@ impl VideoPanel {
         }
     }
 
-    /// Where the panel is, in its area.
-    fn place(&self) -> Point<Pixels> {
+    /// Where the panel is, in its area, `size` big.
+    fn place(&self, size: Size<Pixels>) -> Point<Pixels> {
         let area = self.area.get();
-        inside(self.place.unwrap_or_else(|| corner(area)), area)
+        let corner = point(area.size.width - size.width - px(16.0), px(16.0));
+        inside(self.place.unwrap_or(corner), size, area)
     }
 
-    /// The pointer went down on the panel at `at`, in the window.
-    fn hold(&mut self, at: Point<Pixels>) {
-        let origin = self.area.get().origin + self.place();
+    fn hold(&mut self, at: Point<Pixels>, corner: bool, cx: &mut Context<Self>) {
+        let size = self.desk.read(cx).floating_size();
+        let place = self.place(size);
+        let grip = if corner {
+            Grip::Corner { place, size }
+        } else {
+            Grip::Body(at - self.area.get().origin - place)
+        };
         self.held = Some(Hold {
-            grip: at - origin,
             from: at,
             moved: false,
+            grip,
         });
     }
+}
 
-    /// The pointer holding the panel moved to `at`: past the slop, the
-    /// panel follows it, kept inside its area.
-    fn follow(&mut self, at: Point<Pixels>, cx: &mut Context<Self>) {
+impl Held for VideoPanel {
+    fn moved(&mut self, at: Point<Pixels>, cx: &mut Context<Self>) {
         let Some(held) = self.held.as_mut() else {
             return;
         };
@@ -120,24 +129,43 @@ impl VideoPanel {
         }
         held.moved = true;
         let area = self.area.get();
-        self.place = Some(inside(at - held.grip - area.origin, area));
+        match held.grip {
+            Grip::Body(grip) => {
+                let size = self.desk.read(cx).floating_size();
+                self.place = Some(inside(at - grip - area.origin, size, area));
+            }
+            Grip::Corner { place, size: taken } => {
+                // The bottom left corner moves; the top right one stays.
+                let right = place.x + taken.width;
+                let left = (place.x + away.x).max(px(0.0));
+                let grown = size(
+                    (right - left).clamp(px(LEAST.0), right),
+                    (taken.height + away.y).clamp(px(LEAST.1), area.size.height - place.y),
+                );
+                self.place = Some(point(right - grown.width, place.y));
+                self.desk
+                    .update(cx, |desk, cx| desk.set_floating_size(grown, cx));
+            }
+        }
         cx.notify();
     }
 
-    /// The pointer let go: a hold that never moved was a click, which opens
-    /// the call's own window.
-    fn release(&mut self, cx: &mut Context<Self>) {
-        if self.held.take().is_some_and(|held| !held.moved) {
-            cx.emit(CallPoppedOut);
+    fn released(&mut self, inside: bool, cx: &mut Context<Self>) {
+        let held = self.held.take();
+        // A press that never moved is a click: it docks the call again.
+        if inside && held.is_some_and(|held| !held.moved && matches!(held.grip, Grip::Body(_))) {
+            self.desk
+                .update(cx, |desk, cx| desk.set_layout(CallLayout::Docked, cx));
         }
         cx.notify();
     }
 }
 
-/// `place` moved as little as needed for the panel to fit in `area`.
-fn inside(place: Point<Pixels>, area: Bounds<Pixels>) -> Point<Pixels> {
-    let most_x = (area.size.width - px(WIDTH)).max(px(0.0));
-    let most_y = (area.size.height - px(HEIGHT)).max(px(0.0));
+/// `place` moved as little as needed for a panel `size` big to fit in
+/// `area`.
+fn inside(place: Point<Pixels>, size: Size<Pixels>, area: Bounds<Pixels>) -> Point<Pixels> {
+    let most_x = (area.size.width - size.width).max(px(0.0));
+    let most_y = (area.size.height - size.height).max(px(0.0));
     point(
         place.x.clamp(px(0.0), most_x),
         place.y.clamp(px(0.0), most_y),
@@ -147,36 +175,45 @@ fn inside(place: Point<Pixels>, area: Bounds<Pixels>) -> Point<Pixels> {
 impl Render for VideoPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = *cx.theme();
-        let call = self.desk.read(cx).call(cx);
-        let Some((call, video)) = call
-            .filter(|call| !matches!(call.phase, Phase::Ended(_)))
-            .and_then(|call| call.video.clone().map(|video| (call, video)))
-        else {
+        let desk = self.desk.read(cx);
+        let floating = desk.layout() == CallLayout::Floating;
+        let size = desk.floating_size();
+        let call = desk
+            .call(cx)
+            .filter(|call| floating && !matches!(call.phase, Phase::Ended(_)));
+        let Some(call) = call else {
             // Nothing painted now: let go of what was.
             self.remote.paint(None, px(0.0), window);
             self.preview.paint(None, px(0.0), window);
             return div().into_any_element();
         };
-        let remote = self.remote.paint(video.remote.clone(), px(CORNERS), window);
-        let preview = self.preview.paint(video.preview.clone(), px(8.0), window);
-        let place = self.place();
-        let measured = Rc::clone(&self.area);
-        let holding = self.held.is_some();
-        let panel_entity = cx.weak_entity();
+        let video = call.video.clone();
+        let remote = self.remote.paint(
+            video.as_ref().and_then(|video| video.remote.clone()),
+            px(CORNERS),
+            window,
+        );
+        let preview = self.preview.paint(
+            video.as_ref().and_then(|video| video.preview.clone()),
+            px(8.0),
+            window,
+        );
+        let place = self.place(size);
+        let showing = video.as_ref().is_some_and(|video| video.remote.is_some());
         let panel = div()
             .id("call-video-panel")
             .group("call-video-panel")
             .absolute()
             .left(place.x)
             .top(place.y)
-            .w(px(WIDTH))
-            .h(px(HEIGHT))
+            .w(size.width)
+            .h(size.height)
             .occlude()
             .cursor_pointer()
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(|panel, event: &MouseDownEvent, _, cx| {
-                    panel.hold(event.position);
+                    panel.hold(event.position, false, cx);
                     cx.stop_propagation();
                 }),
             )
@@ -188,72 +225,61 @@ impl Render for VideoPanel {
                     .rounded(px(CORNERS))
                     .bg(rgb(theme.deep))
                     .child(remote)
-                    .when(video.remote.is_none(), |stage| {
-                        stage.child(self.camera_off(&call, theme, cx))
+                    .when(!showing, |stage| {
+                        stage.child(self.camera_off(&call, video.is_some(), theme, cx))
                     })
-                    .child(div().absolute().bottom_2().right_2().child(own_picture(
-                        &video,
-                        preview,
-                        theme,
-                        px(96.0),
-                        px(72.0),
-                    )))
-                    .child(Self::controls(&call, cx)),
+                    .children(video.map(|video| {
+                        div().absolute().bottom_2().right_2().child(own_picture(
+                            &video,
+                            preview,
+                            theme,
+                            px(96.0),
+                            px(72.0),
+                        ))
+                    }))
+                    .child(Self::controls(&call, cx))
+                    .child(Self::corner(cx)),
             );
-        // The area the panel floats over, measured as it is painted: the
-        // panel's drag is kept inside it.
         div()
             .absolute()
             .inset_0()
-            .child(
-                canvas(
-                    move |bounds, _, _| measured.set(bounds),
-                    move |_, (), window, _| {
-                        if !holding {
-                            return;
-                        }
-                        // While held, the pointer is followed wherever it
-                        // goes in the window, off the panel too.
-                        let moving = panel_entity.clone();
-                        window.on_mouse_event(move |event: &MouseMoveEvent, phase, _, cx| {
-                            if phase == DispatchPhase::Bubble {
-                                let _ = moving.update(cx, |panel, cx| {
-                                    // Let go outside the window, where its
-                                    // release is never heard.
-                                    if event.pressed_button == Some(MouseButton::Left) {
-                                        panel.follow(event.position, cx);
-                                    } else {
-                                        panel.held = None;
-                                        cx.notify();
-                                    }
-                                });
-                            }
-                        });
-                        let letting = panel_entity.clone();
-                        window.on_mouse_event(move |_: &MouseUpEvent, phase, _, cx| {
-                            if phase == DispatchPhase::Bubble {
-                                let _ = letting.update(cx, VideoPanel::release);
-                            }
-                        });
-                    },
-                )
-                .absolute()
-                .size_full(),
-            )
+            .child(follower(
+                cx.weak_entity(),
+                self.held.is_some(),
+                Rc::clone(&self.area),
+            ))
             .child(panel)
             .into_any_element()
     }
 }
 
 impl VideoPanel {
+    /// The bottom left corner the panel is resized by.
+    fn corner(cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        div()
+            .id("call-video-panel-corner")
+            .absolute()
+            .left_0()
+            .bottom_0()
+            .size(px(16.0))
+            .cursor_nesw_resize()
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|panel, event: &MouseDownEvent, _, cx| {
+                    panel.hold(event.position, true, cx);
+                    cx.stop_propagation();
+                }),
+            )
+    }
+
     /// The call's controls along the panel's foot, shown while the pointer
     /// is over it. Their clicks stay theirs: a click elsewhere on the panel
-    /// moves the call to its own window.
+    /// docks the call.
     fn controls(call: &CallShown, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         div()
             .absolute()
             .bottom_2()
-            .left_2()
+            .left_5()
             .flex()
             .items_center()
             .gap_1()
@@ -267,19 +293,35 @@ impl VideoPanel {
             .child(mute_button(
                 call,
                 ButtonSize::Small,
-                cx.listener(|panel, _, _, cx| {
-                    cx.stop_propagation();
-                    panel.desk.update(cx, CallDesk::toggle_muted);
-                }),
+                cx.listener(|panel, _, _, cx| panel.desk.update(cx, CallDesk::toggle_muted)),
             ))
             .child(camera_button(
                 call,
                 ButtonSize::Small,
-                cx.listener(|panel, _, _, cx| {
-                    cx.stop_propagation();
-                    panel.desk.update(cx, CallDesk::toggle_camera);
-                }),
+                cx.listener(|panel, _, _, cx| panel.desk.update(cx, CallDesk::toggle_camera)),
             ))
+            .child(
+                Button::new("call-panel-dock")
+                    .icon(Icon::Maximize)
+                    .variant(ButtonVariant::Ghost)
+                    .size(ButtonSize::Small)
+                    .round()
+                    .tooltip("Show over the chat")
+                    .on_click(cx.listener(|panel, _, _, cx| {
+                        panel
+                            .desk
+                            .update(cx, |desk, cx| desk.set_layout(CallLayout::Docked, cx));
+                    })),
+            )
+            .child(
+                Button::new("call-panel-pop-out")
+                    .icon(Icon::PopOut)
+                    .variant(ButtonVariant::Ghost)
+                    .size(ButtonSize::Small)
+                    .round()
+                    .tooltip("Open in its own window")
+                    .on_click(cx.listener(|_, _, _, cx| cx.emit(CallPoppedOut))),
+            )
             .child(
                 Button::new("call-panel-hang-up")
                     .icon(Icon::CallEnd)
@@ -288,7 +330,6 @@ impl VideoPanel {
                     .round()
                     .tooltip(HANG_UP.tip("Hang up"))
                     .on_click(cx.listener(|panel, _, _, cx| {
-                        cx.stop_propagation();
                         panel.desk.update(cx, CallDesk::hang_up);
                     })),
             )
@@ -298,6 +339,7 @@ impl VideoPanel {
     fn camera_off(
         &self,
         call: &CallShown,
+        video: bool,
         theme: Theme,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
@@ -324,7 +366,11 @@ impl VideoPanel {
                     .text_size(px(12.5))
                     .font_weight(FontWeight::MEDIUM)
                     .text_color(rgb(theme.muted))
-                    .child("Camera off"),
+                    .child(if video {
+                        "Camera off".into()
+                    } else {
+                        call.title.clone()
+                    }),
             )
     }
 }
@@ -358,24 +404,25 @@ pub(crate) fn own_picture(
 mod tests {
     use gpui::{Bounds, point, px, size};
 
-    use super::{HEIGHT, WIDTH, inside};
+    use super::inside;
 
     #[test]
     fn a_dragged_panel_stays_inside_the_window() {
         let area = Bounds::new(point(px(0.0), px(40.0)), size(px(1000.0), px(600.0)));
+        let panel = size(px(340.0), px(220.0));
         // Within reach: it goes where it was put.
         assert_eq!(
-            inside(point(px(100.0), px(50.0)), area),
+            inside(point(px(100.0), px(50.0)), panel, area),
             point(px(100.0), px(50.0))
         );
         // Past the right and bottom edges, and above the top: held at them.
         assert_eq!(
-            inside(point(px(990.0), px(-30.0)), area),
-            point(px(1000.0 - WIDTH), px(0.0))
+            inside(point(px(990.0), px(-30.0)), panel, area),
+            point(px(660.0), px(0.0))
         );
         assert_eq!(
-            inside(point(px(-5.0), px(900.0)), area),
-            point(px(0.0), px(600.0 - HEIGHT))
+            inside(point(px(-5.0), px(900.0)), panel, area),
+            point(px(0.0), px(380.0))
         );
     }
 }

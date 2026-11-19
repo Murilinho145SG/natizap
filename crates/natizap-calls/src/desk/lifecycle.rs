@@ -63,6 +63,7 @@ impl CallDesk {
             begin,
         } = call;
         let incoming = begin.incoming();
+        self.arrange_new_call(video.is_some());
         self.serial += 1;
         let serial = self.serial;
         let (devices, calling) = (self.choices.devices.clone(), peer.clone());

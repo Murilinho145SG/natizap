@@ -4,8 +4,8 @@
 
 use gpui::{AppContext as _, Context, Entity, Window, px, size};
 use natizap_calls::{
-    CallBackRequested, CallBar, CallChatRequested, CallDesk, CallLog, CallPoppedOut, CallWindow,
-    CallsPane, RingCard, VideoPanel,
+    CallBackRequested, CallBar, CallChatRequested, CallDesk, CallLog, CallPoppedOut, CallStage,
+    CallWindow, CallsPane, RingCard, VideoPanel,
 };
 use natizap_chats::ChatList;
 use natizap_messages::{CallRequested, ConversationView};
@@ -19,12 +19,14 @@ pub(super) struct CallViews {
     pub(super) bar: Entity<CallBar>,
     /// A call ringing, over the window's corner.
     pub(super) card: Entity<RingCard>,
-    /// A video call's pictures, floating over the window's corner.
+    /// The call floating as a small picture, while arranged so.
     pub(super) panel: Entity<VideoPanel>,
+    /// The call shown large over the chat, while arranged so.
+    pub(super) stage: Entity<CallStage>,
 }
 
 impl Root {
-    /// The call's bar, ringing card and video panel over `desk`. Calls the open chat
+    /// The call's bar, ringing card, floating picture and stage over `desk`. Calls the open chat
     /// when its header asks, opens the chat of the call in the bar when it
     /// is clicked, and moves the call to its own window when the bar asks.
     pub(super) fn follow_desk(
@@ -36,6 +38,11 @@ impl Root {
         let bar = cx.new(|cx| CallBar::new(desk.clone(), pictures.clone(), cx));
         let card = cx.new(|cx| RingCard::new(desk.clone(), pictures.clone(), cx));
         let panel = cx.new(|cx| VideoPanel::new(desk.clone(), pictures.clone(), cx));
+        let stage = cx.new(|cx| CallStage::new(desk.clone(), pictures.clone(), cx));
+        cx.subscribe(&stage, |root, _, _: &CallPoppedOut, cx| {
+            root.pop_out_call(cx);
+        })
+        .detach();
         cx.subscribe(
             conversation,
             |root, _, CallRequested { peer, video }, cx| {
@@ -58,7 +65,12 @@ impl Root {
             root.pop_out_call(cx);
         })
         .detach();
-        CallViews { bar, card, panel }
+        CallViews {
+            bar,
+            card,
+            panel,
+            stage,
+        }
     }
 
     /// Shows the call in its own window, opening it if it is not open.

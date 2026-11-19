@@ -18,10 +18,13 @@ use crate::log::CallLog;
 use crate::quality::{Quality, QualityWatch};
 use crate::ringtone::{Ringing, Ringtone};
 
+mod layout;
 mod lifecycle;
 mod ringing;
 mod video;
 
+use layout::Arrangement;
+pub use layout::CallLayout;
 use video::CallVideo;
 pub use video::CameraState;
 
@@ -176,6 +179,8 @@ pub struct CallDesk {
     settings: PathBuf,
     /// A ringtone being tried in the settings.
     preview: Option<Task<()>>,
+    /// How the call shows in the main window.
+    arrangement: Arrangement,
     _tasks: [Task<()>; 2],
 }
 
@@ -231,6 +236,7 @@ impl CallDesk {
             choices: Choices::default(),
             settings,
             preview: None,
+            arrangement: Arrangement::default(),
             _tasks: [hearing, loading],
         }
     }

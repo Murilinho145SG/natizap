@@ -145,6 +145,7 @@ impl CallDesk {
                 logged(started, "could not turn the call into a video call", cx);
                 if let Some(call) = self.call.as_mut() {
                     call.video = Some(video);
+                    self.show_video();
                 }
                 self.open_camera(cx);
             }
@@ -172,6 +173,7 @@ impl CallDesk {
             logged(accepted, "could not take up the request for video", cx);
             if let Some(call) = self.call.as_mut() {
                 call.video = Some(video);
+                self.show_video();
             }
         }
         self.open_camera(cx);

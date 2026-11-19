@@ -8,7 +8,7 @@ use natizap_ui::motion::rise_in;
 use natizap_ui::theme::{ActiveTheme as _, DISPLAY_FONT, Theme};
 use natizap_ui::{Button, ButtonSize, ButtonVariant, Icon, avatar};
 
-use crate::desk::{CallDesk, CallShown, CameraState, Phase};
+use crate::desk::{CallDesk, CallLayout, CallShown, CameraState, Phase};
 use crate::keys::{CAMERA, HANG_UP, MUTE};
 use crate::look::{quality_bars, quality_word, ringed};
 use crate::pane::CallChatRequested;
@@ -125,6 +125,7 @@ impl Render for CallBar {
                                     bar.desk.update(cx, CallDesk::toggle_camera);
                                 }),
                             ))
+                            .child(show_button(self.desk.read(cx).layout(), cx))
                             .child(
                                 Button::new("call-pop-out")
                                     .icon(Icon::PopOut)
@@ -331,6 +332,27 @@ pub(crate) fn mute_button(
         .round()
         .tooltip(MUTE.tip(if call.muted { "Unmute" } else { "Mute" }))
         .on_click(on_click)
+}
+
+/// The button that shows the call over the chat, or only in the bar.
+fn show_button(layout: CallLayout, cx: &mut Context<CallBar>) -> Button {
+    let (icon, tip, to) = if layout == CallLayout::Bar {
+        (
+            Icon::ChevronDown,
+            "Show the call over the chat",
+            CallLayout::Docked,
+        )
+    } else {
+        (Icon::ChevronUp, "Show only the bar", CallLayout::Bar)
+    };
+    Button::new("call-show")
+        .icon(icon)
+        .variant(ButtonVariant::Ghost)
+        .round()
+        .tooltip(tip)
+        .on_click(cx.listener(move |bar, _, _, cx| {
+            bar.desk.update(cx, |desk, cx| desk.set_layout(to, cx));
+        }))
 }
 
 /// The camera's switch: turning it on makes a voice call a video call.

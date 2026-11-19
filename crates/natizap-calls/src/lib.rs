@@ -12,15 +12,19 @@ mod log;
 mod look;
 mod pane;
 mod panel;
+mod pointer;
 mod quality;
 mod ringtone;
 mod screen;
 mod settings;
+mod stage;
 mod store;
 mod window;
 
 pub use bar::{CallBar, CallPoppedOut, RingCard};
-pub use desk::{CallDesk, CallRang, CallShown, CameraState, DeviceKind, Phase, VideoShown};
+pub use desk::{
+    CallDesk, CallLayout, CallRang, CallShown, CameraState, DeviceKind, Phase, VideoShown,
+};
 pub use group::CallGroup;
 pub use keys::{HangUp, ToggleCamera, ToggleMute, call_keys};
 pub use log::CallLog;
@@ -29,4 +33,5 @@ pub use panel::VideoPanel;
 pub use quality::Quality;
 pub use ringtone::Ringtone;
 pub use settings::CallSettings;
+pub use stage::CallStage;
 pub use window::CallWindow;

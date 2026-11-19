@@ -123,11 +123,13 @@ contacts are, and the chat list who has a status
 on with the window closed; its `CallRang` opens a closed window. The
 conversation emits `CallRequested` from its header, voice or video,
 which the binary answers with `CallDesk::place`. The binary draws the
-desk's `CallBar` across the top of the window, its `RingCard` over the
-corner and, for a video call, its `VideoPanel` floating over the other
-corner; the bar's `CallChatRequested` opens the call's chat, and the
-bar's and the panel's `CallPoppedOut` open a `CallWindow`, the call in a
-window of its own. The binary hands the conversation the stickers'
+desk's `CallBar` across the top of the window and its `RingCard` over the
+corner, and places the call as `CallDesk::layout` arranges it: the
+`CallStage` docked over the chat (`CallDesk::docked_height`) or filling
+the chat's area, or the `VideoPanel` floating over the window; the bar's
+`CallChatRequested` opens the call's chat, and the bar's, the stage's and
+the panel's `CallPoppedOut` open a `CallWindow`, the call in a window of
+its own. The binary hands the conversation the stickers'
 `StickerPicker` to show from its composer, sends what it emits as
 `StickerPicked` through `MessageLog::send_sticker`, tells the conversation
 which stickers are favorites, and passes its `StickerFavoriteToggled` to

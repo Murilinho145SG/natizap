@@ -2,7 +2,8 @@
 //! and a profile beside or over it, and what floats above them.
 
 use gpui::prelude::*;
-use gpui::{AnyElement, Context, Pixels, SharedString, div, px, rgb};
+use gpui::{AnyElement, Context, Div, Pixels, SharedString, div, px, rgb};
+use natizap_calls::CallLayout;
 use natizap_session::SessionState;
 use natizap_ui::motion::slide_in;
 use natizap_ui::theme::ActiveTheme as _;
@@ -17,6 +18,21 @@ const SIDE_PANEL: f32 = 380.0;
 const LEAST_CONVERSATION: f32 = 420.0;
 
 impl Root {
+    /// The chat's area: the conversation, with the call under way over it
+    /// as the user arranged it, docked above it or filling the area.
+    fn chat_area(&self, area: Div, cx: &mut Context<Self>) -> Div {
+        let desk = self.desk.read(cx);
+        let layout = desk.call(cx).map(|_| desk.layout());
+        let stage = self.call_views.stage.clone();
+        match layout {
+            Some(CallLayout::Docked) => area
+                .child(div().h(desk.docked_height()).flex_none().child(stage))
+                .child(div().flex_1().min_h_0().child(self.conversation.clone())),
+            Some(CallLayout::Filled) => area.child(div().size_full().child(stage)),
+            _ => area.child(div().size_full().child(self.conversation.clone())),
+        }
+    }
+
     /// The window's content, laid out for a window `width` wide.
     pub(super) fn content(&mut self, width: Pixels, cx: &mut Context<Self>) -> AnyElement {
         if !self.shows_chats(cx) {
@@ -92,7 +108,9 @@ impl Root {
                     .flex_1()
                     .min_w_0()
                     .h_full()
-                    .child(self.conversation.clone()),
+                    .flex()
+                    .flex_col()
+                    .map(|chat| self.chat_area(chat, cx)),
             )
             .children(self.profile.clone().map(|profile| {
                 // Each profile slides in from the side it opens on: beside the
