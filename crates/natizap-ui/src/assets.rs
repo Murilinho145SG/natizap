@@ -106,6 +106,8 @@ icons! {
     Lock => "lock.svg",
     /// natizap's mark: an "n" that is also a speech bubble.
     Logo => "logo.svg",
+    /// Shows things side by side, in a grid.
+    Grid => "grid.svg",
     /// Maximize the window.
     Maximize => "maximize.svg",
     /// A voice message.
