@@ -122,4 +122,23 @@ impl Protocol {
                 .map_err(|error| ActionError::refused(&error))
         })
     }
+
+    /// Tells the other end the pictures `call` sends are the user's screen,
+    /// or (`false`) the camera again.
+    pub fn share_screen(
+        &self,
+        call: &LiveCall,
+        sharing: bool,
+        cx: &App,
+    ) -> Task<Result<(), ActionError>> {
+        let handle = call.handle.clone();
+        self.connection.run(cx, move |_| async move {
+            let told = if sharing {
+                handle.start_screen_share(None).await
+            } else {
+                handle.stop_screen_share().await
+            };
+            told.map_err(|error| ActionError::refused(&error))
+        })
+    }
 }
