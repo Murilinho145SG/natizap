@@ -99,11 +99,6 @@ impl PollState {
         })
     }
 
-    /// How many chose each option, in the poll's order.
-    pub(crate) fn counts(&self) -> impl Iterator<Item = usize> + '_ {
-        self.chosen_by.iter().map(Vec::len)
-    }
-
     /// What this account chooses after clicking `option`: on a poll with one
     /// answer the click moves the choice there, or takes it back when it
     /// was already there; with several answers it toggles that one.
