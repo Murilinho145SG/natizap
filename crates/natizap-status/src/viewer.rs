@@ -1,6 +1,7 @@
 //! A status played over the whole window, post after post and poster
 //! after poster: bars at the top fill as each post shows, a press holds
-//! it, the sides step back and on, and a bar at the bottom replies.
+//! it, the sides step back and on, up and down change person, and a bar
+//! at the bottom replies.
 
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -248,6 +249,26 @@ impl StatusViewer {
         self.showing(cx);
     }
 
+    /// Skips to the next person's statuses, where they are unseen.
+    fn next_poster(&mut self, cx: &mut Context<Self>) {
+        if self.at_poster + 1 < self.queue.len() {
+            self.at_poster += 1;
+            self.at_post = self.poster(cx).map_or(0, |poster| poster.start());
+            self.showing(cx);
+        } else {
+            cx.emit(StatusClosed);
+        }
+    }
+
+    /// Goes back to the previous person's statuses.
+    fn previous_poster(&mut self, cx: &mut Context<Self>) {
+        if self.at_poster > 0 {
+            self.at_poster -= 1;
+            self.at_post = self.poster(cx).map_or(0, |poster| poster.start());
+            self.showing(cx);
+        }
+    }
+
     fn back(&mut self, cx: &mut Context<Self>) {
         if self.at_post > 0 {
             self.at_post -= 1;
@@ -301,6 +322,8 @@ impl StatusViewer {
             "escape" => cx.emit(StatusClosed),
             "left" => self.back(cx),
             "right" => self.forward(cx),
+            "up" => self.next_poster(cx),
+            "down" => self.previous_poster(cx),
             _ => return,
         }
         cx.stop_propagation();
