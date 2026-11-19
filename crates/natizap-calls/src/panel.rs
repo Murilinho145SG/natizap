@@ -9,8 +9,8 @@ use std::rc::Rc;
 
 use gpui::prelude::*;
 use gpui::{
-    Bounds, Context, DragMoveEvent, Entity, EventEmitter, FontWeight, Pixels, Point, Window,
-    canvas, div, point, px, rgb, rgba,
+    Bounds, Context, DispatchPhase, Entity, EventEmitter, FontWeight, MouseButton, MouseDownEvent,
+    MouseMoveEvent, MouseUpEvent, Pixels, Point, Window, canvas, div, point, px, rgb, rgba,
 };
 use natizap_profiles::ProfilePictures;
 use natizap_ui::theme::{ActiveTheme as _, Theme};
@@ -36,22 +36,32 @@ pub struct VideoPanel {
     /// Where the user dragged the panel: its top left corner in the area it
     /// floats over. `None` until dragged.
     place: Option<Point<Pixels>>,
-    /// Where in the panel the pointer took hold of it.
-    grip: Point<Pixels>,
+    /// The pointer holding the panel, while it does.
+    held: Option<Hold>,
     /// The area the panel floats over, as last painted.
     area: Rc<Cell<Bounds<Pixels>>>,
 }
 
-/// The panel being dragged.
-struct Dragged;
+/// The pointer holding the panel down. The panel follows it by hand,
+/// rather than as one of GPUI's drags: those tell every view a drag is on,
+/// and the conversation takes any drag for files and offers to drop them.
+#[derive(Debug, Clone, Copy)]
+struct Hold {
+    /// Where in the panel the pointer took hold of it.
+    grip: Point<Pixels>,
+    /// Where the pointer went down, in the window.
+    from: Point<Pixels>,
+    /// Whether it went far enough to be a drag rather than a click.
+    moved: bool,
+}
 
-/// What a drag shows under the pointer: nothing, the panel itself moves.
-struct NoGhost;
+/// How far the pointer goes before holding the panel is dragging it.
+const DRAG_SLOP: f32 = 4.0;
 
-impl Render for NoGhost {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        div()
-    }
+/// The panel's default place: the area's top right corner, clear of the
+/// composer at the bottom.
+fn corner(area: Bounds<Pixels>) -> Point<Pixels> {
+    point(area.size.width - px(WIDTH + 16.0), px(16.0))
 }
 
 impl std::fmt::Debug for VideoPanel {
@@ -77,16 +87,49 @@ impl VideoPanel {
             remote: Painted::default(),
             preview: Painted::default(),
             place: None,
-            grip: Point::default(),
+            held: None,
             area: Rc::default(),
         }
     }
 
-    /// Follows the pointer dragging the panel, keeping it inside its area.
-    fn drag(&mut self, event: &DragMoveEvent<Dragged>, cx: &mut Context<Self>) {
+    /// Where the panel is, in its area.
+    fn place(&self) -> Point<Pixels> {
         let area = self.area.get();
-        let wanted = event.event.position - self.grip - area.origin;
-        self.place = Some(inside(wanted, area));
+        inside(self.place.unwrap_or_else(|| corner(area)), area)
+    }
+
+    /// The pointer went down on the panel at `at`, in the window.
+    fn hold(&mut self, at: Point<Pixels>) {
+        let origin = self.area.get().origin + self.place();
+        self.held = Some(Hold {
+            grip: at - origin,
+            from: at,
+            moved: false,
+        });
+    }
+
+    /// The pointer holding the panel moved to `at`: past the slop, the
+    /// panel follows it, kept inside its area.
+    fn follow(&mut self, at: Point<Pixels>, cx: &mut Context<Self>) {
+        let Some(held) = self.held.as_mut() else {
+            return;
+        };
+        let away = at - held.from;
+        if !held.moved && f32::from(away.x).hypot(f32::from(away.y)) < DRAG_SLOP {
+            return;
+        }
+        held.moved = true;
+        let area = self.area.get();
+        self.place = Some(inside(at - held.grip - area.origin, area));
+        cx.notify();
+    }
+
+    /// The pointer let go: a hold that never moved was a click, which opens
+    /// the call's own window.
+    fn release(&mut self, cx: &mut Context<Self>) {
+        if self.held.take().is_some_and(|held| !held.moved) {
+            cx.emit(CallPoppedOut);
+        }
         cx.notify();
     }
 }
@@ -116,30 +159,27 @@ impl Render for VideoPanel {
         };
         let remote = self.remote.paint(video.remote.clone(), px(CORNERS), window);
         let preview = self.preview.paint(video.preview.clone(), px(8.0), window);
-        // The window may have shrunk since the panel was put somewhere.
-        let place = self.place.map(|place| inside(place, self.area.get()));
+        let place = self.place();
         let measured = Rc::clone(&self.area);
-        let grip = cx.weak_entity();
+        let holding = self.held.is_some();
+        let panel_entity = cx.weak_entity();
         let panel = div()
             .id("call-video-panel")
             .group("call-video-panel")
             .absolute()
-            .map(|panel| match place {
-                Some(place) => panel.left(place.x).top(place.y),
-                None => panel.top_4().right_4(),
-            })
+            .left(place.x)
+            .top(place.y)
             .w(px(WIDTH))
             .h(px(HEIGHT))
             .occlude()
             .cursor_pointer()
-            .on_click(cx.listener(|_, _, _, cx| cx.emit(CallPoppedOut)))
-            .on_drag(Dragged, move |_, offset, _, cx| {
-                let _ = grip.update(cx, |panel, _| panel.grip = offset);
-                cx.new(|_| NoGhost)
-            })
-            .on_drag_move(cx.listener(|panel, event: &DragMoveEvent<Dragged>, _, cx| {
-                panel.drag(event, cx);
-            }))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|panel, event: &MouseDownEvent, _, cx| {
+                    panel.hold(event.position);
+                    cx.stop_propagation();
+                }),
+            )
             .child(
                 theme
                     .glass(div())
@@ -166,9 +206,39 @@ impl Render for VideoPanel {
             .absolute()
             .inset_0()
             .child(
-                canvas(move |bounds, _, _| measured.set(bounds), |_, (), _, _| {})
-                    .absolute()
-                    .size_full(),
+                canvas(
+                    move |bounds, _, _| measured.set(bounds),
+                    move |_, (), window, _| {
+                        if !holding {
+                            return;
+                        }
+                        // While held, the pointer is followed wherever it
+                        // goes in the window, off the panel too.
+                        let moving = panel_entity.clone();
+                        window.on_mouse_event(move |event: &MouseMoveEvent, phase, _, cx| {
+                            if phase == DispatchPhase::Bubble {
+                                let _ = moving.update(cx, |panel, cx| {
+                                    // Let go outside the window, where its
+                                    // release is never heard.
+                                    if event.pressed_button == Some(MouseButton::Left) {
+                                        panel.follow(event.position, cx);
+                                    } else {
+                                        panel.held = None;
+                                        cx.notify();
+                                    }
+                                });
+                            }
+                        });
+                        let letting = panel_entity.clone();
+                        window.on_mouse_event(move |_: &MouseUpEvent, phase, _, cx| {
+                            if phase == DispatchPhase::Bubble {
+                                let _ = letting.update(cx, VideoPanel::release);
+                            }
+                        });
+                    },
+                )
+                .absolute()
+                .size_full(),
             )
             .child(panel)
             .into_any_element()
@@ -192,6 +262,8 @@ impl VideoPanel {
             .bg(rgba(cx.theme().scrim))
             .opacity(0.0)
             .group_hover("call-video-panel", |controls| controls.opacity(1.0))
+            // A press on a control is the control's, not a hold of the panel.
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .child(mute_button(
                 call,
                 ButtonSize::Small,
