@@ -11,6 +11,7 @@ use crate::components::alert_dialog::AlertDialog;
 use crate::components::badge::{BadgeTone, badge, count_label, verified_seal};
 use crate::components::button::{Button, ButtonSize, ButtonVariant};
 use crate::components::code_block::code_block;
+use crate::components::color_picker::ColorPicker;
 use crate::components::menu::Menu;
 use crate::components::progress::progress;
 use crate::components::rail::{RAIL_AVATAR, Rail, rail_avatar};
@@ -28,6 +29,8 @@ pub struct Gallery {
     dialog_open: bool,
     /// The settings window shown, while it is.
     settings: Option<Entity<SettingsWindow>>,
+    /// The colour picker on show, made at the first draw.
+    picker: Option<Entity<ColorPicker>>,
     switch_on: bool,
     scroll: ScrollHandle,
 }
@@ -35,6 +38,10 @@ pub struct Gallery {
 impl Render for Gallery {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = *cx.theme();
+        let picker = self
+            .picker
+            .get_or_insert_with(|| cx.new(|_| ColorPicker::new(theme.accent, false)))
+            .clone();
         let title = div()
             .font_family(DISPLAY_FONT)
             .font_weight(FontWeight::BOLD)
@@ -96,6 +103,7 @@ impl Render for Gallery {
                 theme,
             ))
             .child(section("Dialogs", Self::dialog_buttons(cx), theme))
+            .child(section("Color picker", row().child(picker), theme))
             .children(self.settings.clone())
             .when(self.dialog_open, |sections| {
                 let gallery = cx.weak_entity();

@@ -5,6 +5,7 @@ pub(crate) mod alert_dialog;
 pub(crate) mod badge;
 pub(crate) mod button;
 pub(crate) mod code_block;
+pub(crate) mod color_picker;
 pub(crate) mod dialog;
 pub(crate) mod menu;
 pub(crate) mod progress;
