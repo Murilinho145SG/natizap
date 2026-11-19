@@ -4,6 +4,7 @@
 
 use std::collections::VecDeque;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use cpal::StreamConfig;
 
@@ -91,8 +92,33 @@ impl Microphone {
 
 /// The speaker's side: the call's frames, at the card's rate, on every
 /// channel, with a cushion against frames that come late.
+/// How loud the other end plays: 1 as they sent it, 0 silent, up to 2.
+#[derive(Debug)]
+pub(super) struct Volume(AtomicU32);
+
+impl Default for Volume {
+    fn default() -> Self {
+        Self(AtomicU32::new(1.0_f32.to_bits()))
+    }
+}
+
+impl Volume {
+    /// The loudest the other end plays: twice as loud as sent.
+    pub(super) const MOST: f32 = 2.0;
+
+    pub(super) fn set(&self, gain: f32) {
+        self.0
+            .store(gain.clamp(0.0, Self::MOST).to_bits(), Ordering::Relaxed);
+    }
+
+    fn get(&self) -> f32 {
+        f32::from_bits(self.0.load(Ordering::Relaxed))
+    }
+}
+
 pub(super) struct Speaker {
     channels: usize,
+    volume: Arc<Volume>,
     resampler: Resampler,
     said: async_channel::Receiver<Vec<i16>>,
     /// Mono samples at the card's rate, waiting to play.
@@ -119,10 +145,12 @@ impl Speaker {
         said: async_channel::Receiver<Vec<i16>>,
         voice: VoiceProcessing,
         meter: Arc<Meter>,
+        volume: Arc<Volume>,
     ) -> Self {
         let rate = config.sample_rate as f32;
         Self {
             channels: usize::from(config.channels).max(1),
+            volume,
             resampler: Resampler::new(format.rate, config.sample_rate),
             said,
             queue: VecDeque::new(),
@@ -142,7 +170,11 @@ impl Speaker {
                 Meter::add(&self.meter.voiced, 1);
             }
             self.converted.clear();
-            let samples: Vec<f32> = frame.iter().copied().map(to_f32).collect();
+            let gain = self.volume.get();
+            let samples: Vec<f32> = frame
+                .iter()
+                .map(|sample| (to_f32(*sample) * gain).clamp(-1.0, 1.0))
+                .collect();
             // What plays now comes back through the microphone a moment
             // later: the cleaning finds it there by this.
             self.voice.played(&samples);
@@ -190,7 +222,7 @@ mod tests {
 
     use cpal::StreamConfig;
 
-    use super::{CallFormat, Microphone, Speaker, VoiceProcessing};
+    use super::{CallFormat, Microphone, Speaker, VoiceProcessing, Volume};
 
     const FORMAT: CallFormat = CallFormat {
         rate: 16_000,
@@ -237,6 +269,7 @@ mod tests {
             frames,
             VoiceProcessing::new(FORMAT.rate),
             Arc::default(),
+            Arc::default(),
         );
         let mut output = vec![1.0; 320];
         said.try_send(vec![i16::MAX / 2; 960]).ok();
@@ -259,11 +292,40 @@ mod tests {
             frames,
             VoiceProcessing::new(FORMAT.rate),
             Arc::default(),
+            Arc::default(),
         );
         for _ in 0..20 {
             said.try_send(vec![0; 960]).ok();
         }
         speaker.fill(&mut [0.0; 16]);
         assert!(speaker.queue.len() <= speaker.cushion);
+    }
+
+    #[test]
+    fn the_other_end_plays_as_loud_as_the_user_sets_it() {
+        let loudness = |gain: f32| {
+            let (said, frames) = async_channel::unbounded();
+            let volume = Arc::new(Volume::default());
+            volume.set(gain);
+            let mut speaker = Speaker::new(
+                card(16_000, 1),
+                FORMAT,
+                frames,
+                VoiceProcessing::new(FORMAT.rate),
+                Arc::default(),
+                volume,
+            );
+            let mut output = vec![0.0; 320];
+            for _ in 0..3 {
+                said.try_send(vec![i16::MAX / 4; 960]).ok();
+                speaker.fill(&mut output);
+            }
+            output[300]
+        };
+        assert!((loudness(1.0) - 0.25).abs() < 0.01);
+        assert!((loudness(2.0) - 0.5).abs() < 0.01);
+        assert!(loudness(0.0).abs() < f32::EPSILON, "muted");
+        // Past twice as loud is held at twice.
+        assert!((loudness(5.0) - 0.5).abs() < 0.01);
     }
 }

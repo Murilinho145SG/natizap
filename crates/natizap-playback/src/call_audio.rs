@@ -19,7 +19,7 @@ use crate::voice_processing::VoiceProcessing;
 
 mod sides;
 
-use sides::{Microphone, Speaker, to_i16};
+use sides::{Microphone, Speaker, Volume, to_i16};
 
 /// How much sound the card takes at a time in a call: what it holds is
 /// heard as delay.
@@ -102,6 +102,7 @@ pub struct CallAudio {
     said: async_channel::Receiver<Vec<i16>>,
     voice: VoiceProcessing,
     meter: Arc<Meter>,
+    volume: Arc<Volume>,
 }
 
 impl Drop for CallAudio {
@@ -141,7 +142,8 @@ impl CallAudio {
         let (speaker, said) = async_channel::bounded(SPEAKER_BACKLOG);
         let meter = Arc::new(Meter::default());
         let voice = VoiceProcessing::new(format.rate);
-        let (input, output) = streams(format, devices, &heard, &said, &voice, &meter)?;
+        let volume = Arc::new(Volume::default());
+        let (input, output) = streams(format, devices, (&heard, &said), &voice, (&meter, &volume))?;
         let calls = Self {
             _microphone: input,
             _speaker: output,
@@ -150,6 +152,7 @@ impl CallAudio {
             said,
             voice,
             meter: Arc::clone(&meter),
+            volume,
         };
         let (opus, packets) = async_channel::bounded(SPEAKER_BACKLOG);
         let decoded = speaker.clone();
@@ -178,6 +181,12 @@ impl CallAudio {
         self.meter.voiced.load(Ordering::Relaxed)
     }
 
+    /// Plays the other end `gain` times as loud as they sent: 0 is silent,
+    /// and up to twice as loud for someone hard to hear.
+    pub fn set_volume(&self, gain: f32) {
+        self.volume.set(gain);
+    }
+
     /// Moves the call to `devices`' microphone and speaker; the call goes on
     /// as it was.
     ///
@@ -193,10 +202,9 @@ impl CallAudio {
         let (input, output) = streams(
             self.format,
             devices,
-            &self.heard,
-            &self.said,
+            (&self.heard, &self.said),
             &self.voice,
-            &self.meter,
+            (&self.meter, &self.volume),
         )?;
         self._microphone = input;
         self._speaker = output;
@@ -208,10 +216,12 @@ impl CallAudio {
 fn streams(
     format: CallFormat,
     devices: &CallDevices,
-    heard: &async_channel::Sender<Vec<i16>>,
-    said: &async_channel::Receiver<Vec<i16>>,
+    (heard, said): (
+        &async_channel::Sender<Vec<i16>>,
+        &async_channel::Receiver<Vec<i16>>,
+    ),
     voice: &VoiceProcessing,
-    meter: &Arc<Meter>,
+    (meter, volume): (&Arc<Meter>, &Arc<Volume>),
 ) -> Result<(Stream, Stream), CallAudioError> {
     let input =
         devices::microphone(devices.microphone.as_deref()).ok_or(CallAudioError::NoMicrophone)?;
@@ -229,7 +239,7 @@ fn streams(
             format,
             said.clone(),
             voice.clone(),
-            Arc::clone(meter),
+            (Arc::clone(meter), Arc::clone(volume)),
         )?,
     ))
 }
@@ -265,7 +275,7 @@ fn play(
     format: CallFormat,
     said: async_channel::Receiver<Vec<i16>>,
     voice: VoiceProcessing,
-    meter: Arc<Meter>,
+    (meter, volume): (Arc<Meter>, Arc<Volume>),
 ) -> Result<Stream, CallAudioError> {
     let config = closest_f32(
         &device.default_output_config().map_err(device_error)?,
@@ -278,7 +288,7 @@ fn play(
         channels = config.channels,
         "call speaker open"
     );
-    let mut speaker = Speaker::new(config, format, said, voice, meter);
+    let mut speaker = Speaker::new(config, format, said, voice, meter, volume);
     let stream = device
         .build_output_stream(
             config,
