@@ -14,6 +14,7 @@ pub(crate) mod scrollbar;
 pub(crate) mod separator;
 pub(crate) mod settings_window;
 pub(crate) mod skeleton;
+pub(crate) mod slider;
 pub(crate) mod splash;
 pub(crate) mod switch;
 pub(crate) mod tooltip;

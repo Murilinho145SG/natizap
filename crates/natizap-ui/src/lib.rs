@@ -41,6 +41,7 @@ pub use components::scrollbar::{ScrollSource, scrollbar};
 pub use components::separator::separator;
 pub use components::settings_window::{SettingsClosed, SettingsPage, SettingsWindow};
 pub use components::skeleton::skeleton;
+pub use components::slider::Slider;
 pub use components::splash::{SPLASH_INTRO, SPLASH_OUT, splash};
 pub use components::switch::Switch;
 pub use components::tooltip::Tooltip;

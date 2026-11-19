@@ -19,6 +19,7 @@ use crate::components::scrollbar::scrollbar;
 use crate::components::separator::separator;
 use crate::components::settings_window::{SettingsClosed, SettingsPage, SettingsWindow};
 use crate::components::skeleton::skeleton;
+use crate::components::slider::Slider;
 use crate::components::switch::Switch;
 use crate::theme::{ActiveTheme as _, DISPLAY_FONT, Theme, base_font};
 use crate::{Icon, avatar, window_frame};
@@ -32,6 +33,8 @@ pub struct Gallery {
     /// The colour picker on show, made at the first draw.
     picker: Option<Entity<ColorPicker>>,
     switch_on: bool,
+    /// Where the demo slider stands.
+    slider_value: f32,
     scroll: ScrollHandle,
 }
 
@@ -70,6 +73,7 @@ impl Render for Gallery {
                 theme,
             ))
             .child(section("Switch", self.switches(cx), theme))
+            .child(section("Slider", self.sliders(cx), theme))
             .child(section("Code block", code_sample(theme), theme))
             .child(section("Avatar", avatars(), theme))
             .child(section("Rail", rail_demo(theme), theme))
@@ -187,6 +191,25 @@ impl Gallery {
             }))
             .child(Switch::new("switch-on", true))
             .child(Switch::new("switch-off", false))
+    }
+
+    /// A slider that moves, with a mark where nothing changes.
+    fn sliders(&self, cx: &mut Context<Self>) -> Div {
+        row().child(
+            div().w(px(240.0)).child(
+                Slider::new("slider-demo", self.slider_value)
+                    .mark(0.5)
+                    .on_change({
+                        let gallery = cx.weak_entity();
+                        move |value, _, cx| {
+                            let _ = gallery.update(cx, |gallery, cx| {
+                                gallery.slider_value = value;
+                                cx.notify();
+                            });
+                        }
+                    }),
+            ),
+        )
     }
 
     /// A short list scrolled inside a box, with its scrollbar.
