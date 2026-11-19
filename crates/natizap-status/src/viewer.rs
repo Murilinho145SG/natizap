@@ -332,6 +332,11 @@ impl StatusViewer {
 
 impl Render for StatusViewer {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // A video's player takes the keyboard and drops it when the next
+        // post replaces it; the arrows must keep reaching the viewer.
+        if !self.focus.contains_focused(window, cx) {
+            window.focus(&self.focus, cx);
+        }
         let Some(poster) = self.poster(cx) else {
             return div().into_any_element();
         };
