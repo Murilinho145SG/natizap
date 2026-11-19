@@ -205,7 +205,7 @@ fn timer_menu(position: Point<Pixels>, cx: &mut Context<ProfilePanel>) -> impl I
     menu.at(position)
 }
 
-pub(crate) fn row(icon: Icon, label: &'static str, theme: Theme) -> Div {
+fn row(icon: Icon, label: &'static str, theme: Theme) -> Div {
     div()
         .w_full()
         .h(px(52.0))

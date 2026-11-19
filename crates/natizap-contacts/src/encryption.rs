@@ -3,13 +3,12 @@
 //! device, that their messages and calls reach only each other.
 
 use gpui::prelude::*;
-use gpui::{ClipboardItem, Context, Div, FontWeight, SharedString, Window, div, px, rgb};
+use gpui::{ClipboardItem, Context, Div, FontWeight, SharedString, Window, div, px, rgb, svg};
 use natizap_protocol::SecurityCode;
 use natizap_ui::theme::{ActiveTheme as _, MONO_FONT, Theme};
 use natizap_ui::{Button, ButtonVariant, Icon, dialog};
 
 use crate::panel::ProfilePanel;
-use crate::sections::row;
 
 /// The security code, from asking for it until the dialog closes.
 #[derive(Debug, Clone)]
@@ -27,17 +26,46 @@ impl ProfilePanel {
     pub(crate) fn encryption_row(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let theme = *cx.theme();
         let verifiable = self.has_security_code();
-        row(Icon::Lock, "Encryption", theme)
+        // Two lines, as on the phone: what it is, and what it means.
+        div()
             .id("encryption")
+            .w_full()
+            .px_2()
+            .py_3()
+            .flex()
+            .items_center()
+            .gap_4()
+            .rounded_lg()
+            .child(
+                svg()
+                    .path(Icon::Lock.path())
+                    .size(px(18.0))
+                    .flex_none()
+                    .text_color(rgb(theme.muted)),
+            )
             .child(
                 div()
-                    .text_size(px(12.5))
-                    .text_color(rgb(theme.muted))
-                    .child(if verifiable {
-                        "End-to-end encrypted. Click to verify."
-                    } else {
-                        "End-to-end encrypted"
-                    }),
+                    .flex_1()
+                    .min_w_0()
+                    .flex()
+                    .flex_col()
+                    .gap(px(2.0))
+                    .child(
+                        div()
+                            .text_size(px(14.5))
+                            .text_color(rgb(theme.text))
+                            .child("Encryption"),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(12.5))
+                            .text_color(rgb(theme.muted))
+                            .child(if verifiable {
+                                "Messages and calls are end-to-end encrypted. Click to verify."
+                            } else {
+                                "Messages and calls are end-to-end encrypted."
+                            }),
+                    ),
             )
             .when(verifiable, |row| {
                 row.cursor_pointer()
@@ -118,7 +146,7 @@ impl ProfilePanel {
                     .items_center()
                     .gap_2()
                     .child(
-                        gpui::svg()
+                        svg()
                             .path(Icon::Lock.path())
                             .size(px(16.0))
                             .text_color(rgb(theme.mint)),
