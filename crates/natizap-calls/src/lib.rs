@@ -42,5 +42,5 @@ pub use ring_card::RingCard;
 pub use ringtone::Ringtone;
 pub use settings::CallSettings;
 pub use stage::CallStage;
-pub use volume::{Listening, Loudness};
+pub use volume::{Listening, Loudness, PeerMicrophone};
 pub use window::CallWindow;

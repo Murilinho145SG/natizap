@@ -20,10 +20,9 @@ use crate::bar::{CallPoppedOut, camera_button, mute_button, screen_button};
 use crate::desk::{CallDesk, CallLayout, CallShown, CameraState, Phase, Sharing, VideoShown};
 use crate::keys::HANG_UP;
 use crate::look::ringed;
-use crate::person_menu::{muted_mark, person_menu};
+use crate::person_menu::{peer_badge, person_menu};
 use crate::pointer::{Held, follower};
 use crate::screen::Painted;
-use crate::volume::Listening;
 
 const CORNERS: f32 = 14.0;
 /// The smallest the picture shrinks to: its controls still fit.
@@ -250,9 +249,9 @@ impl Render for VideoPanel {
                             px(72.0),
                         ))
                     }))
-                    .when(call.listening == Listening::Muted, |stage| {
-                        stage.child(div().absolute().top_2().left_2().child(muted_mark(theme)))
-                    })
+                    .children(
+                        peer_badge(&call, theme).map(|badge| badge.absolute().top_2().left_2()),
+                    )
                     .child(Self::controls(&call, cx))
                     .child(Self::corner(cx)),
             );

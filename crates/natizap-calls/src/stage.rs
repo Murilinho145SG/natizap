@@ -23,10 +23,9 @@ use crate::bar::{CallPoppedOut, camera_button, mute_button, phase_line, screen_b
 use crate::desk::{CallDesk, CallLayout, CallShown, Phase};
 use crate::keys::HANG_UP;
 use crate::look::ringed;
-use crate::person_menu::{muted_mark, person_menu};
+use crate::person_menu::{peer_notes, person_menu};
 use crate::pointer::{Held, follower};
 use crate::tiles::{Arrangement, Grab, group_size};
-use crate::volume::Listening;
 
 mod video;
 
@@ -156,18 +155,7 @@ impl CallStage {
                         theme,
                     )),
             )
-            .when(call.listening == Listening::Muted, |person| {
-                person.child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap_1()
-                        .text_size(px(13.0))
-                        .text_color(rgb(theme.alert))
-                        .child(muted_mark(theme))
-                        .child("Muted for you"),
-                )
-            })
+            .child(peer_notes(call, theme))
             // The main window's bar already says who and how long.
             .when(self.home == Home::Window, |person| {
                 person

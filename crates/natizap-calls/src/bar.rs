@@ -14,9 +14,8 @@ use crate::desk::{CallDesk, CallLayout, CallShown, CameraState, Phase, Sharing};
 use crate::keys::{CAMERA, HANG_UP, MUTE};
 use crate::look::{quality_bars, quality_word, ringed};
 use crate::pane::CallChatRequested;
-use crate::person_menu::{muted_mark, person_menu};
+use crate::person_menu::{peer_marks, person_menu};
 use crate::quality::Quality;
-use crate::volume::Listening;
 
 /// The user asked for the call in a window of its own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -124,9 +123,7 @@ impl Render for CallBar {
                                             .font_weight(FontWeight::MEDIUM)
                                             .child(call.title.clone()),
                                     )
-                                    .when(call.listening == Listening::Muted, |name| {
-                                        name.child(muted_mark(theme))
-                                    }),
+                                    .children(peer_marks(&call, theme)),
                             )
                             .child(phase_line(&call, theme)),
                     ),

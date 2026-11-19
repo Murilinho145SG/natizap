@@ -5,13 +5,13 @@
 use gpui::prelude::*;
 use gpui::{
     App, Context, Entity, FontWeight, MouseButton, Pixels, Point, Window, anchored, deferred, div,
-    px, rgb, svg,
+    px, rgb, rgba, svg,
 };
 use natizap_ui::theme::{ActiveTheme as _, Theme};
-use natizap_ui::{Icon, Slider, Switch};
+use natizap_ui::{Icon, Slider, Switch, Tooltip};
 
 use crate::desk::{CallDesk, CallShown};
-use crate::volume::{Listening, Loudness};
+use crate::volume::{Listening, Loudness, PeerMicrophone};
 
 /// The menu `view` opened at `at`, for `call`'s other end; closing it
 /// empties the place `slot` finds in the view.
@@ -113,11 +113,86 @@ pub(crate) fn person_menu<V: 'static>(
     .into_any_element()
 }
 
-/// The mark on the other end's picture or name while the user muted them.
-pub(crate) fn muted_mark(theme: Theme) -> impl IntoElement {
-    svg()
-        .path(Icon::Muted.path())
-        .size(px(14.0))
-        .flex_none()
-        .text_color(rgb(theme.alert))
+/// The marks on the other end's picture or name: their microphone off,
+/// which they chose, and muted for the user, which the user chose, each
+/// its own mark. None while neither is so.
+pub(crate) fn peer_marks(call: &CallShown, theme: Theme) -> Option<impl IntoElement + use<>> {
+    let off = call.peer_microphone == PeerMicrophone::Off;
+    let muted = call.listening == Listening::Muted;
+    (off || muted).then(|| {
+        div()
+            .flex()
+            .items_center()
+            .gap_1()
+            .when(off, |marks| {
+                marks.child(mark(
+                    "call-peer-microphone-off",
+                    Icon::MicOff,
+                    theme.text,
+                    "Their microphone is off",
+                ))
+            })
+            .when(muted, |marks| {
+                marks.child(mark(
+                    "call-peer-muted",
+                    Icon::Muted,
+                    theme.alert,
+                    "Muted for you",
+                ))
+            })
+    })
+}
+
+/// The marks on a dark pill, to lay over the other end's picture.
+pub(crate) fn peer_badge(call: &CallShown, theme: Theme) -> Option<gpui::Div> {
+    peer_marks(call, theme).map(|marks| {
+        div()
+            .px_2()
+            .py_1()
+            .rounded_full()
+            .bg(rgba(theme.scrim))
+            .child(marks)
+    })
+}
+
+/// The other end's state in words, under their picture in a voice call.
+pub(crate) fn peer_notes(call: &CallShown, theme: Theme) -> impl IntoElement + use<> {
+    let note = |icon: Icon, color: u32, text: &'static str| {
+        div()
+            .flex()
+            .items_center()
+            .gap_1()
+            .text_size(px(13.0))
+            .text_color(rgb(color))
+            .child(
+                svg()
+                    .path(icon.path())
+                    .size(px(14.0))
+                    .flex_none()
+                    .text_color(rgb(color)),
+            )
+            .child(text)
+    };
+    div()
+        .flex()
+        .flex_col()
+        .items_center()
+        .gap_1()
+        .when(call.peer_microphone == PeerMicrophone::Off, |notes| {
+            notes.child(note(Icon::MicOff, theme.muted, "Their microphone is off"))
+        })
+        .when(call.listening == Listening::Muted, |notes| {
+            notes.child(note(Icon::Muted, theme.alert, "Muted for you"))
+        })
+}
+
+/// One mark, with what it means on hover.
+fn mark(id: &'static str, icon: Icon, color: u32, meaning: &'static str) -> impl IntoElement {
+    div().id(id).tooltip(Tooltip::text(meaning)).child(
+        svg()
+            .path(icon.path())
+            .size(px(14.0))
+            .flex_none()
+            .text_color(rgb(color)),
+    )
 }

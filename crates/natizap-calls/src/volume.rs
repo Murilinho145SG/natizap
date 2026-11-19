@@ -1,5 +1,7 @@
-//! How loud a person plays in calls, as the user set it for them: from
-//! silent to twice as loud as they sent, kept from one call to the next.
+//! How the other end of a call is heard: how loud the user set them, from
+//! silent to twice as loud as they sent, kept from one call to the next;
+//! whether the user muted them; and whether they turned their own
+//! microphone off.
 
 /// Whether the user hears the other end of a call.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -20,6 +22,17 @@ impl Listening {
             Self::Muted => Self::Heard,
         }
     }
+}
+
+/// Whether the other end of a call has their microphone on, as they last
+/// told: apart from the user muting them, which only the user hears.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum PeerMicrophone {
+    /// On.
+    #[default]
+    On,
+    /// They turned it off.
+    Off,
 }
 
 /// A person's loudness in calls, in percent of how they sent: 0 to 200.

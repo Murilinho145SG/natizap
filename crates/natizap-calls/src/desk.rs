@@ -17,7 +17,7 @@ use crate::choices::Choices;
 use crate::log::CallLog;
 use crate::quality::{Quality, QualityWatch};
 use crate::ringtone::{Ringing, Ringtone};
-use crate::volume::{Listening, Loudness};
+use crate::volume::{Listening, Loudness, PeerMicrophone};
 
 mod hearing;
 mod layout;
@@ -96,6 +96,8 @@ pub struct CallShown {
     pub peer_loudness: Loudness,
     /// Whether the user hears the other end.
     pub listening: Listening,
+    /// Whether the other end has their microphone on.
+    pub peer_microphone: PeerMicrophone,
     /// How well the connection carries the call, once it is live.
     pub quality: Option<Quality>,
     /// The other end spoke in the last second.
@@ -139,6 +141,8 @@ struct Call {
     muted: bool,
     /// Whether the user hears the other end.
     listening: Listening,
+    /// Whether the other end has their microphone on.
+    peer_microphone: PeerMicrophone,
     going: Going,
     /// The call's video, once it has some.
     video: Option<CallVideo>,
@@ -345,6 +349,7 @@ impl CallDesk {
             video_requested: call.video_request.is_some(),
             peer_loudness: self.peer_loudness(),
             listening: call.listening,
+            peer_microphone: call.peer_microphone,
             quality: call.judged,
             speaking: call.speaking,
         })

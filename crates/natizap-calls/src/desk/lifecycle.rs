@@ -13,7 +13,7 @@ use natizap_protocol::{
 
 use super::{Call, CallDesk, CallVideo, ENDED_SHOWN, FORMAT, Going, Phase, Reached, voice};
 use crate::quality::QualityWatch;
-use crate::volume::Listening;
+use crate::volume::{Listening, PeerMicrophone};
 
 /// A call about to start: who with, which way, since when, and what it
 /// sounds and looks like.
@@ -133,6 +133,7 @@ impl CallDesk {
             },
             muted: false,
             listening: Listening::Heard,
+            peer_microphone: PeerMicrophone::On,
             going: Going::Starting,
             video,
             video_request: None,
@@ -226,6 +227,14 @@ impl CallDesk {
                     video.keyframe_wanted();
                 }
                 return;
+            }
+            CallProgress::PeerMicrophone(on) => {
+                call.peer_microphone = if on {
+                    PeerMicrophone::On
+                } else {
+                    PeerMicrophone::Off
+                };
+                return cx.notify();
             }
         }
         if call.reached.answered && !matches!(call.phase, Phase::Live { .. }) {
