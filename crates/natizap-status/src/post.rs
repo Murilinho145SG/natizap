@@ -3,7 +3,7 @@
 
 use std::path::PathBuf;
 
-use natizap_protocol::{ChatId, ContentKind, Media};
+use natizap_protocol::{ChatId, ContentKind, Media, StatusLink};
 
 /// How long a status lasts, in seconds.
 pub(crate) const DAY: i64 = 24 * 60 * 60;
@@ -33,6 +33,8 @@ pub struct Post {
     pub seen: bool,
     /// This account posted it.
     pub mine: bool,
+    /// Where it leads, such as a song on Spotify.
+    pub link: Option<StatusLink>,
 }
 
 impl Post {
@@ -125,6 +127,7 @@ mod tests {
             file: None,
             seen,
             mine: poster == "me",
+            link: None,
         }
     }
 

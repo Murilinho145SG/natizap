@@ -8,12 +8,12 @@ use std::time::{Duration, Instant};
 
 use gpui::prelude::*;
 use gpui::{
-    AnyView, Context, Entity, EventEmitter, FocusHandle, Focusable, FontWeight, KeyDownEvent,
-    SharedString, Window, anchored, deferred, div, point, px, relative, rgb, rgba,
+    AnyElement, AnyView, Context, Entity, EventEmitter, FocusHandle, Focusable, FontWeight,
+    KeyDownEvent, SharedString, Window, anchored, deferred, div, point, px, relative, rgb, rgba,
 };
 use natizap_playback::{Heard, Recorder};
 use natizap_profiles::ProfilePictures;
-use natizap_protocol::{ChatId, ContentKind, Reply};
+use natizap_protocol::{ChatId, ContentKind, Reply, StatusLink};
 use natizap_ui::theme::{DEEP, MUTED, TEXT};
 use natizap_ui::{Button, ButtonVariant, Icon, Submitted, TextInput, avatar};
 
@@ -436,9 +436,13 @@ impl StatusViewer {
                             .child(div().font_weight(FontWeight::MEDIUM).child(title))
                             .child(
                                 div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_2()
                                     .text_size(px(12.5))
                                     .text_color(rgb(MUTED))
-                                    .child(when(post.sent_at)),
+                                    .child(when(post.sent_at))
+                                    .children(post.link.clone().map(link_button)),
                             ),
                     )
                     .child(
@@ -450,5 +454,19 @@ impl StatusViewer {
                             .on_click(cx.listener(|_, _, _, cx| cx.emit(StatusClosed))),
                     ),
             )
+    }
+}
+
+/// Where the status leads, as the phone offers it under the poster's
+/// name: a button when it opens something, else a note.
+fn link_button(link: StatusLink) -> AnyElement {
+    match link.url {
+        Some(url) => Button::new("status-link")
+            .label(link.label)
+            .icon(Icon::ChevronRight)
+            .variant(ButtonVariant::Ghost)
+            .on_click(move |_, _, cx| cx.open_url(&url))
+            .into_any_element(),
+        None => div().child(link.label).into_any_element(),
     }
 }

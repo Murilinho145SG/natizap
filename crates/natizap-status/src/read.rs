@@ -6,7 +6,7 @@ use natizap_protocol::whatsapp_rust::prelude::{Event, EventKind, MessageExt as _
 use natizap_protocol::whatsapp_rust::types::events::InboundMessage;
 use natizap_protocol::whatsapp_rust::types::presence::ReceiptType;
 use natizap_protocol::whatsapp_rust::wacore_binary::JidExt as _;
-use natizap_protocol::{ChatId, Content, ContentKind};
+use natizap_protocol::{ChatId, Content, ContentKind, StatusLink};
 
 use crate::post::Post;
 use crate::store::{Change, Viewer};
@@ -140,5 +140,6 @@ fn change(
         file: None,
         seen,
         mine,
+        link: StatusLink::of(message),
     })))
 }

@@ -160,5 +160,6 @@ fn post(stored: StoredStatus) -> Post {
         file: None,
         seen: stored.mine,
         mine: stored.mine,
+        link: None,
     }
 }

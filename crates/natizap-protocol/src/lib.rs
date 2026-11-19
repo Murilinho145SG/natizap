@@ -24,6 +24,7 @@ mod profile;
 mod protocol;
 mod read_elsewhere;
 mod status;
+mod status_link;
 mod stickers;
 
 pub use actions::{ActionError, Anchor, Disappearing, PinFor, Reply, Sent, Unread};
@@ -43,5 +44,6 @@ pub use polls::{Account, SealedVote};
 pub use profile::Profile;
 pub use protocol::{Protocol, StartError};
 pub use read_elsewhere::ReadElsewhere;
+pub use status_link::StatusLink;
 pub use stickers::Sticker;
 pub use whatsapp_rust;

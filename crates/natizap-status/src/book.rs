@@ -403,6 +403,7 @@ fn own_post(
         file,
         seen: true,
         mine: true,
+        link: None,
     }
 }
 

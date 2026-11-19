@@ -270,7 +270,7 @@ impl Quote {
 }
 
 /// The reply metadata, wherever the message kind keeps it.
-fn context_info(message: &wa::Message) -> Option<&wa::ContextInfo> {
+pub(crate) fn context_info(message: &wa::Message) -> Option<&wa::ContextInfo> {
     let infos = [
         message
             .extended_text_message

@@ -3,14 +3,15 @@
 
 use std::path::{Path, PathBuf};
 
-use natizap_protocol::{ChatId, ContentKind, Media};
+use natizap_protocol::{ChatId, ContentKind, Media, StatusLink};
 use rusqlite::{Connection, Row, params};
 
 use crate::post::{DAY, Post};
 
 /// Schema history: `MIGRATIONS[n]` upgrades a store from version `n` to
 /// `n + 1`. Stores are migrated, never rebuilt.
-const MIGRATIONS: &[&str] = &["CREATE TABLE posts (
+const MIGRATIONS: &[&str] = &[
+    "CREATE TABLE posts (
         poster TEXT NOT NULL,
         id TEXT NOT NULL,
         sent_at INTEGER NOT NULL,
@@ -38,7 +39,10 @@ const MIGRATIONS: &[&str] = &["CREATE TABLE posts (
         viewer TEXT NOT NULL,
         seen_at INTEGER NOT NULL,
         PRIMARY KEY (id, viewer)
-    );"];
+    );",
+    "ALTER TABLE posts ADD COLUMN link_label TEXT;
+    ALTER TABLE posts ADD COLUMN link_url TEXT;",
+];
 
 /// Someone who saw one of this account's posts.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -171,9 +175,10 @@ fn insert(tx: &rusqlite::Transaction<'_>, post: &Post) -> rusqlite::Result<()> {
     tx.prepare_cached(
         "INSERT INTO posts (poster, id, sent_at, kind, text, background, author, mine, seen,
          file, media_mime, media_size, media_width, media_height, media_seconds,
-         media_thumbnail, media_direct_path, media_key, media_sha256, media_enc_sha256)
+         media_thumbnail, media_direct_path, media_key, media_sha256, media_enc_sha256,
+         link_label, link_url)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17,
-         ?18, ?19, ?20)
+         ?18, ?19, ?20, ?21, ?22)
          ON CONFLICT (poster, id) DO UPDATE SET text = excluded.text",
     )?
     .execute(params![
@@ -199,6 +204,8 @@ fn insert(tx: &rusqlite::Transaction<'_>, post: &Post) -> rusqlite::Result<()> {
         media.map(|m| &m.media_key),
         media.map(|m| &m.file_sha256),
         media.map(|m| &m.file_enc_sha256),
+        post.link.as_ref().map(|link| &link.label),
+        post.link.as_ref().and_then(|link| link.url.as_ref()),
     ])?;
     Ok(())
 }
@@ -241,6 +248,15 @@ fn post_from_row(row: &Row<'_>) -> rusqlite::Result<Post> {
         file: row.get::<_, Option<String>>("file")?.map(PathBuf::from),
         seen: row.get("seen")?,
         mine: row.get("mine")?,
+        link: row
+            .get::<_, Option<String>>("link_label")?
+            .map(|label| -> rusqlite::Result<StatusLink> {
+                Ok(StatusLink {
+                    label,
+                    url: row.get("link_url")?,
+                })
+            })
+            .transpose()?,
     })
 }
 
@@ -265,6 +281,7 @@ mod tests {
             file: None,
             seen: false,
             mine: false,
+            link: None,
         }
     }
 
