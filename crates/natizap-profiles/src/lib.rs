@@ -9,10 +9,16 @@ mod files;
 
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
+use std::time::Duration;
 
 use gpui::{AppContext as _, Context, Entity, Task};
 use natizap_protocol::whatsapp_rust::prelude::{Event, EventKind};
 use natizap_protocol::{ActionError, ChatId, Protocol};
+
+/// The rest between two picture lookups.
+const FETCH_GAP: Duration = Duration::from_millis(400);
+/// The rest after WhatsApp says it is asked too often.
+const BUSY_REST: Duration = Duration::from_secs(30);
 
 /// What is known of one chat's picture.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -123,6 +129,10 @@ impl ProfilePictures {
         let dir = self.dir.clone();
         cx.spawn(async move |this, cx| {
             let answer = fetching.await;
+            // WhatsApp limits how often pictures may be asked for: a short
+            // rest between them, and a long one once it says so.
+            let busy = matches!(answer, Err(ActionError::Busy));
+            let rest = if busy { BUSY_REST } else { FETCH_GAP };
             let known = match answer {
                 Ok(Some(bytes)) => {
                     let saving_chat = chat.clone();
@@ -138,24 +148,30 @@ impl ProfilePictures {
                     }
                 }
                 Ok(None) => Some(Known::Missing),
-                // Asked again the next time the chat shows, once connected.
-                Err(ActionError::Offline | ActionError::Interrupted) => None,
+                // Asked again the next time the chat shows, once connected
+                // or once WhatsApp takes questions again.
+                Err(ActionError::Offline | ActionError::Interrupted | ActionError::Busy) => None,
                 Err(error) => {
                     tracing::debug!(%error, chat = chat.as_str(), "no profile picture");
                     Some(Known::Missing)
                 }
             };
             let _ = this.update(cx, |pictures, cx| {
-                pictures.fetching = false;
                 match known {
                     Some(known) => {
                         pictures.known.insert(chat, known);
                     }
+                    // Still wanted, so asked again once the rest is over.
+                    None if busy => pictures.queue.push_back(chat),
                     None => {
                         pictures.known.remove(&chat);
                     }
                 }
                 cx.notify();
+            });
+            cx.background_executor().timer(rest).await;
+            let _ = this.update(cx, |pictures, cx| {
+                pictures.fetching = false;
                 pictures.fetch_next(cx);
             });
         })

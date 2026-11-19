@@ -20,7 +20,7 @@ pub struct Profile {
 }
 
 pub(crate) async fn profile(client: Arc<Client>, jid: Jid) -> Result<Profile, ActionError> {
-    let rejected = |error: &dyn std::fmt::Display| ActionError::Rejected(error.to_string());
+    let rejected = |error: &dyn std::fmt::Display| ActionError::refused(error);
     let Some(info) = user_info(&client, &jid).await? else {
         // Not on WhatsApp, or it would not say: nothing to show.
         return Ok(Profile::default());
@@ -56,7 +56,7 @@ async fn user_info(client: &Client, jid: &Jid) -> Result<Option<UserInfo>, Actio
         .contacts()
         .get_user_info(std::slice::from_ref(jid))
         .await
-        .map_err(|error| ActionError::Rejected(error.to_string()))?
+        .map_err(|error| ActionError::refused(&error))?
         .remove(jid))
 }
 
@@ -71,7 +71,7 @@ pub(crate) async fn picture(
     jid: Jid,
     full: bool,
 ) -> Result<Option<Vec<u8>>, ActionError> {
-    let rejected = |error: &dyn std::fmt::Display| ActionError::Rejected(error.to_string());
+    let rejected = |error: &dyn std::fmt::Display| ActionError::refused(error);
     // The preview is 96 pixels square, plenty for avatars and a fraction of
     // the full picture's size.
     let Some(picture) = client

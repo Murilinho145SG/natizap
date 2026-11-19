@@ -75,6 +75,25 @@ pub enum ActionError {
     /// WhatsApp refused the action.
     #[error("WhatsApp refused: {0}")]
     Rejected(String),
+    /// WhatsApp refused for being asked too often; asking again a little
+    /// later works.
+    #[error("WhatsApp is busy: asked too often")]
+    Busy,
+}
+
+impl ActionError {
+    /// What a refusal from the client means: [`ActionError::Busy`] for
+    /// WhatsApp's rate limit, else [`ActionError::Rejected`].
+    pub(crate) fn refused(error: &dyn std::fmt::Display) -> Self {
+        let said = error.to_string();
+        // The client reports the server's error code only in its message:
+        // "received a server error response: code=429, text='rate-overlimit'".
+        if said.contains("code=429") || said.contains("rate-overlimit") {
+            Self::Busy
+        } else {
+            Self::Rejected(said)
+        }
+    }
 }
 
 /// A message this account just sent.
