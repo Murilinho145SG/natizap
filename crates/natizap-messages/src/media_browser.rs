@@ -261,6 +261,18 @@ impl MediaBrowser {
     }
 }
 
+impl Library {
+    /// How many things `tab` holds.
+    fn count(&self, tab: Tab) -> usize {
+        match tab {
+            Tab::Media => self.media.len(),
+            Tab::Docs => self.docs.len(),
+            Tab::Links => self.links.len(),
+            Tab::Starred => self.starred.len(),
+        }
+    }
+}
+
 /// Something that was sent at a time, to group by month.
 trait Dated {
     fn sent_at(&self) -> i64;

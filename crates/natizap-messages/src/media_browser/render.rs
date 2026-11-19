@@ -112,10 +112,7 @@ impl MediaBrowser {
 
     /// The tabs, each with how many it holds, and the search field.
     fn toolbar(&self, cx: &mut Context<Self>) -> Div {
-        let counts = self
-            .library
-            .as_ref()
-            .map(|library| [library.media.len(), library.docs.len(), library.links.len()]);
+        let library = self.library.clone();
         div()
             .flex()
             .items_center()
@@ -124,10 +121,10 @@ impl MediaBrowser {
             .pb_3()
             .border_b_1()
             .border_color(rgb(LINE))
-            .children(Tab::ALL.into_iter().enumerate().map(|(index, tab)| {
+            .children(Tab::ALL.into_iter().map(|tab| {
                 let on = tab == self.tab;
-                let label: SharedString = match counts {
-                    Some(counts) => format!("{} {}", tab.label(), counts[index]).into(),
+                let label: SharedString = match &library {
+                    Some(library) => format!("{} {}", tab.label(), library.count(tab)).into(),
                     None => tab.label().into(),
                 };
                 div()
