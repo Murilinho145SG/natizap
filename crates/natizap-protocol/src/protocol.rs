@@ -14,6 +14,8 @@ use crate::ContentKind;
 use crate::actions::{
     self, ActionError, Anchor, Connection, Disappearing, PinFor, Reply, Sent, Unread,
 };
+use whatsapp_rust::wacore::appstate::hash::HashState;
+
 use crate::answer::{self, Answer};
 use crate::content::Extra;
 use crate::fanout::Fanout;
@@ -611,13 +613,24 @@ async fn run(
 /// Asks WhatsApp again for the whole account state the phone keeps in
 /// sync, such as stars, mutes, pins and saved names, rather than only what
 /// changed. Each arrives as the usual events.
+///
+/// The client skips a snapshot older than the version it already went
+/// through, and WhatsApp's latest snapshot always is: so the version is
+/// forgotten first, or the snapshot is dropped and state that arrived
+/// before natizap could keep it (stars sent before their messages, for
+/// one) never comes again.
 async fn refresh_account_state(client: &Arc<Client>) {
+    let store = client.persistence_manager().backend();
     for name in [
         WAPatchName::CriticalUnblockLow,
         WAPatchName::RegularLow,
         WAPatchName::RegularHigh,
         WAPatchName::Regular,
     ] {
+        if let Err(error) = store.set_version(name.as_str(), HashState::default()).await {
+            tracing::warn!(%error, collection = name.as_str(), "could not forget a state version");
+            continue;
+        }
         client
             .process_sync_task(MajorSyncTask::AppStateSync {
                 name,
