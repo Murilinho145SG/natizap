@@ -8,8 +8,9 @@ use std::time::Duration;
 
 use gpui::prelude::*;
 use gpui::{
-    App, Bounds, Div, FontWeight, MouseButton, MouseDownEvent, MouseMoveEvent, Pixels, Point,
-    SharedString, WeakEntity, Window, canvas, deferred, div, px, relative, rgb, svg,
+    Animation, AnimationExt as _, App, Bounds, Div, FontWeight, MouseButton, MouseDownEvent,
+    MouseMoveEvent, Pixels, Point, SharedString, WeakEntity, Window, bounce, canvas, deferred, div,
+    ease_in_out, px, relative, rgb, svg,
 };
 use natizap_playback::Speed;
 use natizap_ui::theme::{ACCENT, ACCENT_INK, DEEP, LINE, MUTED, PANEL, RAISED, TEXT, glass};
@@ -37,9 +38,22 @@ pub(crate) fn render_voice(
     let progress = voice.map_or(0.0, |voice| voice.progress);
     // Time played while this note is the one playing, its length otherwise,
     // as on the phone.
-    let time: SharedString = match voice {
-        Some(voice) => clock_label(voice.position).into(),
-        None => media.detail.clone().unwrap_or_default(),
+    let downloaded = media.file.is_some();
+    let time: SharedString = if let Some(voice) = voice {
+        clock_label(voice.position).into()
+    } else {
+        let length = media.detail.clone().unwrap_or_default();
+        // Not here yet: how much it takes to fetch, as on the phone.
+        match media.fetch.media.size.filter(|_| !downloaded) {
+            Some(bytes) => format!("{length} · {}", file_size(bytes)).into(),
+            None => length,
+        }
+    };
+    let state = match voice {
+        Some(voice) if voice.loading => Button::Downloading,
+        Some(voice) if voice.playing => Button::Pause,
+        _ if !downloaded => Button::Download,
+        _ => Button::Play,
     };
     let toggle = {
         let (media, view) = (media.clone(), view.clone());
@@ -55,11 +69,7 @@ pub(crate) fn render_voice(
         .flex()
         .items_center()
         .gap_2p5()
-        .child(play_button(
-            voice.is_some_and(|voice| voice.playing),
-            voice.is_some_and(|voice| voice.loading),
-            toggle,
-        ))
+        .child(play_button(state, toggle))
         .child(
             div()
                 .flex_1()
@@ -94,13 +104,45 @@ pub(crate) fn render_voice(
         )
 }
 
-/// The accent play/pause button in its dark ring, dimmed while the file
-/// downloads.
+/// What the note's button shows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Button {
+    /// The file is not here: a click fetches it, then plays it.
+    Download,
+    /// Fetching it, to play once it lands.
+    Downloading,
+    Play,
+    Pause,
+}
+
+/// The accent button in its dark ring: download until the file is here,
+/// pulsing while it comes, then play and pause.
 fn play_button(
-    playing: bool,
-    loading: bool,
+    state: Button,
     toggle: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
+    let icon = match state {
+        Button::Download | Button::Downloading => Icon::Download,
+        Button::Play => Icon::Play,
+        Button::Pause => Icon::Pause,
+    };
+    let glyph = svg()
+        .path(icon.path())
+        .size(px(14.0))
+        .text_color(rgb(ACCENT_INK));
+    let glyph = if state == Button::Downloading {
+        glyph
+            .with_animation(
+                "voice-downloading",
+                Animation::new(Duration::from_millis(900))
+                    .repeat()
+                    .with_easing(bounce(ease_in_out)),
+                |glyph, delta| glyph.opacity(1.0 - 0.6 * delta),
+            )
+            .into_any_element()
+    } else {
+        glyph.into_any_element()
+    };
     div()
         .size(px(40.0))
         .flex_none()
@@ -120,14 +162,8 @@ fn play_button(
                 .bg(rgb(ACCENT))
                 .cursor_pointer()
                 .hover(|button| button.opacity(0.9))
-                .when(loading, |button| button.opacity(0.5))
                 .on_click(toggle)
-                .child(
-                    svg()
-                        .path(if playing { Icon::Pause } else { Icon::Play }.path())
-                        .size(px(14.0))
-                        .text_color(rgb(ACCENT_INK)),
-                ),
+                .child(glyph),
         )
 }
 
@@ -290,6 +326,20 @@ fn speed_list(current: Speed, view: &WeakEntity<ConversationView>) -> impl IntoE
     )
 }
 
+/// A file's size as the phone writes it: "85 KB", "1.2 MB".
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "a voice note's size is far below f64's exact range"
+)]
+fn file_size(bytes: u64) -> String {
+    let kilobytes = bytes as f64 / 1024.0;
+    if kilobytes < 1024.0 {
+        format!("{} KB", kilobytes.ceil())
+    } else {
+        format!("{:.1} MB", kilobytes / 1024.0)
+    }
+}
+
 fn clock_label(time: Duration) -> String {
     let seconds = time.as_secs();
     format!("{}:{:02}", seconds / 60, seconds % 60)
@@ -298,6 +348,12 @@ fn clock_label(time: Duration) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn writes_sizes_as_the_phone_does() {
+        assert_eq!(file_size(87_000), "85 KB");
+        assert_eq!(file_size(1_258_291), "1.2 MB");
+    }
 
     #[test]
     fn labels_the_time_played_in_minutes_and_seconds() {
