@@ -74,6 +74,8 @@ icons! {
     Camera => "camera.svg",
     /// A phone call to make, e.g. a business's call button.
     Call => "call.svg",
+    /// Ends a call.
+    CallEnd => "call-end.svg",
     /// A call nobody answered.
     CallMissed => "call-missed.svg",
     /// A conversation.
@@ -108,12 +110,16 @@ icons! {
     Maximize => "maximize.svg",
     /// A voice message.
     Mic => "mic.svg",
+    /// The microphone silenced in a call.
+    MicOff => "mic-off.svg",
     /// Minimize the window.
     Minimize => "minimize.svg",
     /// More actions, in a menu.
     More => "more.svg",
     /// Notifications silenced.
     Muted => "muted.svg",
+    /// Moves something into a window of its own.
+    PopOut => "pop-out.svg",
     /// How the app looks: its theme.
     Palette => "palette.svg",
     /// Pause what is playing.
