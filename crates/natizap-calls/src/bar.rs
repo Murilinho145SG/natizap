@@ -2,7 +2,10 @@
 //! call is under way, and the card over it while one rings.
 
 use gpui::prelude::*;
-use gpui::{Context, Entity, EventEmitter, FontWeight, SharedString, Window, div, px, rgb};
+use gpui::{
+    Context, Entity, EventEmitter, FontWeight, MouseButton, MouseDownEvent, Pixels, Point,
+    SharedString, Window, div, px, rgb,
+};
 use natizap_profiles::ProfilePictures;
 use natizap_ui::motion::rise_in;
 use natizap_ui::theme::{ActiveTheme as _, DISPLAY_FONT, Theme};
@@ -12,7 +15,9 @@ use crate::desk::{CallDesk, CallLayout, CallShown, CameraState, Phase, Sharing};
 use crate::keys::{CAMERA, HANG_UP, MUTE};
 use crate::look::{quality_bars, quality_word, ringed};
 use crate::pane::CallChatRequested;
+use crate::person_menu::{muted_mark, person_menu};
 use crate::quality::Quality;
+use crate::volume::Listening;
 
 /// The user asked for the call in a window of its own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -23,6 +28,8 @@ pub struct CallPoppedOut;
 pub struct CallBar {
     desk: Entity<CallDesk>,
     pictures: Entity<ProfilePictures>,
+    /// Where the menu of how the other end is heard opened, while open.
+    person_menu: Option<Point<Pixels>>,
 }
 
 impl std::fmt::Debug for CallBar {
@@ -43,7 +50,11 @@ impl CallBar {
     ) -> Self {
         cx.observe(&desk, |_, _, cx| cx.notify()).detach();
         cx.observe(&pictures, |_, _, cx| cx.notify()).detach();
-        Self { desk, pictures }
+        Self {
+            desk,
+            pictures,
+            person_menu: None,
+        }
     }
 }
 
@@ -83,6 +94,14 @@ impl Render for CallBar {
                     .on_click(cx.listener(move |_, _, _, cx| {
                         cx.emit(CallChatRequested(peer.clone()));
                     }))
+                    .on_mouse_down(
+                        MouseButton::Right,
+                        cx.listener(|bar, event: &MouseDownEvent, _, cx| {
+                            bar.person_menu = Some(event.position);
+                            cx.stop_propagation();
+                            cx.notify();
+                        }),
+                    )
                     .child(ringed(
                         "call-bar-speaking",
                         avatar(call.peer.as_str(), &call.title, picture, px(32.0)),
@@ -97,9 +116,18 @@ impl Render for CallBar {
                             .flex_col()
                             .child(
                                 div()
-                                    .truncate()
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .child(call.title.clone()),
+                                    .flex()
+                                    .items_center()
+                                    .gap_1()
+                                    .child(
+                                        div()
+                                            .truncate()
+                                            .font_weight(FontWeight::MEDIUM)
+                                            .child(call.title.clone()),
+                                    )
+                                    .when(call.listening == Listening::Muted, |name| {
+                                        name.child(muted_mark(theme))
+                                    }),
                             )
                             .child(phase_line(&call, theme)),
                     ),
@@ -109,6 +137,15 @@ impl Render for CallBar {
             .when(!ended && !stage_shown, |bar| {
                 bar.child(self.controls(&call, cx))
             })
+            .children(self.person_menu.map(|at| {
+                person_menu(
+                    cx,
+                    |bar: &mut Self| &mut bar.person_menu,
+                    &self.desk,
+                    &call,
+                    at,
+                )
+            }))
             .into_any_element()
     }
 }

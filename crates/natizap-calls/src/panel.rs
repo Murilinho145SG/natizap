@@ -20,8 +20,10 @@ use crate::bar::{CallPoppedOut, camera_button, mute_button, screen_button};
 use crate::desk::{CallDesk, CallLayout, CallShown, CameraState, Phase, Sharing, VideoShown};
 use crate::keys::HANG_UP;
 use crate::look::ringed;
+use crate::person_menu::{muted_mark, person_menu};
 use crate::pointer::{Held, follower};
 use crate::screen::Painted;
+use crate::volume::Listening;
 
 const CORNERS: f32 = 14.0;
 /// The smallest the picture shrinks to: its controls still fit.
@@ -43,6 +45,8 @@ pub struct VideoPanel {
     held: Option<Hold>,
     /// The area the panel floats over, as last painted.
     area: Rc<Cell<Bounds<Pixels>>>,
+    /// Where the menu of how the other end is heard opened, while open.
+    person_menu: Option<Point<Pixels>>,
 }
 
 /// The pointer holding the panel down.
@@ -92,6 +96,7 @@ impl VideoPanel {
             place: None,
             held: None,
             area: Rc::default(),
+            person_menu: None,
         }
     }
 
@@ -217,6 +222,14 @@ impl Render for VideoPanel {
                     cx.stop_propagation();
                 }),
             )
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(|panel, event: &MouseDownEvent, _, cx| {
+                    panel.person_menu = Some(event.position);
+                    cx.stop_propagation();
+                    cx.notify();
+                }),
+            )
             .child(
                 theme
                     .glass(div())
@@ -237,9 +250,21 @@ impl Render for VideoPanel {
                             px(72.0),
                         ))
                     }))
+                    .when(call.listening == Listening::Muted, |stage| {
+                        stage.child(div().absolute().top_2().left_2().child(muted_mark(theme)))
+                    })
                     .child(Self::controls(&call, cx))
                     .child(Self::corner(cx)),
             );
+        let menu = self.person_menu.map(|at| {
+            person_menu(
+                cx,
+                |panel: &mut Self| &mut panel.person_menu,
+                &self.desk,
+                &call,
+                at,
+            )
+        });
         div()
             .absolute()
             .inset_0()
@@ -249,6 +274,7 @@ impl Render for VideoPanel {
                 Rc::clone(&self.area),
             ))
             .child(panel)
+            .children(menu)
             .into_any_element()
     }
 }

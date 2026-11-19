@@ -13,6 +13,7 @@ use natizap_protocol::{
 
 use super::{Call, CallDesk, CallVideo, ENDED_SHOWN, FORMAT, Going, Phase, Reached, voice};
 use crate::quality::QualityWatch;
+use crate::volume::Listening;
 
 /// A call about to start: who with, which way, since when, and what it
 /// sounds and looks like.
@@ -90,6 +91,7 @@ impl CallDesk {
                     .current(serial)
                     .filter(|call| matches!(call.going, Going::Starting))?;
                 call.audio = Some(audio);
+                desk.apply_loudness();
                 Some(begin.with(&calling, voice(ports), desk.protocol.read(cx), cx))
             });
             // Hung up while the sound opened: nothing to begin.
@@ -130,6 +132,7 @@ impl CallDesk {
                 connected: false,
             },
             muted: false,
+            listening: Listening::Heard,
             going: Going::Starting,
             video,
             video_request: None,

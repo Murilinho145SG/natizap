@@ -11,8 +11,10 @@ use natizap_ui::{Button, ButtonVariant, Icon, avatar};
 
 use super::{CallStage, Hold};
 use crate::desk::{CallShown, VideoShown};
+use crate::person_menu::muted_mark;
 use crate::screen::Painted;
 use crate::tiles::{CONTROLS, GAP, Grab, SMALL, Tile, group_size};
+use crate::volume::Listening;
 
 /// How long the small tiles take to glide into their corner.
 const GLIDE_SECONDS: f32 = 0.22;
@@ -262,6 +264,23 @@ impl CallStage {
                 ),
         };
         let base = base.child(painted);
+        let base = if tile == Tile::Peer {
+            base.on_mouse_down(MouseButton::Right, cx.listener(Self::open_person_menu))
+                .when(call.listening == Listening::Muted, |tile| {
+                    tile.child(
+                        div()
+                            .absolute()
+                            .top_2()
+                            .right_2()
+                            .p_1()
+                            .rounded_full()
+                            .bg(rgba(theme.scrim))
+                            .child(muted_mark(theme)),
+                    )
+                })
+        } else {
+            base
+        };
         let base = if tile == Tile::Peer && missing {
             if size == Size::Focused {
                 base.flex().flex_col().child(self.person(call, cx))

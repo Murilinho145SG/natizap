@@ -23,8 +23,10 @@ use crate::bar::{CallPoppedOut, camera_button, mute_button, phase_line, screen_b
 use crate::desk::{CallDesk, CallLayout, CallShown, Phase};
 use crate::keys::HANG_UP;
 use crate::look::ringed;
+use crate::person_menu::{muted_mark, person_menu};
 use crate::pointer::{Held, follower};
 use crate::tiles::{Arrangement, Grab, group_size};
+use crate::volume::Listening;
 
 mod video;
 
@@ -65,6 +67,8 @@ pub struct CallStage {
     held: Option<Hold>,
     /// Where the menu of where the call shows opened, while it is open.
     layout_menu: Option<Point<Pixels>>,
+    /// Where the menu of how the other end is heard opened, while open.
+    person_menu: Option<Point<Pixels>>,
     /// The small tiles gliding into their corner: from where they were
     /// let go, and since when.
     glide: Option<(Point<Pixels>, Instant)>,
@@ -110,11 +114,19 @@ impl CallStage {
             arrangement: Arrangement::default(),
             small_count: 0,
             layout_menu: None,
+            person_menu: None,
             glide: None,
             held: None,
             area: Rc::default(),
             tallest: px(f32::MAX),
         }
+    }
+
+    /// Opens the menu of how the other end is heard where `event` was.
+    fn open_person_menu(&mut self, event: &MouseDownEvent, _: &mut Window, cx: &mut Context<Self>) {
+        self.person_menu = Some(event.position);
+        cx.stop_propagation();
+        cx.notify();
     }
 
     /// The person large in the middle, while no picture of theirs shows.
@@ -132,13 +144,30 @@ impl CallStage {
             .justify_center()
             .gap_3()
             .px_6()
-            .child(ringed(
-                "call-stage-speaking",
-                avatar(call.peer.as_str(), &call.title, picture, px(96.0)),
-                96.0,
-                call.speaking,
-                theme,
-            ))
+            .child(
+                div()
+                    .id("call-stage-person")
+                    .on_mouse_down(MouseButton::Right, cx.listener(Self::open_person_menu))
+                    .child(ringed(
+                        "call-stage-speaking",
+                        avatar(call.peer.as_str(), &call.title, picture, px(96.0)),
+                        96.0,
+                        call.speaking,
+                        theme,
+                    )),
+            )
+            .when(call.listening == Listening::Muted, |person| {
+                person.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_1()
+                        .text_size(px(13.0))
+                        .text_color(rgb(theme.alert))
+                        .child(muted_mark(theme))
+                        .child("Muted for you"),
+                )
+            })
             // The main window's bar already says who and how long.
             .when(self.home == Home::Window, |person| {
                 person
@@ -394,6 +423,15 @@ impl Render for CallStage {
             .child(stage)
             .when(!ended, |stage| stage.child(self.arrangement(full, cx)))
             .children(self.layout_menu(layout, cx))
+            .children(self.person_menu.map(|at| {
+                person_menu(
+                    cx,
+                    |stage: &mut Self| &mut stage.person_menu,
+                    &self.desk,
+                    &call,
+                    at,
+                )
+            }))
             .when(main && !full && layout == CallLayout::Docked, |stage| {
                 stage.child(Self::foot(theme, cx))
             })

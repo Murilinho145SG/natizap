@@ -1,7 +1,8 @@
-//! What the user chose for calls: the ringtone, and the microphone, speaker
-//! and camera. Kept in a small text file of `key=value` lines, so it reads
-//! back across versions.
+//! What the user chose for calls: the ringtone, the microphone, speaker
+//! and camera, and how loud each person plays. Kept in a small text file
+//! of `key=value` lines, so it reads back across versions.
 
+use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
@@ -9,12 +10,18 @@ use gpui::{App, AppContext as _};
 use natizap_playback::CallDevices;
 
 use crate::ringtone::Ringtone;
+use crate::volume::Loudness;
+
+/// Where a person's loudness is kept: this, then their address.
+const LOUDNESS: &str = "loudness.";
 
 /// The user's choices for calls.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct Choices {
     pub(crate) ringtone: Ringtone,
     pub(crate) devices: CallDevices,
+    /// How loud people play, by address; as sent for everyone else.
+    pub(crate) loudness: BTreeMap<String, Loudness>,
 }
 
 impl Choices {
@@ -63,7 +70,15 @@ impl Choices {
                 "microphone" => choices.devices.microphone = Some(value.to_owned()),
                 "speaker" => choices.devices.speaker = Some(value.to_owned()),
                 "camera" => choices.devices.camera = Some(value.to_owned()),
-                _ => {}
+                _ => {
+                    if let (Some(person), Ok(percent)) =
+                        (key.strip_prefix(LOUDNESS), value.parse::<u16>())
+                    {
+                        choices
+                            .loudness
+                            .insert(person.to_owned(), Loudness::new(percent));
+                    }
+                }
             }
         }
         choices
@@ -82,6 +97,11 @@ impl Choices {
                 let _ = writeln!(text, "{key}={device}");
             }
         }
+        for (person, loudness) in &self.loudness {
+            if *loudness != Loudness::SENT {
+                let _ = writeln!(text, "{LOUDNESS}{person}={}", loudness.percent());
+            }
+        }
         text
     }
 }
@@ -92,6 +112,7 @@ mod tests {
 
     use super::Choices;
     use crate::ringtone::Ringtone;
+    use crate::volume::Loudness;
 
     #[test]
     fn reads_back_what_it_wrote() {
@@ -102,6 +123,11 @@ mod tests {
                 speaker: None,
                 camera: Some("/dev/video2".into()),
             },
+            loudness: [(
+                "5511999990000@s.whatsapp.net".to_owned(),
+                Loudness::new(150),
+            )]
+            .into(),
         };
         assert_eq!(Choices::parse(&choices.format()), choices);
     }

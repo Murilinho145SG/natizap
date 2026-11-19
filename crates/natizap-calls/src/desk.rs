@@ -17,7 +17,9 @@ use crate::choices::Choices;
 use crate::log::CallLog;
 use crate::quality::{Quality, QualityWatch};
 use crate::ringtone::{Ringing, Ringtone};
+use crate::volume::{Listening, Loudness};
 
+mod hearing;
 mod layout;
 mod lifecycle;
 mod ringing;
@@ -90,6 +92,10 @@ pub struct CallShown {
     pub video: Option<VideoShown>,
     /// The other end asks to turn the call into a video call.
     pub video_requested: bool,
+    /// How loud the other end plays, as the user set them.
+    pub peer_loudness: Loudness,
+    /// Whether the user hears the other end.
+    pub listening: Listening,
     /// How well the connection carries the call, once it is live.
     pub quality: Option<Quality>,
     /// The other end spoke in the last second.
@@ -131,6 +137,8 @@ struct Call {
     phase: Phase,
     reached: Reached,
     muted: bool,
+    /// Whether the user hears the other end.
+    listening: Listening,
     going: Going,
     /// The call's video, once it has some.
     video: Option<CallVideo>,
@@ -198,6 +206,8 @@ pub struct CallDesk {
     preview: Option<Task<()>>,
     /// How the call shows in the main window.
     arrangement: Arrangement,
+    /// Keeps a loudness the user set, once it rests.
+    keeping: Option<Task<()>>,
     _tasks: [Task<()>; 2],
 }
 
@@ -254,6 +264,7 @@ impl CallDesk {
             settings,
             preview: None,
             arrangement: Arrangement::default(),
+            keeping: None,
             _tasks: [hearing, loading],
         }
     }
@@ -332,6 +343,8 @@ impl CallDesk {
                 sharing: video.sharing,
             }),
             video_requested: call.video_request.is_some(),
+            peer_loudness: self.peer_loudness(),
+            listening: call.listening,
             quality: call.judged,
             speaking: call.speaking,
         })
