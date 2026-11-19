@@ -11,6 +11,7 @@ use natizap_ui::theme::{
     ACCENT, ALERT, DEEP, LINE, MINT, MUTED, OUTGOING, PANEL, RAISED, SCRIM, TEXT, glass,
 };
 use natizap_ui::{Button, ButtonSize, ButtonVariant, Icon, avatar};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -23,6 +24,19 @@ use crate::quote::{name_and_phone, quoted};
 use crate::rich_text::{TextFocus, rich_text, selectable};
 use crate::view::{ConversationView, ProfileRequested};
 use crate::voice::VoiceUi;
+
+/// How attachments show in this draw: the voice note playing, and the
+/// downloads under way and how far along each is, by message id.
+pub(crate) struct Attachments {
+    pub(crate) voice: VoiceUi,
+    pub(crate) downloads: HashMap<String, f32>,
+}
+
+impl Attachments {
+    fn progress(&self, media: &MediaView) -> Option<f32> {
+        self.downloads.get(&media.fetch.message_id).copied()
+    }
+}
 use crate::voice_view::render_voice;
 
 /// Size of a group sender's picture beside their messages.
@@ -62,7 +76,7 @@ pub(crate) fn render_item(
     item: &Item,
     view: &WeakEntity<ConversationView>,
     reacting: Option<&SharedString>,
-    voice: &VoiceUi,
+    shown: &Attachments,
     focus: &TextFocus,
     picture: Option<PathBuf>,
     lit: bool,
@@ -89,7 +103,7 @@ pub(crate) fn render_item(
             bubble,
             view,
             reacting.is_some_and(|id| *id == bubble.id),
-            voice,
+            shown,
             focus,
             picture,
             lit,
@@ -101,7 +115,7 @@ fn render_bubble(
     bubble: &Bubble,
     view: &WeakEntity<ConversationView>,
     reacting: bool,
-    voice: &VoiceUi,
+    shown: &Attachments,
     focus: &TextFocus,
     picture: Option<PathBuf>,
     lit: bool,
@@ -140,7 +154,7 @@ fn render_bubble(
         .when(bubble.from_me, Styled::items_end)
         .when(!bubble.from_me, Styled::items_start)
         .child({
-            let shape = shape(bubble, view, voice, focus).max_w_full();
+            let shape = shape(bubble, view, shown, focus).max_w_full();
             if lit {
                 lit_up(&bubble.id, shape)
             } else {
@@ -197,13 +211,9 @@ fn buttons_under(bubble: &Bubble, view: &WeakEntity<ConversationView>) -> Option
     }
 }
 
-fn shape(
-    bubble: &Bubble,
-    view: &WeakEntity<ConversationView>,
-    voice: &VoiceUi,
-    focus: &TextFocus,
-) -> Div {
-    let meta = div()
+/// The bubble's time, with its edited mark, star and ticks.
+fn meta(bubble: &Bubble) -> Div {
+    div()
         .flex()
         .items_center()
         .justify_end()
@@ -225,7 +235,16 @@ fn shape(
         .child(bubble.time.clone())
         .when(bubble.from_me, |meta| {
             meta.child(delivery_mark(bubble.delivery))
-        });
+        })
+}
+
+fn shape(
+    bubble: &Bubble,
+    view: &WeakEntity<ConversationView>,
+    shown: &Attachments,
+    focus: &TextFocus,
+) -> Div {
+    let meta = meta(bubble);
     // A voice note carries no text, so its time and ticks sit inside the
     // player instead of on a line of their own, as on the phone.
     let voice_note = bubble.media.as_ref().filter(|media| {
@@ -235,21 +254,28 @@ fn shape(
         )
     });
     if let Some(media) = voice_note {
-        return padded(bubble, view).child(render_voice(media, voice, meta, view));
+        let downloading = shown.progress(media);
+        return padded(bubble, view).child(render_voice(
+            media,
+            &shown.voice,
+            downloading,
+            meta,
+            view,
+        ));
     }
     if let Some(sticker) = bubble
         .media
         .as_ref()
         .filter(|media| media.fetch.kind == ContentKind::Sticker)
     {
-        return sticker_bubble(bubble, sticker, meta, view);
+        return sticker_bubble(bubble, sticker, meta, view, shown.progress(sticker));
     }
     let picture = bubble
         .media
         .as_ref()
         .filter(|media| matches!(media.fetch.kind, ContentKind::Photo | ContentKind::Video));
     if let Some(media) = picture {
-        return picture_bubble(bubble, media, meta, view, focus);
+        return picture_bubble(bubble, media, meta, view, focus, shown.progress(media));
     }
 
     let body = match &bubble.body {
@@ -289,7 +315,12 @@ fn shape(
     };
 
     padded(bubble, view)
-        .children(bubble.media.as_ref().map(|media| render_media(media, view)))
+        .children(
+            bubble
+                .media
+                .as_ref()
+                .map(|media| render_media(media, view, shown.progress(media))),
+        )
         .children(
             bubble
                 .quote
@@ -322,6 +353,7 @@ fn sticker_bubble(
     media: &MediaView,
     meta: Div,
     view: &WeakEntity<ConversationView>,
+    downloading: Option<f32>,
 ) -> Div {
     div()
         .flex()
@@ -337,16 +369,19 @@ fn sticker_bubble(
                 .map(|quote| jump_to_quoted(quote, view)),
         )
         .child(
-            div().relative().child(render_media(media, view)).child(
-                div()
-                    .absolute()
-                    .bottom(px(4.0))
-                    .right(px(4.0))
-                    .px_1p5()
-                    .rounded_full()
-                    .bg(rgba(SCRIM))
-                    .child(meta.text_color(rgb(TEXT))),
-            ),
+            div()
+                .relative()
+                .child(render_media(media, view, downloading))
+                .child(
+                    div()
+                        .absolute()
+                        .bottom(px(4.0))
+                        .right(px(4.0))
+                        .px_1p5()
+                        .rounded_full()
+                        .bg(rgba(SCRIM))
+                        .child(meta.text_color(rgb(TEXT))),
+                ),
         )
 }
 
@@ -388,6 +423,7 @@ fn picture_bubble(
     meta: Div,
     view: &WeakEntity<ConversationView>,
     focus: &TextFocus,
+    downloading: Option<f32>,
 ) -> Div {
     let caption = match &bubble.body {
         Body::Content {
@@ -395,7 +431,9 @@ fn picture_bubble(
         } => Some(text),
         _ => None,
     };
-    let picture = div().relative().child(render_media(media, view));
+    let picture = div()
+        .relative()
+        .child(render_media(media, view, downloading));
     let (picture, caption) = match caption {
         Some(text) => {
             let (shown, hits) = rich_text(&bubble.id, text, view, focus);

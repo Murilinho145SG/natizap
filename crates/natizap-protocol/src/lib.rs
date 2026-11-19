@@ -39,7 +39,7 @@ pub use content::{Card, Content, ContentKind, Extra, Forwarding, Poll, Quote};
 pub use group::{GroupInfo, Member, Role};
 pub use link::LinkPreview;
 pub use markup::{LinkKind, Mark, Marked};
-pub use media::{HdThumbnail, Media, MediaOrigin};
+pub use media::{HdThumbnail, Media, MediaOrigin, Received};
 pub use outgoing::{Forward, Outgoing, SentMedia};
 pub use own::Me;
 pub use polls::{Account, SealedVote};

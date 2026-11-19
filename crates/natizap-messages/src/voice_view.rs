@@ -30,12 +30,14 @@ type TrackBounds = Rc<Cell<Option<Bounds<Pixels>>>>;
 pub(crate) fn render_voice(
     media: &MediaView,
     ui: &VoiceUi,
+    downloading: Option<f32>,
     footer: impl IntoElement,
     view: &WeakEntity<ConversationView>,
 ) -> Div {
     let id = SharedString::from(media.fetch.message_id.clone());
     let voice = ui.playing.as_ref().filter(|voice| voice.message_id == id);
-    let progress = voice.map_or(0.0, |voice| voice.progress);
+    // While it downloads, the track shows how far the file came.
+    let progress = downloading.unwrap_or_else(|| voice.map_or(0.0, |voice| voice.progress));
     // Time played while this note is the one playing, its length otherwise,
     // as on the phone.
     let downloaded = media.file.is_some();
@@ -50,6 +52,7 @@ pub(crate) fn render_voice(
         }
     };
     let state = match voice {
+        _ if downloading.is_some() => Button::Downloading,
         Some(voice) if voice.loading => Button::Downloading,
         Some(voice) if voice.playing => Button::Pause,
         _ if !downloaded => Button::Download,

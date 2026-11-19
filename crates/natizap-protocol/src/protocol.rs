@@ -20,7 +20,7 @@ use crate::answer::{self, Answer};
 use crate::content::Extra;
 use crate::fanout::Fanout;
 use crate::group::{self, GroupInfo};
-use crate::media::{self, Media, MediaOrigin};
+use crate::media::{self, Media, MediaOrigin, Received};
 use crate::outgoing::{self, Forward, Outgoing, SentMedia};
 use crate::profile::{self, Profile};
 use crate::stickers::{self, Sticker};
@@ -523,6 +523,20 @@ impl Protocol {
     ) -> Task<Result<Vec<u8>, ActionError>> {
         self.connection
             .run(cx, move |client| media::download(client, kind, media))
+    }
+
+    /// Downloads `media` as [`Protocol::download`] does, telling
+    /// `received` how much arrived as it comes, for a progress bar.
+    pub fn download_tracked(
+        &self,
+        kind: ContentKind,
+        media: Media,
+        received: Received,
+        cx: &App,
+    ) -> Task<Result<Vec<u8>, ActionError>> {
+        self.connection.run(cx, move |client| {
+            media::download_tracked(client, kind, media, received)
+        })
     }
 
     /// Tells WhatsApp, and so the user's other devices, that `messages` in

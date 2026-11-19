@@ -1,12 +1,12 @@
 //! Downloading attachments, opening, saving and copying them, and taking
 //! stills of videos.
 
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 
 use gpui::{AppContext as _, ClipboardItem, Context, Image, ImageFormat, Task};
 use natizap_playback::save_poster;
-use natizap_protocol::{ActionError, ContentKind};
+use natizap_protocol::{ActionError, ContentKind, Received};
 
 use super::{Input, MessageLog, SoundReady};
 use crate::media::{Fetch, PosterJob, PosterSource};
@@ -185,7 +185,12 @@ impl MessageLog {
                 Ok((bytes, Some(media.direct_path)))
             })
         } else {
-            let downloading = protocol.download(fetch.kind, fetch.media, cx);
+            let received = Received::default();
+            if let Some(size) = fetch.media.size.filter(|size| *size > 0) {
+                self.receiving
+                    .insert(fetch.message_id.clone(), (received.clone(), size));
+            }
+            let downloading = protocol.download_tracked(fetch.kind, fetch.media, received, cx);
             cx.background_spawn(async move { Ok((downloading.await?, None)) })
         };
         let (message_id, kind) = (fetch.message_id, fetch.kind);
@@ -201,6 +206,7 @@ impl MessageLog {
                 Err(error) => Err(error.to_string()),
             };
             let _ = this.update(cx, |log, cx| {
+                log.receiving.remove(&message_id);
                 if background {
                     log.background.running = log.background.running.saturating_sub(1);
                 }
@@ -241,6 +247,22 @@ impl MessageLog {
             });
         })
         .detach();
+    }
+
+    /// How far along each attachment downloading is, 0 to 1, by message
+    /// id.
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "a file's size is far below f32's exact range"
+    )]
+    pub(crate) fn downloads(&self) -> HashMap<String, f32> {
+        self.receiving
+            .iter()
+            .map(|(id, (received, size))| {
+                let fraction = (received.bytes() as f32 / *size as f32).clamp(0.0, 1.0);
+                (id.clone(), fraction)
+            })
+            .collect()
     }
 
     /// Starts the next attachments waiting, as many as may go at once.

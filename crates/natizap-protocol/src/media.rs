@@ -1,10 +1,12 @@
+use std::io::{Cursor, Seek, SeekFrom, Write};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use whatsapp_rust::download::DownloadParams;
 use whatsapp_rust::features::{MediaRetryResult, MediaReuploadRequest};
 use whatsapp_rust::prelude::{Client, wa};
-use whatsapp_rust::wacore::download::MediaType;
+use whatsapp_rust::wacore::download::{DownloadWriter, MediaType};
 use whatsapp_rust::wacore_binary::JidExt as _;
 
 use crate::actions::jid;
@@ -169,11 +171,8 @@ impl Media {
     }
 }
 
-pub(crate) async fn download(
-    client: Arc<Client>,
-    kind: ContentKind,
-    media: Media,
-) -> Result<Vec<u8>, ActionError> {
+/// What WhatsApp needs to fetch and decrypt `media`.
+fn params(kind: ContentKind, media: Media) -> DownloadParams {
     let media_type = match kind {
         ContentKind::Photo => MediaType::Image,
         ContentKind::Video => MediaType::Video,
@@ -181,18 +180,101 @@ pub(crate) async fn download(
         ContentKind::Sticker => MediaType::Sticker,
         _ => MediaType::Document,
     };
-    let params = DownloadParams::encrypted(
+    DownloadParams::encrypted(
         media.direct_path,
         &media.media_key,
         &media.file_sha256,
         &media.file_enc_sha256,
         media.size.unwrap_or_default(),
         media_type,
-    );
+    )
+}
+
+pub(crate) async fn download(
+    client: Arc<Client>,
+    kind: ContentKind,
+    media: Media,
+) -> Result<Vec<u8>, ActionError> {
     client
-        .download(&params)
+        .download(&params(kind, media))
         .await
         .map_err(|error| ActionError::refused(&error))
+}
+
+/// How much of a download has arrived, read while it goes on.
+#[derive(Debug, Clone, Default)]
+pub struct Received(Arc<AtomicU64>);
+
+impl Received {
+    /// The bytes that arrived so far.
+    #[must_use]
+    pub fn bytes(&self) -> u64 {
+        self.0.load(Ordering::Relaxed)
+    }
+}
+
+/// Downloads `media`, telling `received` how much arrived as it comes.
+pub(crate) async fn download_tracked(
+    client: Arc<Client>,
+    kind: ContentKind,
+    media: Media,
+    received: Received,
+) -> Result<Vec<u8>, ActionError> {
+    let writer = Tracked {
+        bytes: Cursor::new(Vec::new()),
+        received,
+    };
+    client
+        .download_to_writer(&params(kind, media), writer)
+        .await
+        .map(|writer| writer.bytes.into_inner())
+        .map_err(|error| ActionError::refused(&error))
+}
+
+/// A download's bytes, counted as the client writes them.
+struct Tracked {
+    bytes: Cursor<Vec<u8>>,
+    received: Received,
+}
+
+impl Tracked {
+    fn tell(&self) {
+        self.received
+            .0
+            .store(self.bytes.position(), Ordering::Relaxed);
+    }
+}
+
+impl Write for Tracked {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let written = self.bytes.write(buf)?;
+        self.tell();
+        Ok(written)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl Seek for Tracked {
+    fn seek(&mut self, to: SeekFrom) -> std::io::Result<u64> {
+        let at = self.bytes.seek(to)?;
+        self.tell();
+        Ok(at)
+    }
+}
+
+impl DownloadWriter for Tracked {
+    fn truncate(&mut self, len: u64) -> std::io::Result<()> {
+        let len = usize::try_from(len).map_err(std::io::Error::other)?;
+        self.bytes.get_mut().truncate(len);
+        if self.bytes.position() > len as u64 {
+            self.bytes.set_position(len as u64);
+        }
+        self.tell();
+        Ok(())
+    }
 }
 
 /// Downloads `media` after its link expired: the phone that sent `origin`

@@ -6,8 +6,8 @@ use gpui::{
     div, img, px, rgb, rgba, svg,
 };
 use natizap_protocol::ContentKind;
-use natizap_ui::Icon;
 use natizap_ui::theme::{DEEP, MUTED, SCRIM, TEXT};
+use natizap_ui::{Icon, progress};
 
 use crate::items::{MediaView, file_size};
 use crate::view::ConversationView;
@@ -21,7 +21,32 @@ const DOCUMENT_PREVIEW: f32 = 110.0;
 /// with a play button for videos, and a row for documents. Videos play over
 /// the window and documents open in the system's app for them; voice notes
 /// get their own player (`voice_view`).
-pub(crate) fn render_media(media: &MediaView, view: &WeakEntity<ConversationView>) -> AnyElement {
+pub(crate) fn render_media(
+    media: &MediaView,
+    view: &WeakEntity<ConversationView>,
+    downloading: Option<f32>,
+) -> AnyElement {
+    let shown = attachment(media, view);
+    match downloading {
+        // How far the download is, along the attachment's foot.
+        Some(fraction) => div()
+            .relative()
+            .child(shown)
+            .child(
+                div()
+                    .absolute()
+                    .left_0()
+                    .right_0()
+                    .bottom_0()
+                    .p_1p5()
+                    .child(progress(fraction)),
+            )
+            .into_any_element(),
+        None => shown,
+    }
+}
+
+fn attachment(media: &MediaView, view: &WeakEntity<ConversationView>) -> AnyElement {
     match media.fetch.kind {
         ContentKind::Photo => picture(media)
             .id("media")

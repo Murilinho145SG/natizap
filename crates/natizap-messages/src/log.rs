@@ -7,7 +7,7 @@ use gpui::{App, AppContext as _, Context, Entity, EventEmitter, SharedString, Ta
 use natizap_protocol::whatsapp_rust::prelude::Event;
 use natizap_protocol::whatsapp_rust::types::events::EventKind;
 use natizap_protocol::{
-    Anchor, ChatId, ContentKind, Forward, GroupInfo, PersonName, Protocol, Unread,
+    Anchor, ChatId, ContentKind, Forward, GroupInfo, PersonName, Protocol, Received, Unread,
 };
 
 use crate::items::{Item, Members};
@@ -131,6 +131,9 @@ pub struct MessageLog {
     failed: Failed,
     /// Attachments downloaded without being asked for, a few at a time.
     background: Background,
+    /// How much of each attachment downloading arrived, and its size, by
+    /// message id.
+    receiving: HashMap<String, (Received, u64)>,
     pinned: Option<Pinned>,
     group: Option<GroupInfo>,
     /// What people are called, by address.
@@ -237,6 +240,7 @@ impl MessageLog {
             posters: HashSet::new(),
             failed: Failed::default(),
             background: Background::default(),
+            receiving: HashMap::new(),
             pinned: None,
             group: None,
             names: Arc::default(),

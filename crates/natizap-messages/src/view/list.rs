@@ -11,7 +11,7 @@ use natizap_ui::motion::rise_in;
 use natizap_ui::scrollbar;
 
 use super::{ARRIVAL_RISE, CENTERED_WIDTH, ConversationView};
-use crate::bubble::{LIT_FOR, render_item};
+use crate::bubble::{Attachments, LIT_FOR, render_item};
 use crate::items::Item;
 use crate::rich_text::TextFocus;
 
@@ -34,7 +34,14 @@ impl ConversationView {
             .is_some_and(|group| group.community_announcements);
         let view = cx.weak_entity();
         let reacting = self.reacting.clone();
-        let voice = self.voices.ui();
+        let shown = Attachments {
+            voice: self.voices.ui(),
+            downloads: log.downloads(),
+        };
+        // Downloads move on between draws; their bars follow.
+        if !shown.downloads.is_empty() {
+            window.request_animation_frame();
+        }
         let now = Instant::now();
         // The message just gone to, while it is still lit up.
         let flash = self
@@ -97,7 +104,7 @@ impl ConversationView {
                     let lit = matches!(item, Item::Bubble(bubble)
                         if flash.as_ref().is_some_and(|(id, _)| *id == bubble.id));
                     let shown =
-                        render_item(item, &view, reacting.as_ref(), &voice, &focus, picture, lit);
+                        render_item(item, &view, reacting.as_ref(), &shown, &focus, picture, lit);
                     match item {
                         Item::Bubble(bubble) if arrivals.contains(&bubble.id) => rise_in(
                             SharedString::from(format!("arrive-{}", bubble.id)),
