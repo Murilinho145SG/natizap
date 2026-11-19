@@ -1,5 +1,6 @@
 //! What the user chose for calls: the ringtone, the microphone, speaker
-//! and camera, and how loud each person plays. Kept in a small text file
+//! and camera, how loud each person plays, and where the ringing card
+//! sits. Kept in a small text file
 //! of `key=value` lines, so it reads back across versions.
 
 use std::collections::BTreeMap;
@@ -16,12 +17,15 @@ use crate::volume::Loudness;
 const LOUDNESS: &str = "loudness.";
 
 /// The user's choices for calls.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct Choices {
     pub(crate) ringtone: Ringtone,
     pub(crate) devices: CallDevices,
     /// How loud people play, by address; as sent for everyone else.
     pub(crate) loudness: BTreeMap<String, Loudness>,
+    /// Where the user put the ringing card, as fractions of the room it
+    /// has across and down; the middle until they move it.
+    pub(crate) ring_card: Option<(f32, f32)>,
 }
 
 impl Choices {
@@ -70,6 +74,7 @@ impl Choices {
                 "microphone" => choices.devices.microphone = Some(value.to_owned()),
                 "speaker" => choices.devices.speaker = Some(value.to_owned()),
                 "camera" => choices.devices.camera = Some(value.to_owned()),
+                "ring_card" => choices.ring_card = fractions(value),
                 _ => {
                     if let (Some(person), Ok(percent)) =
                         (key.strip_prefix(LOUDNESS), value.parse::<u16>())
@@ -97,6 +102,9 @@ impl Choices {
                 let _ = writeln!(text, "{key}={device}");
             }
         }
+        if let Some((across, down)) = self.ring_card {
+            let _ = writeln!(text, "ring_card={across},{down}");
+        }
         for (person, loudness) in &self.loudness {
             if *loudness != Loudness::SENT {
                 let _ = writeln!(text, "{LOUDNESS}{person}={}", loudness.percent());
@@ -104,6 +112,18 @@ impl Choices {
         }
         text
     }
+}
+
+/// Two fractions, `across,down`, each from 0 to 1.
+fn fractions(value: &str) -> Option<(f32, f32)> {
+    let (across, down) = value.split_once(',')?;
+    let fraction = |text: &str| {
+        text.trim()
+            .parse::<f32>()
+            .ok()
+            .filter(|fraction| (0.0..=1.0).contains(fraction))
+    };
+    Some((fraction(across)?, fraction(down)?))
 }
 
 #[cfg(test)]
@@ -128,6 +148,7 @@ mod tests {
                 Loudness::new(150),
             )]
             .into(),
+            ring_card: Some((0.25, 1.0)),
         };
         assert_eq!(Choices::parse(&choices.format()), choices);
     }

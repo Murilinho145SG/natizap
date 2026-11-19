@@ -73,6 +73,20 @@ impl CallDesk {
         cx.notify();
     }
 
+    /// Where the user put the ringing card, as fractions of the room it
+    /// has across and down: the middle until they move it.
+    #[must_use]
+    pub fn ring_card_place(&self) -> (f32, f32) {
+        self.choices.ring_card.unwrap_or((0.5, 0.5))
+    }
+
+    /// Keeps the ringing card where the user put it, for the next calls
+    /// and the next runs.
+    pub fn set_ring_card_place(&mut self, place: (f32, f32), cx: &mut Context<Self>) {
+        self.choices.ring_card = Some((place.0.clamp(0.0, 1.0), place.1.clamp(0.0, 1.0)));
+        self.choices.write(self.settings.clone(), cx);
+    }
+
     /// The docked call's height.
     #[must_use]
     pub fn docked_height(&self) -> Pixels {

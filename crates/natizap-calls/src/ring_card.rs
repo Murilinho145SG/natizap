@@ -1,7 +1,7 @@
 //! A call ringing here, as a card floating over the main window: who
-//! calls, and the answers. It starts in the
-//! top right corner and goes wherever the user drags it, as on Discord,
-//! staying there for the next calls.
+//! calls, and the answers. It rings in the middle of the window and goes
+//! wherever the user drags it, as on Discord, staying there for the next
+//! calls and runs.
 
 use std::cell::Cell;
 use std::path::PathBuf;
@@ -9,8 +9,8 @@ use std::rc::Rc;
 
 use gpui::prelude::*;
 use gpui::{
-    Bounds, Context, Div, Entity, FontWeight, MouseButton, MouseDownEvent, Pixels, Point,
-    SharedString, Window, div, point, px, rgb, svg,
+    App, Bounds, Context, Div, Entity, FontWeight, MouseButton, MouseDownEvent, Pixels, Point,
+    SharedString, Window, div, point, px, rgb, size, svg,
 };
 use natizap_profiles::ProfilePictures;
 use natizap_protocol::Ring;
@@ -24,17 +24,17 @@ use crate::pointer::{DRAG_SLOP, Held, follower, inside};
 
 /// The card's width.
 const WIDTH: f32 = 300.0;
-/// The gap the card keeps from the window's edges where it starts.
-const MARGIN: f32 = 12.0;
+/// About the card's height, before it is first drawn.
+const FIRST_HEIGHT: f32 = 290.0;
 
 /// The call ringing here, as a card floating over the window. Draws
 /// nothing while nothing rings.
 pub struct RingCard {
     desk: Entity<CallDesk>,
     pictures: Entity<ProfilePictures>,
-    /// Where the user dragged the card: its top left corner in the area
-    /// it floats over. `None` until dragged.
-    place: Option<Point<Pixels>>,
+    /// Where the pointer dragging the card put its top left corner in the
+    /// area it floats over, while it does.
+    dragged: Option<Point<Pixels>>,
     /// The pointer holding the card: where it went down, where in the card
     /// it took hold, and whether it went far enough to be a drag.
     held: Option<(Point<Pixels>, Point<Pixels>, bool)>,
@@ -61,20 +61,27 @@ impl RingCard {
         Self {
             desk,
             pictures,
-            place: None,
+            dragged: None,
             held: None,
             area: Rc::default(),
             card: Rc::default(),
         }
     }
 
-    /// Where the card's top left corner sits in its area: where the user
-    /// put it, else the top right corner.
-    fn place(&self) -> Point<Pixels> {
+    /// Where the card's top left corner sits in its area: where it is
+    /// dragged, else where the user last put it, the middle at first.
+    fn place(&self, cx: &App) -> Point<Pixels> {
         let area = self.area.get();
-        let card = self.card.get().size;
-        let start = point(area.size.width - px(WIDTH + MARGIN), px(MARGIN));
-        inside(self.place.unwrap_or(start), card, area)
+        // Before it was first drawn, about its size: it rings in place.
+        let card = Some(self.card.get().size)
+            .filter(|card| card.width > px(0.0))
+            .unwrap_or(size(px(WIDTH), px(FIRST_HEIGHT)));
+        if let Some(dragged) = self.dragged {
+            return inside(dragged, card, area);
+        }
+        let (across, down) = self.desk.read(cx).ring_card_place();
+        let room = area.size - card;
+        point(room.width * across, room.height * down)
     }
 }
 
@@ -89,12 +96,26 @@ impl Held for RingCard {
         }
         *moved = true;
         let area = self.area.get();
-        self.place = Some(inside(at - *grip - area.origin, self.card.get().size, area));
+        self.dragged = Some(inside(at - *grip - area.origin, self.card.get().size, area));
         cx.notify();
     }
 
     fn released(&mut self, _: bool, cx: &mut Context<Self>) {
         self.held = None;
+        // Kept as fractions of the room the card has, so it stays where
+        // it was put however the window is sized next.
+        if let Some(dragged) = self.dragged.take() {
+            let room = self.area.get().size - self.card.get().size;
+            let fraction = |at: Pixels, room: Pixels| {
+                if room > px(0.0) { at / room } else { 0.5 }
+            };
+            let place = (
+                fraction(dragged.x, room.width),
+                fraction(dragged.y, room.height),
+            );
+            self.desk
+                .update(cx, |desk, cx| desk.set_ring_card_place(place, cx));
+        }
         cx.notify();
     }
 }
@@ -110,7 +131,7 @@ impl Render for RingCard {
         let picture = self
             .pictures
             .update(cx, |pictures, cx| pictures.picture(&ring.caller, cx));
-        let place = self.place();
+        let place = self.place(cx);
         let dragging = self.held.is_some_and(|(_, _, moved)| moved);
         let measure = Rc::clone(&self.card);
         let card = theme
@@ -125,7 +146,7 @@ impl Render for RingCard {
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(|card, event: &MouseDownEvent, _, cx| {
-                    let grip = event.position - card.area.get().origin - card.place();
+                    let grip = event.position - card.area.get().origin - card.place(cx);
                     card.held = Some((event.position, grip, false));
                     cx.notify();
                 }),
@@ -258,7 +279,7 @@ fn kind_line(video: bool, in_call: bool, theme: Theme) -> Div {
 fn answer(
     (id, icon, variant, label): (&'static str, Icon, ButtonVariant, &'static str),
     (pulsing, theme): (bool, Theme),
-    on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut gpui::App) + 'static,
+    on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
 ) -> Div {
     let button = div().child(
         Button::new(id)
