@@ -2,11 +2,11 @@
 //! right corner: who, and the answers.
 
 use gpui::prelude::*;
-use gpui::{Context, Entity, FontWeight, SharedString, Window, div, px, rgb};
+use gpui::{Context, Div, Entity, FontWeight, SharedString, Window, div, px, rgb, svg};
 use natizap_profiles::ProfilePictures;
 use natizap_ui::motion::rise_in;
-use natizap_ui::theme::{ActiveTheme as _, DISPLAY_FONT};
-use natizap_ui::{Button, ButtonVariant, Icon, avatar};
+use natizap_ui::theme::{ActiveTheme as _, DISPLAY_FONT, Theme};
+use natizap_ui::{Button, ButtonSize, ButtonVariant, Icon, avatar};
 
 use crate::desk::CallDesk;
 use crate::look::ringed;
@@ -48,88 +48,132 @@ impl Render for RingCard {
         let picture = self
             .pictures
             .update(cx, |pictures, cx| pictures.picture(&ring.caller, cx));
-        let kind = if ring.video {
-            "Video call"
-        } else {
-            "Voice call"
-        };
+        // Laid out as a phone rings: what it is, who, and the two answers
+        // as round buttons named under them.
+        let decline = answer(
+            (
+                "ring-decline",
+                Icon::CallEnd,
+                ButtonVariant::Danger,
+                "Decline",
+            ),
+            theme,
+            cx.listener(|card, _, _, cx| card.desk.update(cx, CallDesk::decline)),
+        );
+        let take = answer(
+            (
+                "ring-answer",
+                if ring.video { Icon::Video } else { Icon::Call },
+                ButtonVariant::Primary,
+                "Answer",
+            ),
+            theme,
+            cx.listener(|card, _, _, cx| card.desk.update(cx, CallDesk::answer)),
+        );
         div()
             .absolute()
             .top_3()
             .right_3()
-            .w(px(320.0))
+            .w(px(280.0))
             .occlude()
             .child(rise_in(
                 SharedString::from(format!("ring-card-{}", ring.id)),
                 theme
                     .glass(div())
-                    .p_4()
+                    .px_5()
+                    .pt_4()
+                    .pb_5()
                     .flex()
                     .flex_col()
-                    .gap_4()
-                    .rounded_xl()
+                    .items_center()
+                    .rounded_2xl()
                     .bg(rgb(theme.raised))
+                    .child(kind_line(ring.video, theme))
+                    .child(div().pt_5().pb_3().child(ringed(
+                        SharedString::from(format!("ring-pulse-{}", ring.id)),
+                        avatar(ring.caller.as_str(), &title, picture, px(72.0)),
+                        72.0,
+                        true,
+                        theme,
+                    )))
                     .child(
                         div()
-                            .flex()
-                            .items_center()
-                            .gap_3()
-                            .child(ringed(
-                                SharedString::from(format!("ring-pulse-{}", ring.id)),
-                                avatar(ring.caller.as_str(), &title, picture, px(48.0)),
-                                48.0,
-                                true,
-                                theme,
-                            ))
-                            .child(
-                                div()
-                                    .min_w_0()
-                                    .flex()
-                                    .flex_col()
-                                    .child(
-                                        div()
-                                            .truncate()
-                                            .font_family(DISPLAY_FONT)
-                                            .font_weight(FontWeight::SEMIBOLD)
-                                            .text_size(px(17.0))
-                                            .child(title),
-                                    )
-                                    .child(
-                                        div()
-                                            .text_size(px(12.5))
-                                            .text_color(rgb(theme.muted))
-                                            .child(kind),
-                                    ),
-                            ),
+                            .max_w_full()
+                            .truncate()
+                            .font_family(DISPLAY_FONT)
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_size(px(19.0))
+                            .child(title),
                     )
+                    .when(in_call, |card| {
+                        card.child(
+                            div()
+                                .pt_1()
+                                .text_size(px(12.0))
+                                .text_color(rgb(theme.muted))
+                                .child("Answering ends your call"),
+                        )
+                    })
                     .child(
                         div()
+                            .pt_5()
+                            .w_full()
                             .flex()
-                            .gap_2()
-                            .child(
-                                div().flex_1().child(
-                                    Button::new("ring-decline")
-                                        .icon(Icon::CallEnd)
-                                        .label("Decline")
-                                        .variant(ButtonVariant::Danger)
-                                        .on_click(cx.listener(|card, _, _, cx| {
-                                            card.desk.update(cx, CallDesk::decline);
-                                        })),
-                                ),
-                            )
-                            .child(
-                                div().flex_1().child(
-                                    Button::new("ring-answer")
-                                        .icon(if ring.video { Icon::Video } else { Icon::Call })
-                                        .label(if in_call { "End and answer" } else { "Answer" })
-                                        .on_click(cx.listener(|card, _, _, cx| {
-                                            card.desk.update(cx, CallDesk::answer);
-                                        })),
-                                ),
-                            ),
+                            .justify_around()
+                            .child(decline)
+                            .child(take),
                     ),
                 -12.0,
             ))
             .into_any_element()
     }
+}
+
+/// A round answer to the ringing call, named under it.
+fn answer(
+    (id, icon, variant, label): (&'static str, Icon, ButtonVariant, &'static str),
+    theme: Theme,
+    on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut gpui::App) + 'static,
+) -> Div {
+    div()
+        .flex()
+        .flex_col()
+        .items_center()
+        .gap_1p5()
+        .child(
+            Button::new(id)
+                .icon(icon)
+                .variant(variant)
+                .size(ButtonSize::Large)
+                .round()
+                .tooltip(label)
+                .on_click(on_click),
+        )
+        .child(
+            div()
+                .text_size(px(12.0))
+                .text_color(rgb(theme.muted))
+                .child(label),
+        )
+}
+
+/// What rings, above the caller.
+fn kind_line(video: bool, theme: Theme) -> Div {
+    div()
+        .flex()
+        .items_center()
+        .gap_1p5()
+        .text_size(px(12.0))
+        .text_color(rgb(theme.muted))
+        .child(
+            svg()
+                .path(if video { Icon::Video } else { Icon::Call }.path())
+                .size(px(13.0))
+                .text_color(rgb(theme.accent)),
+        )
+        .child(if video {
+            "Incoming video call"
+        } else {
+            "Incoming voice call"
+        })
 }
