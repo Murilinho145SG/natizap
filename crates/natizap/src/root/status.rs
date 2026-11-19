@@ -2,8 +2,6 @@
 //! the viewer over the window, the composer, replies sent to the poster's
 //! chat, and the rings the chat list draws around people with a status.
 
-use std::collections::HashMap;
-
 use gpui::{AppContext as _, Context, Entity, SharedString, Window};
 use natizap_chats::{ChatList, ChatListView, StatusRequested};
 use natizap_messages::MessageLog;
@@ -14,7 +12,7 @@ use natizap_status::{
     StatusOpened, StatusPane, StatusPlayRequested, StatusReply, StatusViewer,
 };
 
-use super::Root;
+use super::{Place, Root};
 
 impl Root {
     /// Keeps the status book told who people are and who sees this
@@ -30,17 +28,7 @@ impl Root {
         let book = status.clone();
         cx.observe(chats, move |_, chats, cx| {
             let chats = chats.read(cx);
-            let titles: HashMap<ChatId, SharedString> = chats
-                .rows()
-                .iter()
-                .chain(chats.archived().iter())
-                .flat_map(|row| {
-                    row.addresses
-                        .iter()
-                        .chain([&row.id])
-                        .map(|address| (address.clone(), row.title.clone()))
-                })
-                .collect();
+            let titles = chats.titles();
             // "My contacts": the people saved in the address book, by their
             // phone numbers, which status updates are sent to.
             let audience: Vec<ChatId> = chats
@@ -93,7 +81,7 @@ impl Root {
             self.status_pane = Some(pane);
         }
         self.own_shown = false;
-        self.status_shown = true;
+        self.place = Place::Status;
         cx.notify();
     }
 

@@ -7,7 +7,7 @@ use natizap_contacts::{OwnProfile, OwnProfileClosed};
 use natizap_notifications::{NotificationSettings, SettingsClosed};
 use natizap_ui::{Button, ButtonVariant, Icon, RAIL_AVATAR, Rail, avatar, rail_avatar};
 
-use super::Root;
+use super::{Place, Root};
 
 impl Root {
     /// The rail, Chats lit unless your profile shows.
@@ -21,11 +21,11 @@ impl Root {
                     .icon(Icon::Chats)
                     .variant(ButtonVariant::Ghost)
                     .round()
-                    .selected(!on_profile && !self.status_shown)
+                    .selected(!on_profile && self.place == Place::Chats)
                     .tooltip("Chats")
                     .on_click(cx.listener(|root, _, _, cx| {
                         root.close_own_profile(cx);
-                        root.status_shown = false;
+                        root.place = Place::Chats;
                         cx.notify();
                     })),
             )
@@ -34,7 +34,7 @@ impl Root {
                     .icon(Icon::Status)
                     .variant(ButtonVariant::Ghost)
                     .round()
-                    .selected(self.status_shown && !on_profile)
+                    .selected(self.place == Place::Status && !on_profile)
                     .tooltip(if unseen_status {
                         "Status · new updates"
                     } else {
@@ -42,6 +42,17 @@ impl Root {
                     })
                     .on_click(cx.listener(|root, _, window, cx| {
                         root.show_status_place(window, cx);
+                    })),
+            )
+            .top(
+                Button::new("rail-calls")
+                    .icon(Icon::Call)
+                    .variant(ButtonVariant::Ghost)
+                    .round()
+                    .selected(self.place == Place::Calls && !on_profile)
+                    .tooltip("Calls")
+                    .on_click(cx.listener(|root, _, window, cx| {
+                        root.show_calls_place(window, cx);
                     })),
             )
             .bottom(

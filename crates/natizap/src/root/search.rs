@@ -2,12 +2,9 @@
 //! messages' search, its results show under the chats, and a result opens
 //! its message.
 
-use std::collections::HashMap;
-
-use gpui::{AppContext as _, Context, Entity, SharedString};
+use gpui::{AppContext as _, Context, Entity};
 use natizap_chats::{ChatList, ChatListView, QueryChanged};
 use natizap_messages::{ConversationView, MessageLog, MessageSearch, SearchHitOpened};
-use natizap_protocol::ChatId;
 
 use super::Root;
 
@@ -34,18 +31,7 @@ impl Root {
 
         let naming = search.clone();
         cx.observe(chats, move |_, chats, cx| {
-            let chats = chats.read(cx);
-            let titles: HashMap<ChatId, SharedString> = chats
-                .rows()
-                .iter()
-                .chain(chats.archived().iter())
-                .flat_map(|row| {
-                    row.addresses
-                        .iter()
-                        .chain([&row.id])
-                        .map(|address| (address.clone(), row.title.clone()))
-                })
-                .collect();
+            let titles = chats.read(cx).titles();
             naming.update(cx, |search, cx| search.set_titles(titles, cx));
         })
         .detach();

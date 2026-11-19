@@ -6,6 +6,7 @@ use gpui::{
     AnyElement, Context, Div, Entity, FontWeight, MouseButton, NavigationDirection, Pixels,
     SharedString, Window, div, px, rgb,
 };
+use natizap_calls::{CallLog, CallsPane};
 use natizap_chats::{
     ChatList, ChatListView, ChatPicker, ChatRow, ChatSelected, ChatsPicked, PickerDismissed,
 };
@@ -29,6 +30,7 @@ use natizap_update::Updater;
 use crate::history::History;
 use opening::Opening;
 
+mod calls;
 mod notify;
 mod opening;
 mod profiles;
@@ -56,6 +58,15 @@ pub(crate) struct Features {
     pub(crate) stickers: Entity<StickerShelf>,
     pub(crate) updater: Entity<Updater>,
     pub(crate) status: Entity<StatusBook>,
+    pub(crate) calls: Entity<CallLog>,
+}
+
+/// What the side column shows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Place {
+    Chats,
+    Status,
+    Calls,
 }
 
 /// The main window's content: the pairing screen until this device is linked,
@@ -85,8 +96,11 @@ pub(crate) struct Root {
     status: Entity<StatusBook>,
     /// The Status place, once opened.
     status_pane: Option<Entity<StatusPane>>,
-    /// Whether the Status place shows in place of the chat list.
-    status_shown: bool,
+    /// What the side column shows, under your profile when it is open.
+    place: Place,
+    calls: Entity<CallLog>,
+    /// The Calls place, once opened.
+    calls_pane: Option<Entity<CallsPane>>,
     /// A status playing over the window.
     status_viewer: Option<Entity<StatusViewer>>,
     /// Posting a status.
@@ -110,6 +124,7 @@ impl Root {
             stickers,
             updater,
             status,
+            calls,
         } = features;
         let (messages, pictures) = (&messages, &pictures);
         cx.observe(&chats, |_, _, cx| cx.notify()).detach();
@@ -163,6 +178,7 @@ impl Root {
         Self::share_stickers(&stickers, &conversation, messages, cx);
         Self::search_messages(&chat_list, &chats, messages, &conversation, cx);
         Self::follow_status(&status, &chats, &chat_list, window, cx);
+        Self::follow_calls(&calls, &chats, cx);
 
         Self {
             session,
@@ -181,7 +197,9 @@ impl Root {
             own_shown: false,
             status,
             status_pane: None,
-            status_shown: false,
+            place: Place::Chats,
+            calls,
+            calls_pane: None,
             status_viewer: None,
             status_composer: None,
             notifier,
@@ -394,7 +412,7 @@ impl Root {
             || self.status_viewer.take().is_some()
             || self.status_composer.take().is_some()
             || self.close_own_profile(cx)
-            || std::mem::take(&mut self.status_shown)
+            || std::mem::replace(&mut self.place, Place::Chats) != Place::Chats
             || self.profile.take().is_some()
         {
             cx.notify();
@@ -457,9 +475,10 @@ impl Root {
                                 div().size_full().child(profile),
                                 -24.0,
                             )),
-                            None => match self.status_pane.clone().filter(|_| self.status_shown) {
-                                Some(status) => pane.child(status),
-                                None => pane.child(self.chat_list.clone()),
+                            None => match (self.place, &self.status_pane, &self.calls_pane) {
+                                (Place::Status, Some(status), _) => pane.child(status.clone()),
+                                (Place::Calls, _, Some(calls)) => pane.child(calls.clone()),
+                                _ => pane.child(self.chat_list.clone()),
                             },
                         },
                     ),

@@ -67,7 +67,8 @@ share. Local data lives in the platform's per-user data directory, one
 file per owner (`session.db` for protocol keys, `chats.db` for the chat
 list, `messages.db` for messages, `notifications.conf` for notification
 settings, `stickers.db` for favorite stickers, `status.db` for the last
-day's status updates and `media/status/` for their files, `media/` for downloaded
+day's status updates and `media/status/` for their files, `calls.db` for
+the call history, `media/` for downloaded
 attachments, `media/thumbs/` for the small copies media grids draw,
 `media/stickers/` for favorite stickers' files and `updates/` for
 downloaded update packages).
@@ -109,7 +110,8 @@ window, whose `StatusPlayRequested` the binary answers with a `PlayerView`
 and whose `StatusReply` it sends through `MessageLog` in the poster's chat.
 The binary tells the `StatusBook` who people are and who the account's
 contacts are, and the chat list who has a status
-(`ChatListView::set_status_rings`). The binary hands the conversation the stickers'
+(`ChatListView::set_status_rings`). Its Calls button shows the calls'
+`CallsPane`, whose `CallChatRequested` opens that chat. The binary hands the conversation the stickers'
 `StickerPicker` to show from its composer, sends what it emits as
 `StickerPicked` through `MessageLog::send_sticker`, tells the conversation
 which stickers are favorites, and passes its `StickerFavoriteToggled` to
@@ -161,6 +163,7 @@ organizing rule of the codebase.
 | `natizap-status`   | feature | Status updates: the list, the viewer, replies and posting. |
 | `natizap-stickers` | feature | Favorite stickers synced with the phone, and their picker. |
 | `natizap-protocol` | shared  | Owns the WhatsApp client; fans its events out to features. |
+| `natizap-calls`    | feature | The call history, missed and answered, and its place.     |
 | `natizap-chats`    | feature | Chat list synced from WhatsApp, cached in SQLite, and its view. |
 | `natizap-contacts` | feature | Profiles of people and businesses, and your own, editable. |
 | `natizap-messages` | feature | Message store, the open conversation and sending.         |

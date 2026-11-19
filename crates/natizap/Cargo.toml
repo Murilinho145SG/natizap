@@ -14,6 +14,7 @@ dirs.workspace = true
 gpui.workspace = true
 gpui_platform.workspace = true
 gpui_tokio.workspace = true
+natizap-calls.workspace = true
 natizap-chats.workspace = true
 natizap-contacts.workspace = true
 natizap-messages.workspace = true

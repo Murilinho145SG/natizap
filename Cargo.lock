@@ -3762,6 +3762,7 @@ dependencies = [
  "gpui",
  "gpui_platform",
  "gpui_tokio",
+ "natizap-calls",
  "natizap-chats",
  "natizap-contacts",
  "natizap-messages",
@@ -3777,6 +3778,20 @@ dependencies = [
  "natizap-update",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "natizap-calls"
+version = "0.1.0"
+dependencies = [
+ "async-channel",
+ "chrono",
+ "gpui",
+ "natizap-profiles",
+ "natizap-protocol",
+ "natizap-ui",
+ "rusqlite",
+ "tracing",
 ]
 
 [[package]]

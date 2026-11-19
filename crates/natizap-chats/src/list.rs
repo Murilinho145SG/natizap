@@ -202,6 +202,22 @@ impl ChatList {
         &self.snapshot.rows
     }
 
+    /// What every chat is called, archived ones included, by every address
+    /// it goes by.
+    #[must_use]
+    pub fn titles(&self) -> HashMap<ChatId, SharedString> {
+        self.rows()
+            .iter()
+            .chain(self.archived().iter())
+            .flat_map(|row| {
+                row.addresses
+                    .iter()
+                    .chain([&row.id])
+                    .map(|address| (address.clone(), row.title.clone()))
+            })
+            .collect()
+    }
+
     /// Everyone's names, by each address they are known under, people
     /// without a chat included. The same `Arc` until a name changes.
     #[must_use]

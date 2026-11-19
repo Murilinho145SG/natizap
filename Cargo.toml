@@ -74,6 +74,7 @@ unicode-segmentation = "1"
 ureq = { version = "3", default-features = false, features = ["rustls"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
+natizap-calls = { path = "crates/natizap-calls" }
 natizap-chats = { path = "crates/natizap-chats" }
 natizap-contacts = { path = "crates/natizap-contacts" }
 natizap-messages = { path = "crates/natizap-messages" }

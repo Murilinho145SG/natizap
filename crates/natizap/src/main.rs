@@ -16,6 +16,7 @@ use gpui::{
     App, AppContext as _, Bounds, KeyBinding, Pixels, Size, TitlebarOptions,
     WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowOptions, actions, px, size,
 };
+use natizap_calls::CallLog;
 use natizap_chats::ChatList;
 use natizap_messages::MessageLog;
 use natizap_notifications::Notifier;
@@ -174,6 +175,7 @@ fn features(data_dir: &Path, executable: &Path, cx: &mut App) -> Features {
             cx,
         )
     });
+    let calls = cx.new(|cx| CallLog::new(&protocol, data_dir.join("calls.db"), cx));
     Features {
         session,
         chats,
@@ -184,6 +186,7 @@ fn features(data_dir: &Path, executable: &Path, cx: &mut App) -> Features {
         stickers,
         updater,
         status,
+        calls,
     }
 }
 
