@@ -17,6 +17,10 @@ use crate::theme::ActiveTheme as _;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ColorPicked(pub u32);
 
+/// The user pressed outside the picker: it should close.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ColorPickerDismissed;
+
 const WIDTH: f32 = 232.0;
 const SQUARE_HEIGHT: f32 = 140.0;
 const BAR_HEIGHT: f32 = 12.0;
@@ -55,6 +59,7 @@ impl std::fmt::Debug for ColorPicker {
 }
 
 impl EventEmitter<ColorPicked> for ColorPicker {}
+impl EventEmitter<ColorPickerDismissed> for ColorPicker {}
 
 impl ColorPicker {
     /// Starts on `color`: `0xRRGGBBAA` when `see_through`, else `0xRRGGBB`.
@@ -234,11 +239,35 @@ impl Render for ColorPicker {
             .child(square)
             .child(hue)
             .children(alpha)
+            .on_mouse_down_out(cx.listener(|_, _, _, cx| cx.emit(ColorPickerDismissed)))
+            .child(self.picked(theme))
+    }
+}
+
+impl ColorPicker {
+    /// The colour picked, ringed so a dark one still shows, and its hex.
+    fn picked(&self, theme: crate::theme::Theme) -> gpui::Div {
+        let (fill, hex) = match self.alpha {
+            Some(_) => (self.color(), format!("#{:08x}", self.color())),
+            None => ((self.color() << 8) | 0xff, format!("#{:06x}", self.color())),
+        };
+        div()
+            .flex()
+            .items_center()
+            .gap_2()
             .child(
-                div().h(px(18.0)).rounded_md().bg(rgba(
-                    self.alpha
-                        .map_or((self.color() << 8) | 0xff, |_| self.color()),
-                )),
+                div()
+                    .size(px(18.0))
+                    .rounded_full()
+                    .border_1()
+                    .border_color(rgb(theme.muted))
+                    .bg(rgba(fill)),
+            )
+            .child(
+                div()
+                    .text_size(px(12.5))
+                    .text_color(rgb(theme.muted))
+                    .child(hex),
             )
     }
 }

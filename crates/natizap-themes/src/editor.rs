@@ -1,10 +1,17 @@
 //! Making a theme: a name, then each colour as a swatch and its hex, shown
 //! live on the whole app while it is edited.
 
+use std::time::{Duration, Instant};
+
 use gpui::prelude::*;
-use gpui::{Context, Entity, FontWeight, SharedString, Window, div, px, rgb, rgba};
+use gpui::{
+    Anchor, Context, Entity, FontWeight, SharedString, Window, anchored, deferred, div, px, rgb,
+    rgba,
+};
 use natizap_ui::theme::Theme;
-use natizap_ui::{Button, ButtonVariant, ColorPicked, ColorPicker, TextInput};
+use natizap_ui::{
+    Button, ButtonVariant, ColorPicked, ColorPicker, ColorPickerDismissed, TextInput,
+};
 
 use crate::book::ThemeBook;
 use crate::settings::ThemeSettings;
@@ -22,6 +29,8 @@ pub(crate) struct Draft {
     fields: Vec<(Token, Entity<TextInput>)>,
     /// The colour whose picker is open, by key, and the picker.
     picking: Option<(&'static str, Entity<ColorPicker>)>,
+    /// The colour whose picker a press outside just closed, and when.
+    dismissed: Option<(&'static str, Instant)>,
 }
 
 impl Draft {
@@ -51,6 +60,7 @@ impl Draft {
             name,
             fields,
             picking: None,
+            dismissed: None,
         }
     }
 
@@ -62,7 +72,13 @@ impl Draft {
         window: &mut Window,
         cx: &mut Context<ThemeSettings>,
     ) {
-        if self.picking.as_ref().is_some_and(|(open, _)| *open == key) {
+        // A press on the swatch closes its picker as a press outside it
+        // before the click comes: the click must not open it again.
+        let just_closed = self
+            .dismissed
+            .take()
+            .is_some_and(|(closed, at)| closed == key && at.elapsed() < Duration::from_millis(400));
+        if just_closed || self.picking.as_ref().is_some_and(|(open, _)| *open == key) {
             self.picking = None;
             return;
         }
@@ -82,6 +98,14 @@ impl Draft {
                 });
             },
         )
+        .detach();
+        cx.subscribe(&picker, move |this, _, _: &ColorPickerDismissed, cx| {
+            if let Some(draft) = &mut this.draft {
+                draft.picking = None;
+                draft.dismissed = Some((key, Instant::now()));
+                cx.notify();
+            }
+        })
         .detach();
         self.picking = Some((key, picker));
     }
@@ -158,32 +182,34 @@ impl Draft {
                             .as_ref()
                             .filter(|(open, _)| *open == token.key)
                             .map(|(_, picker)| picker.clone());
-                        Some(
-                            div()
-                                .flex()
-                                .flex_col()
-                                .gap_2()
-                                .child(row(
-                                    token.label,
-                                    Some((token.key, swatch)),
-                                    input.clone(),
-                                    theme,
-                                    cx,
-                                ))
-                                .children(
-                                    picker.map(|picker| div().flex().justify_end().child(picker)),
-                                ),
-                        )
+                        Some(row(
+                            token.label,
+                            Some(Swatch {
+                                key: token.key,
+                                color: swatch,
+                                picker,
+                            }),
+                            input.clone(),
+                            theme,
+                            cx,
+                        ))
                     }))
             }))
     }
 }
 
+/// The colour beside a field, and its picker while open.
+struct Swatch {
+    key: &'static str,
+    color: u32,
+    picker: Option<Entity<ColorPicker>>,
+}
+
 /// A labelled field, with the colour it holds beside it; clicking the
-/// colour opens its picker.
+/// colour opens its picker, floating beside it over the settings.
 fn row(
     label: &'static str,
-    swatch: Option<(&'static str, u32)>,
+    swatch: Option<Swatch>,
     input: Entity<TextInput>,
     theme: Theme,
     cx: &mut Context<ThemeSettings>,
@@ -193,9 +219,10 @@ fn row(
         .items_center()
         .gap_3()
         .child(div().flex_1().min_w_0().text_size(px(13.0)).child(label))
-        .children(swatch.map(|(key, color)| {
+        .children(swatch.map(|Swatch { key, color, picker }| {
             div()
                 .id(SharedString::from(format!("swatch-{key}")))
+                .relative()
                 .size(px(22.0))
                 .flex_none()
                 .rounded_md()
@@ -209,6 +236,16 @@ fn row(
                         draft.toggle_picker(key, window, cx);
                         cx.notify();
                     }
+                }))
+                .children(picker.map(|picker| {
+                    // Over the settings window, which sits at priority 2.
+                    deferred(
+                        anchored()
+                            .anchor(Anchor::TopRight)
+                            .snap_to_window_with_margin(px(8.0))
+                            .child(div().mt(px(28.0)).child(picker)),
+                    )
+                    .with_priority(3)
                 }))
         }))
         .child(
