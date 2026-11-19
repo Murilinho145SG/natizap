@@ -129,6 +129,7 @@ impl Root {
         let (messages, pictures) = (&messages, &pictures);
         cx.observe(&chats, |_, _, cx| cx.notify()).detach();
         let pairing = cx.new(|cx| PairingView::new(session.clone(), cx));
+        cx.observe(pictures, |_, _, cx| cx.notify()).detach();
         let chat_list = cx.new(|cx| ChatListView::new(chats.clone(), pictures.clone(), cx));
         let syncing_list = chat_list.clone();
         cx.observe(&session, move |_, session, cx| {
