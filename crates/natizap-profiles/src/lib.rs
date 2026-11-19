@@ -39,6 +39,10 @@ pub struct ProfilePictures {
     known: HashMap<ChatId, Known>,
     queue: VecDeque<ChatId>,
     fetching: bool,
+    /// Whether the pictures on disk are known yet. Until then nothing is
+    /// fetched, or every chat on the first screen would be asked of
+    /// WhatsApp again although its picture is on disk.
+    scanned: bool,
     _tasks: [Task<()>; 2],
 }
 
@@ -54,6 +58,8 @@ impl ProfilePictures {
                 for (chat, path) in found {
                     pictures.known.entry(chat).or_insert(Known::Picture(path));
                 }
+                pictures.scanned = true;
+                // Views ask again, and only what is not on disk is fetched.
                 cx.notify();
             });
         });
@@ -78,6 +84,7 @@ impl ProfilePictures {
             known: HashMap::new(),
             queue: VecDeque::new(),
             fetching: false,
+            scanned: false,
             _tasks: [scan, follow],
         }
     }
@@ -89,6 +96,7 @@ impl ProfilePictures {
         match self.known.get(chat) {
             Some(Known::Picture(path)) => Some(path.clone()),
             Some(Known::Missing | Known::Pending) => None,
+            None if !self.scanned => None,
             None => {
                 self.known.insert(chat.clone(), Known::Pending);
                 self.queue.push_back(chat.clone());
