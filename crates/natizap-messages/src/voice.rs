@@ -6,6 +6,8 @@ use std::time::Duration;
 use gpui::SharedString;
 use natizap_playback::{Playback, Speed};
 
+pub(crate) mod blip;
+
 /// What a bubble shows about the note playing in it.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct VoiceState {
@@ -122,6 +124,17 @@ impl Voices {
         if let Some(total) = playback.status().duration {
             playback.seek(total.mul_f32(fraction.clamp(0.0, 1.0)));
         }
+    }
+
+    /// The note that just played to its end, if one did, which stops
+    /// here; one that failed to play does not count.
+    pub(crate) fn finished(&mut self) -> Option<SharedString> {
+        let current = self.current.as_ref()?;
+        let status = current.playback.as_ref()?.status();
+        if !status.ended || status.error.is_some() {
+            return None;
+        }
+        self.current.take().map(|current| current.message_id)
     }
 
     /// Stops playing, e.g. when another chat opens.
