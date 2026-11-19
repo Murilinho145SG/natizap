@@ -1,7 +1,7 @@
 //! The sounds of a call ringing, drawn in code so no recording has to be
 //! bundled or licensed: the ringtone of a call coming in, one of a few to
 //! choose from, and the ringback the caller hears while the other phone
-//! rings, two soft knocks of the same electric piano. Each imitates a real instrument instead of a bare tone: modal
+//! rings, the telephone's own "tuuu… tuuu…". Each imitates a real instrument instead of a bare tone: modal
 //! partials for the kalimba, a plucked string for the guitar, FM for the
 //! electric piano, all through a small room.
 
@@ -74,7 +74,7 @@ impl Ringing {
         Duration::from_millis(match self {
             Self::Incoming(Ringtone::Kalimba) => 3_200,
             Self::Incoming(Ringtone::Guitar | Ringtone::Piano) => 3_600,
-            Self::Ringback => 4_000,
+            Self::Ringback => 5_000,
         })
     }
 
@@ -126,16 +126,17 @@ impl Ringing {
                 room(&mut sound, 0.25);
             }
             // 425 Hz, the ringback tone of most of the world, for a second.
-            // Two soft knocks of a low third on the electric piano: a ring
-            // heard through the line, quieter than any ringtone.
+            // The telephone's own ringback: 425 Hz for a second, then four
+            // of quiet, as phones in Brazil and most of the world ring.
+            // Soft edges keep it from clicking; a faint octave warms it.
             Self::Ringback => {
-                for at in [0.0, 0.42] {
-                    for key in [57, 61] {
-                        mix(&mut sound, at, &electric_piano(pitch(key), 0.45, 1.8));
-                    }
+                for (index, sample) in sound.iter_mut().take(seconds(1.0)).enumerate() {
+                    let at = time(index);
+                    let edges = (at / 0.03).min(1.0) * ((1.0 - at) / 0.03).min(1.0);
+                    let tone = (TAU * 425.0 * at).sin() + 0.15 * (TAU * 850.0 * at).sin();
+                    *sample = tone * edges;
                 }
-                room(&mut sound, 0.18);
-                return scaled(sound, 0.24);
+                return scaled(sound, 0.22);
             }
         }
         scaled(sound, PEAK)
