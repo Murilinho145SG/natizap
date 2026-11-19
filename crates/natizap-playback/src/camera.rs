@@ -16,6 +16,7 @@ use ffmpeg_next as ffmpeg;
 
 use crate::Picture;
 use crate::decode::{fit, packed_rows};
+use crate::devices::default_camera;
 use crate::feed::{FeedWriter, VideoFeed, feed};
 use crate::h264::{FRAME_RATE, H264Encoder};
 use crate::remote_video::VideoError;
@@ -50,14 +51,17 @@ impl Camera {
     /// # Errors
     ///
     /// Fails when there is no camera or it will not open.
-    pub fn start() -> Result<(Self, async_channel::Receiver<Vec<u8>>), VideoError> {
-        Self::open(device())
+    pub fn start(
+        device: Option<&str>,
+    ) -> Result<(Self, async_channel::Receiver<Vec<u8>>), VideoError> {
+        let path = device.unwrap_or_else(|| default_camera()).to_owned();
+        Self::open((input_format(), path))
     }
 
     /// Opens the device `input` names: an FFmpeg input format and what
     /// it opens.
     fn open(
-        input: (&'static str, &'static str),
+        input: (&'static str, String),
     ) -> Result<(Self, async_channel::Receiver<Vec<u8>>), VideoError> {
         let (units, received) = async_channel::bounded(BACKLOG);
         let (writer, preview) = feed();
@@ -106,14 +110,14 @@ impl Camera {
     }
 }
 
-/// The platform's camera input and the device it names.
-fn device() -> (&'static str, &'static str) {
+/// The platform's camera input in FFmpeg.
+fn input_format() -> &'static str {
     if cfg!(target_os = "macos") {
-        ("avfoundation", "0")
+        "avfoundation"
     } else if cfg!(target_os = "windows") {
-        ("dshow", "video=0")
+        "dshow"
     } else {
-        ("v4l2", "/dev/video0")
+        "v4l2"
     }
 }
 
@@ -125,7 +129,7 @@ struct Capture {
 }
 
 impl Capture {
-    fn open((name, path): (&str, &str)) -> Result<Self, VideoError> {
+    fn open((name, path): (&str, String)) -> Result<Self, VideoError> {
         let failed = |error: ffmpeg::Error| VideoError::Camera(error.to_string());
         ffmpeg::init().map_err(failed)?;
         ffmpeg::device::register_all();
@@ -137,7 +141,7 @@ impl Capture {
         let mut options = Dictionary::new();
         options.set("framerate", &FRAME_RATE.to_string());
         options.set("video_size", "640x480");
-        let input = ffmpeg::format::open_with(path, &format, options)
+        let input = ffmpeg::format::open_with(&path, &format, options)
             .map_err(failed)?
             .input();
         let stream = input
@@ -282,10 +286,11 @@ mod tests {
     #[test]
     fn a_camera_sends_keyframe_first_and_shows_the_user_themselves() {
         // FFmpeg's own test picture, where a test machine has no camera.
-        let (camera, units) = match Camera::open(("lavfi", "testsrc=size=640x480:rate=15")) {
-            Ok(opened) => opened,
-            Err(error) => panic!("{error}"),
-        };
+        let (camera, units) =
+            match Camera::open(("lavfi", "testsrc=size=640x480:rate=15".to_owned())) {
+                Ok(opened) => opened,
+                Err(error) => panic!("{error}"),
+            };
         let first = units.recv_blocking().unwrap_or_default();
         // An IDR's NAL type, 5, after SPS (7) and PPS (8).
         let types: Vec<u8> = first

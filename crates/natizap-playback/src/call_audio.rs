@@ -9,10 +9,11 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use cpal::traits::{DeviceTrait as _, HostTrait as _, StreamTrait as _};
+use cpal::traits::{DeviceTrait as _, StreamTrait as _};
 use cpal::{Stream, StreamConfig};
 
 use crate::audio::closest_f32;
+use crate::devices::{self, CallDevices};
 use crate::opus::OpusDecoder;
 use crate::resample::Resampler;
 use crate::voice_processing::VoiceProcessing;
@@ -95,6 +96,12 @@ impl Meter {
 pub struct CallAudio {
     _microphone: Stream,
     _speaker: Stream,
+    format: CallFormat,
+    /// The call's ends of the sound, kept to switch devices without the
+    /// call noticing.
+    heard: async_channel::Sender<Vec<i16>>,
+    said: async_channel::Receiver<Vec<i16>>,
+    voice: VoiceProcessing,
     meter: Arc<Meter>,
 }
 
@@ -121,26 +128,28 @@ impl std::fmt::Debug for CallAudio {
 }
 
 impl CallAudio {
-    /// Opens the default microphone and speaker for a call in `format`.
+    /// Opens `devices`' microphone and speaker, the system's own where
+    /// none is chosen or the chosen one is gone, for a call in `format`.
     ///
     /// # Errors
     ///
     /// Fails when either device is missing or refuses to open.
-    pub fn open(format: CallFormat) -> Result<(Self, CallPorts), CallAudioError> {
-        let host = cpal::default_host();
+    pub fn open(
+        format: CallFormat,
+        devices: &CallDevices,
+    ) -> Result<(Self, CallPorts), CallAudioError> {
         let (heard, microphone) = async_channel::bounded(MICROPHONE_BACKLOG);
         let (speaker, said) = async_channel::bounded(SPEAKER_BACKLOG);
-        let input = host
-            .default_input_device()
-            .ok_or(CallAudioError::NoMicrophone)?;
-        let output = host
-            .default_output_device()
-            .ok_or(CallAudioError::NoSpeaker)?;
         let meter = Arc::new(Meter::default());
         let voice = VoiceProcessing::new(format.rate);
+        let (input, output) = streams(format, devices, &heard, &said, &voice, &meter)?;
         let calls = Self {
-            _microphone: listen(&input, format, heard, voice.clone(), Arc::clone(&meter))?,
-            _speaker: play(&output, format, said, voice, Arc::clone(&meter))?,
+            _microphone: input,
+            _speaker: output,
+            format,
+            heard,
+            said,
+            voice,
             meter: Arc::clone(&meter),
         };
         let (opus, packets) = async_channel::bounded(SPEAKER_BACKLOG);
@@ -160,6 +169,63 @@ impl CallAudio {
             },
         ))
     }
+}
+
+impl CallAudio {
+    /// Moves the call to `devices`' microphone and speaker; the call goes on
+    /// as it was.
+    ///
+    /// # Errors
+    ///
+    /// Fails when either device is missing or refuses to open; the devices
+    /// in use stay then.
+    #[expect(
+        clippy::used_underscore_binding,
+        reason = "the streams are held only to keep the devices open"
+    )]
+    pub fn switch(&mut self, devices: &CallDevices) -> Result<(), CallAudioError> {
+        let (input, output) = streams(
+            self.format,
+            devices,
+            &self.heard,
+            &self.said,
+            &self.voice,
+            &self.meter,
+        )?;
+        self._microphone = input;
+        self._speaker = output;
+        Ok(())
+    }
+}
+
+/// The microphone's and the speaker's streams for `devices`.
+fn streams(
+    format: CallFormat,
+    devices: &CallDevices,
+    heard: &async_channel::Sender<Vec<i16>>,
+    said: &async_channel::Receiver<Vec<i16>>,
+    voice: &VoiceProcessing,
+    meter: &Arc<Meter>,
+) -> Result<(Stream, Stream), CallAudioError> {
+    let input =
+        devices::microphone(devices.microphone.as_deref()).ok_or(CallAudioError::NoMicrophone)?;
+    let output = devices::speaker(devices.speaker.as_deref()).ok_or(CallAudioError::NoSpeaker)?;
+    Ok((
+        listen(
+            &input,
+            format,
+            heard.clone(),
+            voice.clone(),
+            Arc::clone(meter),
+        )?,
+        play(
+            &output,
+            format,
+            said.clone(),
+            voice.clone(),
+            Arc::clone(meter),
+        )?,
+    ))
 }
 
 fn listen(

@@ -51,7 +51,7 @@ impl CallDesk {
     /// phone rings; is quiet otherwise.
     pub(super) fn update_ringer(&mut self, cx: &Context<Self>) {
         let wanted = match self.call.as_ref().map(|call| &call.phase) {
-            None if !self.rings.is_empty() => Some(Ringing::Incoming(self.ringtone)),
+            None if !self.rings.is_empty() => Some(Ringing::Incoming(self.choices.ringtone)),
             Some(Phase::Ringing) => Some(Ringing::Ringback),
             _ => None,
         };

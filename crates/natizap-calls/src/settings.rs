@@ -1,67 +1,55 @@
-//! The calls settings page: which ringtone calls coming in ring with. The
-//! choice is kept in a small text file of `key=value` lines, so it reads
-//! back across versions.
-
-use std::path::{Path, PathBuf};
+//! The calls settings page: which ringtone calls coming in ring with, and
+//! the microphone, speaker and camera calls use. Choosing a device during
+//! a call moves the call to it.
 
 use gpui::prelude::*;
-use gpui::{App, Context, Entity, FontWeight, SharedString, Window, div, px, rgb, svg};
-use natizap_ui::Icon;
-use natizap_ui::theme::ActiveTheme as _;
+use gpui::{Context, Div, Entity, FontWeight, SharedString, Window, div, px, rgb, svg};
+use natizap_playback::{Device, cameras, microphones, speakers};
+use natizap_ui::theme::{ActiveTheme as _, Theme};
+use natizap_ui::{Icon, separator};
 
-use crate::desk::CallDesk;
+use crate::desk::{CallDesk, DeviceKind};
 use crate::ringtone::Ringtone;
 
-/// The ringtone the settings file at `path` names, or the default when it
-/// names none or cannot be read.
-pub(crate) fn read(path: &Path) -> Ringtone {
-    match std::fs::read_to_string(path) {
-        Ok(text) => parse(&text),
-        Err(error) => {
-            if error.kind() != std::io::ErrorKind::NotFound {
-                tracing::warn!(%error, "could not read the call settings");
-            }
-            Ringtone::default()
-        }
-    }
+/// The devices there are, once listed.
+#[derive(Debug, Default)]
+struct Listed {
+    microphones: Vec<Device>,
+    speakers: Vec<Device>,
+    cameras: Vec<Device>,
 }
 
-/// Keeps `ringtone` in the settings file at `path`, off the UI thread.
-pub(crate) fn write(path: PathBuf, ringtone: Ringtone, cx: &App) {
-    cx.background_spawn(async move {
-        if let Err(error) = std::fs::write(&path, format(ringtone)) {
-            tracing::warn!(%error, "could not keep the call settings");
-        }
-    })
-    .detach();
-}
-
-/// The ringtone the file's `text` names. Unknown lines, such as ones a
-/// newer version wrote, are skipped.
-fn parse(text: &str) -> Ringtone {
-    text.lines()
-        .filter_map(|line| line.split_once('='))
-        .filter(|(key, _)| key.trim() == "ringtone")
-        .find_map(|(_, value)| Ringtone::from_key(value.trim()))
-        .unwrap_or_default()
-}
-
-fn format(ringtone: Ringtone) -> String {
-    format!("ringtone={}\n", ringtone.key())
-}
-
-/// Changes a [`CallDesk`]'s ringtone: the calls page of the settings
-/// window.
+/// Changes a [`CallDesk`]'s ringtone and devices: the calls page of the
+/// settings window.
 #[derive(Debug)]
 pub struct CallSettings {
     desk: Entity<CallDesk>,
+    /// `None` while the devices are being listed.
+    listed: Option<Listed>,
 }
 
 impl CallSettings {
-    /// Shows and changes `desk`'s ringtone.
+    /// Shows and changes `desk`'s ringtone and devices, listing the devices
+    /// there are now.
     pub fn new(desk: Entity<CallDesk>, cx: &mut Context<Self>) -> Self {
         cx.observe(&desk, |_, _, cx| cx.notify()).detach();
-        Self { desk }
+        // Listing asks the sound server and the kernel: off the UI thread.
+        let listing = cx.background_spawn(async {
+            Listed {
+                microphones: microphones(),
+                speakers: speakers(),
+                cameras: cameras(),
+            }
+        });
+        cx.spawn(async move |this, cx| {
+            let listed = listing.await;
+            let _ = this.update(cx, |settings, cx| {
+                settings.listed = Some(listed);
+                cx.notify();
+            });
+        })
+        .detach();
+        Self { desk, listed: None }
     }
 
     /// A ringtone to choose; choosing it plays it.
@@ -95,6 +83,95 @@ impl CallSettings {
             )
             .child(ringtone.name())
     }
+
+    /// The `kind` of device to choose from `devices`, the system's own
+    /// first.
+    fn devices(&self, kind: DeviceKind, devices: &[Device], cx: &mut Context<Self>) -> Div {
+        let theme = *cx.theme();
+        let chosen = {
+            let chosen = self.desk.read(cx).devices();
+            match kind {
+                DeviceKind::Microphone => chosen.microphone.clone(),
+                DeviceKind::Speaker => chosen.speaker.clone(),
+                DeviceKind::Camera => chosen.camera.clone(),
+            }
+        };
+        // A chosen device that is gone is not on the list: the system's own
+        // is used, and shows as chosen.
+        let present = chosen
+            .as_ref()
+            .filter(|key| devices.iter().any(|device| &device.key == *key));
+        let rows = std::iter::once((None, "System default".to_owned()))
+            .chain(
+                devices
+                    .iter()
+                    .map(|device| (Some(device.key.clone()), device.name.clone())),
+            )
+            .enumerate()
+            .map(|(index, (key, name))| {
+                let selected = key.as_ref() == present;
+                Self::device_row(kind, index, key, name, selected, theme, cx)
+            });
+        section(kind.heading(), theme).child(div().flex().flex_col().children(rows))
+    }
+
+    fn device_row(
+        kind: DeviceKind,
+        index: usize,
+        key: Option<String>,
+        name: String,
+        selected: bool,
+        theme: Theme,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
+        div()
+            .id(SharedString::from(format!("{}-{index}", kind.heading())))
+            .flex()
+            .items_center()
+            .gap_2()
+            .px_2()
+            .py_1p5()
+            .rounded_md()
+            .cursor_pointer()
+            .hover(|row| row.bg(rgb(theme.raised)))
+            .text_size(px(13.5))
+            .when(selected, |row| row.text_color(rgb(theme.accent)))
+            .on_click(cx.listener(move |this, _, _, cx| {
+                let key = key.clone();
+                this.desk
+                    .update(cx, |desk, cx| desk.set_device(kind, key, cx));
+            }))
+            .child(div().size(px(14.0)).flex_none().when(selected, |slot| {
+                slot.child(
+                    svg()
+                        .path(Icon::Check.path())
+                        .size(px(14.0))
+                        .text_color(rgb(theme.accent)),
+                )
+            }))
+            .child(div().min_w_0().truncate().child(name))
+    }
+}
+
+impl DeviceKind {
+    fn heading(self) -> &'static str {
+        match self {
+            Self::Microphone => "Microphone",
+            Self::Speaker => "Speaker",
+            Self::Camera => "Camera",
+        }
+    }
+}
+
+/// A section of the page, under its heading.
+fn section(heading: &'static str, theme: Theme) -> Div {
+    div().flex().flex_col().gap_2().px_5().py_3().child(
+        div()
+            .text_size(px(13.0))
+            .font_weight(FontWeight::SEMIBOLD)
+            .text_color(rgb(theme.muted))
+            .child(heading),
+    )
 }
 
 impl Render for CallSettings {
@@ -104,47 +181,36 @@ impl Render for CallSettings {
             .into_iter()
             .map(|ringtone| self.chip(ringtone, cx).into_any_element())
             .collect();
-        div().flex().flex_col().child(
-            div()
-                .flex()
-                .flex_col()
-                .gap_2()
+        let ringtone = section("Ringtone", theme)
+            .child(
+                div()
+                    .text_size(px(12.5))
+                    .text_color(rgb(theme.muted))
+                    .child("What a call coming in rings with. Choosing one plays it."),
+            )
+            .child(div().flex().flex_wrap().gap_2().children(chips));
+        let devices = match self.listed.take() {
+            Some(listed) => {
+                let sections = [
+                    self.devices(DeviceKind::Microphone, &listed.microphones, cx),
+                    self.devices(DeviceKind::Speaker, &listed.speakers, cx),
+                    self.devices(DeviceKind::Camera, &listed.cameras, cx),
+                ];
+                self.listed = Some(listed);
+                div().flex().flex_col().children(sections)
+            }
+            None => div()
                 .px_5()
                 .py_3()
-                .child(
-                    div()
-                        .text_size(px(13.0))
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .text_color(rgb(theme.muted))
-                        .child("Ringtone"),
-                )
-                .child(
-                    div()
-                        .text_size(px(12.5))
-                        .text_color(rgb(theme.muted))
-                        .child("What a call coming in rings with. Choosing one plays it."),
-                )
-                .child(div().flex().flex_wrap().gap_2().children(chips)),
-        )
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{format, parse};
-    use crate::ringtone::Ringtone;
-
-    #[test]
-    fn reads_back_what_it_wrote() {
-        for ringtone in Ringtone::ALL {
-            assert_eq!(parse(&format(ringtone)), ringtone);
-        }
-    }
-
-    #[test]
-    fn keeps_the_default_for_what_the_file_lacks_or_garbles() {
-        assert_eq!(parse(""), Ringtone::default());
-        assert_eq!(parse("ringtone=trumpet\nvolume=11\n"), Ringtone::default());
-        assert_eq!(parse("volume=11\nringtone = guitar\n"), Ringtone::Guitar);
+                .text_size(px(12.5))
+                .text_color(rgb(theme.muted))
+                .child("Looking for devices…"),
+        };
+        div()
+            .flex()
+            .flex_col()
+            .child(ringtone)
+            .child(div().px_5().py_1().child(separator(theme)))
+            .child(devices)
     }
 }

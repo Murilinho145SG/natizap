@@ -39,8 +39,10 @@ whatsapp-rust = { git = "https://github.com/oxidezap/whatsapp-rust", rev = "3f69
 anyhow = "1"
 # A sticker's identity in WhatsApp's app state is its hash in base64.
 base64 = "0.22"
-# Audio output through the system sound server (ALSA/PipeWire).
-cpal = "0.18"
+# Sound through the system sound server: PulseAudio's protocol, spoken in
+# pure Rust, which PipeWire answers too, so devices show by the names the
+# desktop gives them; ALSA where there is no server.
+cpal = { version = "0.18", features = ["pulseaudio"] }
 async-channel = "2"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 dirs = "6"

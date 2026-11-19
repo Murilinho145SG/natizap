@@ -5,7 +5,7 @@
 use std::time::{Duration, Instant};
 
 use gpui::{AppContext as _, Context, Entity, EventEmitter, RenderImage, SharedString, Task};
-use natizap_playback::{CallAudio, CallFormat, CallPorts};
+use natizap_playback::{CallAudio, CallDevices, CallFormat, CallPorts};
 use natizap_protocol::{
     CallEnd, ChatId, LiveCall, Protocol, Ring, Rings, VOICE_FRAME, VOICE_RATE, VideoRequest, Voice,
 };
@@ -13,9 +13,9 @@ use natizap_protocol::{
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::choices::Choices;
 use crate::log::CallLog;
 use crate::ringtone::{Ringing, Ringtone};
-use crate::settings;
 
 mod lifecycle;
 mod ringing;
@@ -34,6 +34,14 @@ const FORMAT: CallFormat = CallFormat {
     rate: VOICE_RATE,
     frame: VOICE_FRAME,
 };
+
+/// A kind of device calls use.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeviceKind {
+    Microphone,
+    Speaker,
+    Camera,
+}
 
 /// A call started ringing here.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -152,9 +160,9 @@ pub struct CallDesk {
     serial: u64,
     /// The ringing sound, while something rings.
     ringer: Option<(Ringing, Task<()>)>,
-    /// What calls coming in ring with.
-    ringtone: Ringtone,
-    /// Where the choice of ringtone is kept.
+    /// The ringtone and devices chosen.
+    choices: Choices,
+    /// Where the choices are kept.
     settings: PathBuf,
     /// A ringtone being tried in the settings.
     preview: Option<Task<()>>,
@@ -195,11 +203,11 @@ impl CallDesk {
         });
         let reading = settings.clone();
         let loading = cx.spawn(async move |this, cx| {
-            let ringtone = cx
-                .background_spawn(async move { settings::read(&reading) })
+            let choices = cx
+                .background_spawn(async move { Choices::read(&reading) })
                 .await;
             let _ = this.update(cx, |desk, cx| {
-                desk.ringtone = ringtone;
+                desk.choices = choices;
                 cx.notify();
             });
         });
@@ -210,7 +218,7 @@ impl CallDesk {
             call: None,
             serial: 0,
             ringer: None,
-            ringtone: Ringtone::default(),
+            choices: Choices::default(),
             settings,
             preview: None,
             _tasks: [hearing, loading],
@@ -220,14 +228,46 @@ impl CallDesk {
     /// What calls coming in ring with.
     #[must_use]
     pub fn ringtone(&self) -> Ringtone {
-        self.ringtone
+        self.choices.ringtone
+    }
+
+    /// The devices calls use.
+    #[must_use]
+    pub fn devices(&self) -> &CallDevices {
+        &self.choices.devices
+    }
+
+    /// Uses the device `key` names, or the system's own for `None`, as the
+    /// `kind` of device calls use from now on, the call under way included.
+    pub fn set_device(&mut self, kind: DeviceKind, key: Option<String>, cx: &mut Context<Self>) {
+        let devices = &mut self.choices.devices;
+        match kind {
+            DeviceKind::Microphone => devices.microphone = key,
+            DeviceKind::Speaker => devices.speaker = key,
+            DeviceKind::Camera => devices.camera = key,
+        }
+        self.choices.write(self.settings.clone(), cx);
+        let devices = self.choices.devices.clone();
+        if let Some(call) = self.call.as_mut() {
+            match kind {
+                DeviceKind::Microphone | DeviceKind::Speaker => {
+                    if let Some(audio) = call.audio.as_mut()
+                        && let Err(error) = audio.switch(&devices)
+                    {
+                        tracing::warn!(%error, "the call keeps the devices it had");
+                    }
+                }
+                DeviceKind::Camera => self.reopen_camera(cx),
+            }
+        }
+        cx.notify();
     }
 
     /// Rings with `ringtone` from now on, keeping the choice and playing
     /// it once to hear.
     pub fn set_ringtone(&mut self, ringtone: Ringtone, cx: &mut Context<Self>) {
-        self.ringtone = ringtone;
-        settings::write(self.settings.clone(), ringtone, cx);
+        self.choices.ringtone = ringtone;
+        self.choices.write(self.settings.clone(), cx);
         self.preview = Some(Ringing::Incoming(ringtone).play_once(cx));
         self.update_ringer(cx);
         cx.notify();
@@ -282,7 +322,7 @@ impl CallDesk {
         } else {
             (None, None)
         };
-        let (audio, started) = match CallAudio::open(FORMAT) {
+        let (audio, started) = match CallAudio::open(FORMAT, &self.choices.devices) {
             Ok((audio, ports)) => {
                 let started = self
                     .protocol
@@ -321,7 +361,7 @@ impl CallDesk {
         } else {
             (None, None)
         };
-        let (audio, started) = match CallAudio::open(FORMAT) {
+        let (audio, started) = match CallAudio::open(FORMAT, &self.choices.devices) {
             Ok((audio, ports)) => {
                 let started = self
                     .protocol

@@ -154,6 +154,17 @@ impl CallDesk {
         }
     }
 
+    /// Moves a camera that is on, or opening, to the one chosen now.
+    pub(super) fn reopen_camera(&mut self, cx: &mut Context<Self>) {
+        let Some(video) = self.call.as_mut().and_then(|call| call.video.as_mut()) else {
+            return;
+        };
+        if matches!(video.camera, CameraState::On | CameraState::Opening) {
+            video.camera_off();
+            self.open_camera(cx);
+        }
+    }
+
     /// Opens the camera off the UI thread, and feeds the call from it.
     pub(super) fn open_camera(&mut self, cx: &mut Context<Self>) {
         let Some(call) = self.call.as_mut() else {
@@ -165,7 +176,8 @@ impl CallDesk {
         };
         video.camera = CameraState::Opening;
         cx.notify();
-        let opening = cx.background_spawn(async move { Camera::start() });
+        let device = self.choices.devices.camera.clone();
+        let opening = cx.background_spawn(async move { Camera::start(device.as_deref()) });
         cx.spawn(async move |this, cx| {
             let opened = opening.await;
             let _ = this.update(cx, |desk, cx| {

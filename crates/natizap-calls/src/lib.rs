@@ -4,6 +4,7 @@
 //! across the main window or in a window of their own.
 
 mod bar;
+mod choices;
 mod desk;
 mod group;
 mod log;
@@ -16,7 +17,7 @@ mod store;
 mod window;
 
 pub use bar::{CallBar, CallPoppedOut, RingCard};
-pub use desk::{CallDesk, CallRang, CallShown, CameraState, Phase, VideoShown};
+pub use desk::{CallDesk, CallRang, CallShown, CameraState, DeviceKind, Phase, VideoShown};
 pub use group::CallGroup;
 pub use log::CallLog;
 pub use pane::{CallChatRequested, CallsPane};
