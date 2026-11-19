@@ -7,7 +7,8 @@
 //! screen ([`Notifier::set_focused`], [`Notifier::set_open`]), which chats
 //! are muted ([`Notifier::set_muted`]) and what chats and people are
 //! called ([`Notifier::set_titles`], [`Notifier::set_names`]).
-//! [`NotificationSettings`] is the dialog that changes its [`Preferences`].
+//! [`NotificationSettings`] is the settings page that changes its
+//! [`Preferences`].
 
 mod heard;
 mod popup;
@@ -30,7 +31,7 @@ use crate::heard::{Arrival, Quiet, arrivals};
 use crate::popup::{AWAY_TAG, Directory};
 
 pub use preferences::{Alert, Preferences};
-pub use settings::{NotificationSettings, SettingsClosed};
+pub use settings::NotificationSettings;
 pub use tone::Tone;
 
 /// The shortest gap between two chimes: a burst of messages, such as those

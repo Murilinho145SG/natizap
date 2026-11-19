@@ -5,10 +5,13 @@ use gpui::prelude::*;
 use gpui::{Context, px};
 use natizap_contacts::{OwnProfile, OwnProfileClosed};
 use natizap_messages::ChatSettings;
-use natizap_notifications::{NotificationSettings, SettingsClosed};
+use natizap_notifications::NotificationSettings;
 use natizap_themes::ThemeSettings;
 use natizap_ui::theme::ActiveTheme as _;
-use natizap_ui::{Button, ButtonVariant, Icon, RAIL_AVATAR, Rail, avatar, rail_avatar};
+use natizap_ui::{
+    Button, ButtonVariant, Icon, RAIL_AVATAR, Rail, SettingsClosed, SettingsPage, SettingsWindow,
+    avatar, rail_avatar,
+};
 
 use super::{Place, Root};
 
@@ -87,18 +90,32 @@ impl Root {
         rail
     }
 
-    /// Shows the notification settings over the chats.
+    /// Shows the settings over the chats: every feature's page, one
+    /// category at a time.
     fn open_settings(&mut self, cx: &mut Context<Self>) {
-        let notifier = self.notifier.clone();
-        let settings = cx.new(|cx| NotificationSettings::new(notifier, cx));
-        let messages = self.messages.clone();
-        let chat_settings = cx.new(|cx| ChatSettings::new(messages, cx));
-        let themes = self.themes.clone();
-        let appearance = cx.new(|cx| ThemeSettings::new(themes, cx));
-        settings.update(cx, |settings, cx| {
-            settings.add_section(appearance.into(), cx);
-            settings.add_section(chat_settings.into(), cx);
-        });
+        let (notifier, messages, themes) = (
+            self.notifier.clone(),
+            self.messages.clone(),
+            self.themes.clone(),
+        );
+        let pages = vec![
+            SettingsPage::new(
+                Icon::Palette,
+                "Appearance",
+                cx.new(|cx| ThemeSettings::new(themes, cx)),
+            ),
+            SettingsPage::new(
+                Icon::Bell,
+                "Notifications",
+                cx.new(|cx| NotificationSettings::new(notifier, cx)),
+            ),
+            SettingsPage::new(
+                Icon::Chats,
+                "Chats",
+                cx.new(|cx| ChatSettings::new(messages, cx)),
+            ),
+        ];
+        let settings = cx.new(|_| SettingsWindow::new(pages));
         cx.subscribe(&settings, |root, _, _: &SettingsClosed, cx| {
             root.settings = None;
             cx.notify();

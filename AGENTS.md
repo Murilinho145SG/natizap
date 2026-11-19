@@ -102,9 +102,10 @@ hands it the messages' `MessageSearch` through
 `ChatListView::set_message_results`, passes the query on, and answers its
 `SearchHitOpened` with `ConversationView::go_to`. The
 binary draws the navigation rail (`natizap-ui`'s `Rail`) itself: its
-Settings button opens the notifications' `NotificationSettings` dialog,
-with the themes' `ThemeSettings` and the messages' `ChatSettings` added to
-it (`add_section`), and
+Settings button opens `natizap-ui`'s `SettingsWindow`, a sidebar of
+categories whose pages each feature brings: the themes' `ThemeSettings`,
+the notifications' `NotificationSettings` and the messages'
+`ChatSettings`, and
 your avatar opens the contacts' `OwnProfile` in place of the chat list,
 which emits `OwnProfileClosed` to go back. Its Status button shows the
 status' `StatusPane` there instead; the pane's `StatusOpened` and the chat

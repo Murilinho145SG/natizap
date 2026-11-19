@@ -52,6 +52,8 @@ icons! {
     ArrowDown => "arrow-down.svg",
     /// Go back to the previous screen.
     Back => "back.svg",
+    /// Notifications and how they sound.
+    Bell => "bell.svg",
     /// Sent.
     Check => "check.svg",
     /// Delivered, or read when tinted.
@@ -108,6 +110,8 @@ icons! {
     More => "more.svg",
     /// Notifications silenced.
     Muted => "muted.svg",
+    /// How the app looks: its theme.
+    Palette => "palette.svg",
     /// Pause what is playing.
     Pause => "pause.svg",
     /// Pinned to the top.

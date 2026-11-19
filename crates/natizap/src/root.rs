@@ -14,7 +14,7 @@ use natizap_messages::{
     ChatClosed, ChatRequested, ContactsRequested, ConversationView, ForwardRequested, MessageLog,
     MessageSent, MuteRequested, OpenChat, PlayRequested,
 };
-use natizap_notifications::{NotificationSettings, Notifier};
+use natizap_notifications::Notifier;
 use natizap_player::PlayerView;
 use natizap_profiles::ProfilePictures;
 use natizap_protocol::{Card, ChatId, Extra, PersonName, Protocol};
@@ -23,7 +23,7 @@ use natizap_status::{StatusBook, StatusComposer, StatusPane, StatusViewer};
 use natizap_stickers::StickerShelf;
 use natizap_themes::ThemeBook;
 use natizap_ui::theme::{ActiveTheme as _, DISPLAY_FONT, Theme, base_font};
-use natizap_ui::window_frame;
+use natizap_ui::{SettingsWindow, window_frame};
 use natizap_update::Updater;
 
 use crate::history::History;
@@ -81,8 +81,8 @@ pub(crate) struct Root {
     history: History<ChatId>,
     protocol: Entity<Protocol>,
     pictures: Entity<ProfilePictures>,
-    /// The notification settings, over the chats.
-    settings: Option<Entity<NotificationSettings>>,
+    /// The settings window, over the chats.
+    settings: Option<Entity<SettingsWindow>>,
     /// Your own profile, kept once opened so it shows again without
     /// asking WhatsApp again.
     own_profile: Option<Entity<OwnProfile>>,

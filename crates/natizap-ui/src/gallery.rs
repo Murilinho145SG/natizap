@@ -3,7 +3,7 @@
 
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, Context, Div, FontWeight, ScrollHandle, SharedString, Window, div, px, rgb,
+    AnyElement, Context, Div, Entity, FontWeight, ScrollHandle, SharedString, Window, div, px, rgb,
 };
 
 use crate::components::alert::{Alert, AlertTone};
@@ -16,6 +16,7 @@ use crate::components::progress::progress;
 use crate::components::rail::{RAIL_AVATAR, Rail, rail_avatar};
 use crate::components::scrollbar::scrollbar;
 use crate::components::separator::separator;
+use crate::components::settings_window::{SettingsClosed, SettingsPage, SettingsWindow};
 use crate::components::skeleton::skeleton;
 use crate::components::switch::Switch;
 use crate::theme::{ActiveTheme as _, DISPLAY_FONT, Theme, base_font};
@@ -25,6 +26,8 @@ use crate::{Icon, avatar, window_frame};
 #[derive(Debug, Default)]
 pub struct Gallery {
     dialog_open: bool,
+    /// The settings window shown, while it is.
+    settings: Option<Entity<SettingsWindow>>,
     switch_on: bool,
     scroll: ScrollHandle,
 }
@@ -92,19 +95,8 @@ impl Render for Gallery {
                     .danger(Icon::Trash, "Delete", |_, _| {}),
                 theme,
             ))
-            .child(section(
-                "Alert dialog",
-                row().child(
-                    Button::new("open-dialog")
-                        .label("Delete message")
-                        .variant(ButtonVariant::Secondary)
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.dialog_open = true;
-                            cx.notify();
-                        })),
-                ),
-                theme,
-            ))
+            .child(section("Dialogs", Self::dialog_buttons(cx), theme))
+            .children(self.settings.clone())
             .when(self.dialog_open, |sections| {
                 let gallery = cx.weak_entity();
                 let close = move |_: &mut Window, cx: &mut gpui::App| {
@@ -129,6 +121,50 @@ impl Render for Gallery {
 }
 
 impl Gallery {
+    /// Buttons that open an alert dialog and a settings window.
+    fn dialog_buttons(cx: &mut Context<Self>) -> Div {
+        row()
+            .child(
+                Button::new("open-dialog")
+                    .label("Delete message")
+                    .variant(ButtonVariant::Secondary)
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.dialog_open = true;
+                        cx.notify();
+                    })),
+            )
+            .child(
+                Button::new("open-settings")
+                    .label("Open settings")
+                    .variant(ButtonVariant::Secondary)
+                    .on_click(cx.listener(|this, _, _, cx| this.open_settings(cx))),
+            )
+    }
+
+    /// A settings window of two pages that say which they are.
+    fn open_settings(&mut self, cx: &mut Context<Self>) {
+        let pages = vec![
+            SettingsPage::new(
+                Icon::Palette,
+                "Appearance",
+                cx.new(|_| DemoPage("How natizap looks")),
+            ),
+            SettingsPage::new(
+                Icon::Bell,
+                "Notifications",
+                cx.new(|_| DemoPage("How natizap tells you")),
+            ),
+        ];
+        let settings = cx.new(|_| SettingsWindow::new(pages));
+        cx.subscribe(&settings, |this, _, _: &SettingsClosed, cx| {
+            this.settings = None;
+            cx.notify();
+        })
+        .detach();
+        self.settings = Some(settings);
+        cx.notify();
+    }
+
     /// A switch that flips, beside one on and one off.
     fn switches(&self, cx: &mut Context<Self>) -> Div {
         row()
@@ -334,4 +370,17 @@ fn alerts() -> Div {
 fn code_sample(theme: Theme) -> Div {
     div().w(px(420.0)).child(code_block(
         "// Greets everyone in the chat\nfn greet(names: &[String]) -> usize {\n    for name in names {\n        println!(\"Hello, {name}!\");\n    }\n    names.len() * 2\n}", theme))
+}
+
+/// A settings page that only says what it is about.
+struct DemoPage(&'static str);
+
+impl Render for DemoPage {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .px_5()
+            .py_3()
+            .text_color(rgb(cx.theme().muted))
+            .child(self.0)
+    }
 }

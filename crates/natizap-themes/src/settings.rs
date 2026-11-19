@@ -147,7 +147,7 @@ impl Render for ThemeSettings {
                 .text_size(px(13.0))
                 .font_weight(FontWeight::SEMIBOLD)
                 .text_color(rgb(theme.muted))
-                .child("Appearance"),
+                .child("Theme"),
         );
         if let Some(draft) = &self.draft {
             let editing = draft.editing().is_some();

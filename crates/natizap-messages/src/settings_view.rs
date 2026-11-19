@@ -42,7 +42,7 @@ impl Render for ChatSettings {
                     .text_size(px(13.0))
                     .font_weight(FontWeight::SEMIBOLD)
                     .text_color(rgb(theme.muted))
-                    .child("Chats"),
+                    .child("Typing"),
             )
             .child(
                 div()

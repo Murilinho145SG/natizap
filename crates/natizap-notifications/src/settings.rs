@@ -1,45 +1,27 @@
-//! The notification settings dialog: whether chats and groups chime, with
+//! The notification settings page: whether chats and groups chime, with
 //! which tone, and whether other chats chime while natizap is in use.
 
 use gpui::prelude::*;
 use gpui::{
-    AnyView, App, Context, Div, Entity, EventEmitter, FontWeight, SharedString, Stateful, Window,
-    div, px, rgb, svg,
+    App, Context, Div, Entity, FontWeight, SharedString, Stateful, Window, div, px, rgb, svg,
 };
 use natizap_ui::theme::ActiveTheme as _;
-use natizap_ui::{Button, ButtonVariant, Icon, Switch, dialog, separator};
+use natizap_ui::{Icon, Switch, separator};
 
 use crate::{Alert, Notifier, Preferences, Tone};
 
-/// The settings dialog was closed.
-#[derive(Debug, Clone, Copy)]
-pub struct SettingsClosed;
-
-/// Changes a [`Notifier`]'s preferences; emits [`SettingsClosed`].
+/// Changes a [`Notifier`]'s preferences: the notifications page of the
+/// settings window.
 #[derive(Debug)]
 pub struct NotificationSettings {
     notifier: Entity<Notifier>,
-    /// Other features' settings, shown under these.
-    more: Vec<AnyView>,
 }
-
-impl EventEmitter<SettingsClosed> for NotificationSettings {}
 
 impl NotificationSettings {
     /// Shows and changes `notifier`'s preferences.
     pub fn new(notifier: Entity<Notifier>, cx: &mut Context<Self>) -> Self {
         cx.observe(&notifier, |_, _, cx| cx.notify()).detach();
-        Self {
-            notifier,
-            more: Vec::new(),
-        }
-    }
-
-    /// Shows `section`, another feature's settings, under these, so the
-    /// window holds every setting.
-    pub fn add_section(&mut self, section: AnyView, cx: &mut Context<Self>) {
-        self.more.push(section);
-        cx.notify();
+        Self { notifier }
     }
 
     /// Applies `change` to the preferences.
@@ -233,47 +215,12 @@ impl Kind {
 }
 
 impl Render for NotificationSettings {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = *cx.theme();
         let preferences = self.notifier.read(cx).preferences();
-        let panel = div()
-            .id("notification-settings")
-            .w(px(420.0))
-            // Every feature's settings may not fit a small window.
-            .max_h(window.viewport_size().height * 0.85)
-            .overflow_y_scroll()
+        div()
             .flex()
             .flex_col()
-            .pb_3()
-            .rounded_xl()
-            .bg(rgb(theme.panel))
-            .map(|surface| theme.glass(surface))
-            .occlude()
-            .text_size(px(14.0))
-            .text_color(rgb(theme.text))
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .px_5()
-                    .pt_4()
-                    .pb_2()
-                    .child(
-                        div()
-                            .flex_1()
-                            .text_size(px(16.0))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .child("Settings"),
-                    )
-                    .child(
-                        Button::new("close-notification-settings")
-                            .icon(Icon::Close)
-                            .variant(ButtonVariant::Ghost)
-                            .round()
-                            .tooltip("Close")
-                            .on_click(cx.listener(|_, _, _, cx| cx.emit(SettingsClosed))),
-                    ),
-            )
             .child(Self::alert(Kind::Messages, preferences.messages, cx))
             .child(Self::alert(Kind::Groups, preferences.groups, cx))
             .child(div().px_5().py_1().child(separator(theme)))
@@ -291,21 +238,5 @@ impl Render for NotificationSettings {
                     cx,
                 ))
             })
-            .children(self.more.iter().map(|section| {
-                div()
-                    .flex()
-                    .flex_col()
-                    .child(div().px_5().py_1().child(separator(theme)))
-                    .child(section.clone())
-            }));
-        let settings = cx.weak_entity();
-        dialog(
-            window,
-            panel,
-            move |_, cx| {
-                let _ = settings.update(cx, |_, cx| cx.emit(SettingsClosed));
-            },
-            theme,
-        )
     }
 }

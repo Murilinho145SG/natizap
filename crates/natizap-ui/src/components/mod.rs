@@ -11,6 +11,7 @@ pub(crate) mod progress;
 pub(crate) mod rail;
 pub(crate) mod scrollbar;
 pub(crate) mod separator;
+pub(crate) mod settings_window;
 pub(crate) mod skeleton;
 pub(crate) mod splash;
 pub(crate) mod switch;
