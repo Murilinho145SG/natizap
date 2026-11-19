@@ -71,6 +71,30 @@ impl CallStore {
         tx.commit()
     }
 
+    /// Keeps `calls` that are not kept yet, leaving those already kept as
+    /// they are.
+    pub(crate) fn keep_new(&mut self, calls: &[CallRecord]) -> rusqlite::Result<()> {
+        let tx = self.connection.transaction()?;
+        {
+            let mut insert = tx.prepare_cached(
+                "INSERT OR IGNORE INTO calls VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            )?;
+            for call in calls {
+                insert.execute(params![
+                    call.id,
+                    call.peer.as_str(),
+                    call.group.as_ref().map(ChatId::as_str),
+                    call.incoming,
+                    call.video,
+                    call.outcome.key(),
+                    call.at,
+                    call.seconds,
+                ])?;
+            }
+        }
+        tx.commit()
+    }
+
     /// The newest calls, newest first.
     pub(crate) fn recent(&self) -> rusqlite::Result<Vec<CallRecord>> {
         self.connection

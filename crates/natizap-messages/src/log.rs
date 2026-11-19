@@ -21,11 +21,13 @@ use crate::sync::Sync;
 use crate::text_search::Case;
 
 mod actions;
+mod backlog;
 mod downloads;
 mod sending;
 mod uploads;
 mod worker;
 
+pub use backlog::StoredStatus;
 use downloads::{Failed, Then};
 
 use worker::sync;

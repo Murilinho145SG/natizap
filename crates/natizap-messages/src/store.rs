@@ -524,6 +524,7 @@ mod extra;
 mod votes;
 
 pub(crate) use votes::Vote;
+mod backlog;
 mod library;
 mod rows;
 mod search;

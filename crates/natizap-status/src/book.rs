@@ -184,6 +184,14 @@ impl StatusBook {
         self.audience = audience;
     }
 
+    /// Takes `posts` kept elsewhere before this store had them, such as the
+    /// message store's; posts already here keep what is known of them.
+    pub fn import(&self, posts: Vec<Post>) {
+        for post in posts {
+            self.send(Change::Posted(Box::new(post)));
+        }
+    }
+
     /// Marks `post` seen, here and on the poster's phone.
     pub fn mark_seen(&mut self, post: &Post, cx: &mut Context<Self>) {
         if post.seen || post.mine {

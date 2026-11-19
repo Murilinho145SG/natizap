@@ -36,7 +36,7 @@ mod voice;
 mod voice_view;
 mod zoom;
 
-pub use log::{ForwardRequested, MessageLog, MessageSent, OpenChat};
+pub use log::{ForwardRequested, MessageLog, MessageSent, OpenChat, StoredStatus};
 pub use overview::{ChatOverview, MediaTile, TileImage};
 pub use search_view::{MessageSearch, SearchHitOpened};
 pub use view::{

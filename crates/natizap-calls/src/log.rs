@@ -3,20 +3,30 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use gpui::{AppContext as _, Context, Entity, SharedString, Task};
+use natizap_protocol::whatsapp_rust::prelude::Event;
 use natizap_protocol::{CallFollower, CallRecord, ChatId, Protocol};
 
 use crate::group::{CallGroup, collapse};
 use crate::store::CallStore;
 
+/// What the history's worker hears.
+enum Input {
+    Event(Arc<Event>),
+    /// Calls kept elsewhere before the history had them.
+    Import(Vec<CallRecord>),
+}
+
 /// Every call that rang on the account's devices or was made from its
 /// phone, newest first.
 pub struct CallLog {
     calls: Vec<CallRecord>,
+    inputs: async_channel::Sender<Input>,
     /// What people and groups are called, by every address they go by.
     titles: HashMap<ChatId, SharedString>,
-    _tasks: [Task<()>; 2],
+    _tasks: [Task<()>; 3],
 }
 
 impl std::fmt::Debug for CallLog {
@@ -32,6 +42,15 @@ impl CallLog {
     /// through `protocol`.
     pub fn new(protocol: &Entity<Protocol>, path: PathBuf, cx: &mut Context<Self>) -> Self {
         let events = protocol.read(cx).subscribe(CallFollower::EVENTS);
+        let (inputs_tx, inputs) = async_channel::unbounded();
+        let forward_tx = inputs_tx.clone();
+        let forward = cx.background_spawn(async move {
+            while let Ok(event) = events.recv().await {
+                if forward_tx.send(Input::Event(event)).await.is_err() {
+                    break;
+                }
+            }
+        });
         let (lists_tx, lists) = async_channel::unbounded();
         let work = cx.background_spawn(async move {
             let opened = CallStore::open(&path).or_else(|error| {
@@ -55,17 +74,22 @@ impl CallLog {
                     }
                     Err(error) => tracing::error!(%error, "could not read the call history"),
                 }
-                // Waits for the next call that ended.
-                let ended = loop {
-                    let Ok(event) = events.recv().await else {
+                // Waits for the next call that ended, or calls to import.
+                let kept = loop {
+                    let Ok(input) = inputs.recv().await else {
                         return;
                     };
-                    let ended = follower.hear(&event);
-                    if !ended.is_empty() {
-                        break ended;
+                    match input {
+                        Input::Event(event) => {
+                            let ended = follower.hear(&event);
+                            if !ended.is_empty() {
+                                break store.keep(&ended);
+                            }
+                        }
+                        Input::Import(calls) => break store.keep_new(&calls),
                     }
                 };
-                if let Err(error) = store.keep(&ended) {
+                if let Err(error) = kept {
                     tracing::error!(%error, "could not keep calls");
                 }
             }
@@ -85,8 +109,18 @@ impl CallLog {
         });
         Self {
             calls: Vec::new(),
+            inputs: inputs_tx,
             titles: HashMap::new(),
-            _tasks: [work, apply],
+            _tasks: [forward, work, apply],
+        }
+    }
+
+    /// Takes `calls` kept elsewhere before the history had them, such as the
+    /// missed calls the message store kept; calls already here stay as
+    /// they are.
+    pub fn import(&self, calls: Vec<CallRecord>) {
+        if self.inputs.try_send(Input::Import(calls)).is_err() {
+            tracing::error!("call history worker stopped");
         }
     }
 

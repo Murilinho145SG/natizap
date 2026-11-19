@@ -6,8 +6,10 @@
 use std::collections::HashSet;
 
 use gpui::{App, AppContext as _, Context, Entity, WindowHandle, WindowId};
+use natizap_messages::StoredStatus;
 use natizap_notifications::NotificationOpened;
 use natizap_protocol::ChatId;
+use natizap_status::Post;
 use natizap_tray::{Tray, TrayAction};
 
 use crate::main_window_options;
@@ -32,6 +34,7 @@ impl Shell {
             },
         )
         .detach();
+        Self::hand_over_backlog(&features, cx);
         let shell = cx.weak_entity();
         cx.on_window_closed(move |cx, closed| {
             let _ = shell.update(cx, |shell, cx| shell.window_closed(closed, cx));
@@ -42,6 +45,28 @@ impl Shell {
             window: None,
             tray: None,
         }
+    }
+
+    /// Gives the status and the call history what the message store kept
+    /// for them from before they had stores of their own: the last day's
+    /// status updates and missed calls.
+    fn hand_over_backlog(features: &Features, cx: &mut Context<Self>) {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |since| {
+                i64::try_from(since.as_secs()).unwrap_or(i64::MAX)
+            });
+        let messages = features.messages.read(cx);
+        let statuses = messages.stored_statuses(now - DAY, cx);
+        let calls = messages.stored_missed_calls(cx);
+        let (status, log) = (features.status.clone(), features.calls.clone());
+        cx.spawn(async move |_, cx| {
+            let posts: Vec<Post> = statuses.await.into_iter().map(post).collect();
+            status.update(cx, |status, _| status.import(posts));
+            let calls = calls.await;
+            log.update(cx, |log, _| log.import(calls));
+        })
+        .detach();
     }
 
     /// Shows the main window, opening it if it is closed, then the chat
@@ -115,5 +140,25 @@ impl Shell {
             notifier.set_focused(false);
             notifier.set_open(HashSet::new());
         });
+    }
+}
+
+/// How long a status lasts, in seconds.
+const DAY: i64 = 24 * 60 * 60;
+
+/// A status update the message store kept, as the status shows it.
+fn post(stored: StoredStatus) -> Post {
+    Post {
+        poster: stored.poster,
+        id: stored.id,
+        sent_at: stored.sent_at,
+        kind: stored.kind,
+        text: stored.text,
+        background: None,
+        author: stored.author,
+        media: stored.media,
+        file: None,
+        seen: stored.mine,
+        mine: stored.mine,
     }
 }
