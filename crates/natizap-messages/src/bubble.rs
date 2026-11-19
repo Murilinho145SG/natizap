@@ -3,14 +3,12 @@
 use gpui::prelude::*;
 use gpui::{
     Animation, AnimationExt as _, AnyElement, App, BoxShadow, Div, FontWeight, Hsla, MouseButton,
-    SharedString, Stateful, WeakEntity, div, point, px, relative, rgb, rgba, svg,
+    SharedString, Stateful, WeakEntity, div, point, px, relative, rgb, svg,
 };
 use natizap_protocol::{ContentKind, Extra, Forwarding};
 use natizap_ui::motion::ease_out;
-use natizap_ui::theme::{
-    ACCENT, ALERT, DEEP, LINE, MINT, MUTED, OUTGOING, PANEL, RAISED, SCRIM, TEXT, glass,
-};
-use natizap_ui::{Button, ButtonSize, ButtonVariant, Icon, avatar};
+use natizap_ui::theme::{ACCENT, ALERT, DEEP, MINT, MUTED, OUTGOING, PANEL, RAISED, glass};
+use natizap_ui::{Icon, avatar};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -24,6 +22,12 @@ use crate::quote::{name_and_phone, quoted};
 use crate::rich_text::{TextFocus, rich_text, selectable};
 use crate::view::{ConversationView, ProfileRequested};
 use crate::voice::VoiceUi;
+
+mod actions;
+mod pictures;
+
+use actions::{hover_actions, quick_reactions, reaction_chips};
+use pictures::{picture_bubble, sticker_bubble};
 
 /// How attachments show in this draw: the voice note playing, and the
 /// downloads under way and how far along each is, by message id.
@@ -343,48 +347,6 @@ fn shape(
         .children(buttons_under(bubble, view))
 }
 
-/// A photo or video filling its bubble but for a thin rim, as on the
-/// phone: the time sits on the picture, or beside the caption if any.
-/// A sticker, as the phone shows it: no bubble, just the sticker, with
-/// its author's name above it in groups and its time on a dark pill over
-/// its corner.
-fn sticker_bubble(
-    bubble: &Bubble,
-    media: &MediaView,
-    meta: Div,
-    view: &WeakEntity<ConversationView>,
-    downloading: Option<f32>,
-) -> Div {
-    div()
-        .flex()
-        .flex_col()
-        .gap_1()
-        .when(bubble.from_me, Styled::items_end)
-        .children(author(bubble, view).map(Styled::px_1))
-        .children(forwarded(bubble).map(Styled::px_1))
-        .children(
-            bubble
-                .quote
-                .as_ref()
-                .map(|quote| jump_to_quoted(quote, view)),
-        )
-        .child(
-            div()
-                .relative()
-                .child(render_media(media, view, downloading))
-                .child(
-                    div()
-                        .absolute()
-                        .bottom(px(4.0))
-                        .right(px(4.0))
-                        .px_1p5()
-                        .rounded_full()
-                        .bg(rgba(SCRIM))
-                        .child(meta.text_color(rgb(TEXT))),
-                ),
-        )
-}
-
 /// The body of a call nobody answered: its icon and what it was.
 fn missed_call(video: bool) -> Div {
     div()
@@ -412,81 +374,6 @@ fn missed_call(video: bool) -> Div {
         } else {
             ContentKind::MissedVoiceCall.label()
         }))
-}
-
-/// The bubble's padding around a picture.
-const PICTURE_PADDING: f32 = 3.0;
-
-fn picture_bubble(
-    bubble: &Bubble,
-    media: &MediaView,
-    meta: Div,
-    view: &WeakEntity<ConversationView>,
-    focus: &TextFocus,
-    downloading: Option<f32>,
-) -> Div {
-    let caption = match &bubble.body {
-        Body::Content {
-            text: Some(text), ..
-        } => Some(text),
-        _ => None,
-    };
-    let picture = div()
-        .relative()
-        .child(render_media(media, view, downloading));
-    let (picture, caption) = match caption {
-        Some(text) => {
-            let (shown, hits) = rich_text(&bubble.id, text, view, focus);
-            // As wide as the bubble, which is as wide as the picture, so
-            // long captions wrap under it instead of spilling past it.
-            let caption = div()
-                .w_full()
-                .px(px(7.0))
-                .pb(px(3.0))
-                .flex()
-                .flex_wrap()
-                .items_end()
-                .gap_x_2()
-                // Text measures itself at its longest line; held to the
-                // caption's width, it wraps there instead of running past
-                // the bubble, and a short caption still leaves the time room
-                // beside it.
-                .child(div().max_w_full().min_w_0().child(shown))
-                .child(meta.ml_auto().pb(px(1.0)));
-            (picture, Some(selectable(caption, hits, view)))
-        }
-        None => (
-            picture.child(
-                div()
-                    .absolute()
-                    .bottom(px(6.0))
-                    .right(px(6.0))
-                    .px_1p5()
-                    .rounded_full()
-                    .bg(rgba(SCRIM))
-                    .child(meta.text_color(rgb(TEXT))),
-            ),
-            None,
-        ),
-    };
-    // A width of its own, the picture's and its padding, narrowing with
-    // the window: a caption measured against anything wider wraps into
-    // more lines than were laid out and spills out of the bubble.
-    frame(bubble)
-        .w(px(media.size.0 + 2.0 * PICTURE_PADDING))
-        .max_w_full()
-        .p(px(PICTURE_PADDING))
-        .gap_1()
-        .children(author(bubble, view).map(|name| name.px(px(7.0)).pt(px(2.0))))
-        .children(forwarded(bubble).map(|line| line.px(px(7.0))))
-        .children(
-            bubble
-                .quote
-                .as_ref()
-                .map(|quote| jump_to_quoted(quote, view)),
-        )
-        .child(picture)
-        .children(caption)
 }
 
 /// [`frame`] with the room text needs around it.
@@ -601,118 +488,6 @@ fn author(bubble: &Bubble, view: &WeakEntity<ConversationView>) -> Option<Div> {
                     .map(|role| div().text_size(px(12.0)).text_color(rgb(MUTED)).child(role)),
             )
     })
-}
-
-/// Reply and react buttons, shown while the pointer is over the bubble.
-fn hover_actions(bubble: &Bubble, view: &WeakEntity<ConversationView>) -> Div {
-    div()
-        .flex()
-        .invisible()
-        .group_hover("bubble", Styled::visible)
-        .child(hover_button("react", Icon::Emoji, "React").on_click({
-            let (view, id) = (view.clone(), bubble.id.clone());
-            move |_, _, cx| {
-                let _ = view.update(cx, |view, cx| view.toggle_reactions(&id, cx));
-            }
-        }))
-        .child(hover_button("reply", Icon::Reply, "Reply").on_click({
-            let (view, bubble) = (view.clone(), bubble.clone());
-            move |_, _, cx| reply_to(&view, &bubble, cx)
-        }))
-}
-
-fn hover_button(id: &'static str, icon: Icon, name: &'static str) -> Button {
-    Button::new(id)
-        .icon(icon)
-        .variant(ButtonVariant::Ghost)
-        .size(ButtonSize::Small)
-        .round()
-        .tooltip(name)
-}
-
-/// The quick reaction strip; this account's current reaction is
-/// highlighted and picking it again takes it back.
-fn quick_reactions(bubble: &Bubble, view: &WeakEntity<ConversationView>) -> Stateful<Div> {
-    div()
-        .id("quick-reactions")
-        .on_mouse_down_out({
-            let view = view.clone();
-            move |_, _, cx| {
-                let _ = view.update(cx, ConversationView::close_popups);
-            }
-        })
-        .flex()
-        .gap_0p5()
-        .p_0p5()
-        .rounded_full()
-        .bg(rgb(PANEL))
-        .map(glass)
-        .children(QUICK_REACTIONS.iter().map(|&emoji| {
-            let mine = bubble.my_reaction.as_deref() == Some(emoji);
-            div()
-                .id(emoji)
-                .size(px(32.0))
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded_full()
-                .cursor_pointer()
-                .when(mine, |button| button.bg(rgb(RAISED)))
-                .hover(|style| style.bg(rgb(RAISED)))
-                .on_click({
-                    let (view, bubble) = (view.clone(), bubble.clone());
-                    move |_, _, cx| {
-                        let _ = view.update(cx, |view, cx| view.react(&bubble, emoji, cx));
-                    }
-                })
-                .text_size(px(20.0))
-                .child(emoji)
-        }))
-        // Any other emoji, from the full picker, as on the phone.
-        .child(
-            Button::new("more-reactions")
-                .icon(Icon::Plus)
-                .variant(ButtonVariant::Ghost)
-                .size(ButtonSize::Small)
-                .round()
-                .tooltip("More reactions")
-                .on_click({
-                    let (view, id) = (view.clone(), bubble.id.clone());
-                    move |event, _, cx| {
-                        let position = event.position();
-                        let _ = view.update(cx, |view, cx| {
-                            view.open_reaction_picker(id.clone(), position, cx);
-                        });
-                    }
-                }),
-        )
-}
-
-fn reaction_chips(bubble: &Bubble) -> Div {
-    div()
-        .flex()
-        .gap_1()
-        .children(bubble.reactions.iter().map(|chip| {
-            div()
-                .flex()
-                .items_center()
-                .gap_1()
-                .px_1p5()
-                .rounded_full()
-                .bg(rgb(PANEL))
-                .border_1()
-                .border_color(rgb(LINE))
-                .text_size(px(13.0))
-                .child(chip.emoji.clone())
-                .when(chip.count > 1, |chip_view| {
-                    chip_view.child(div().text_color(rgb(MUTED)).child(chip.count.to_string()))
-                })
-        }))
-}
-
-fn reply_to(view: &WeakEntity<ConversationView>, bubble: &Bubble, cx: &mut App) {
-    // The view is gone only while the window closes.
-    let _ = view.update(cx, |view, cx| view.reply_to(bubble, cx));
 }
 
 /// Where a sent message stands, as WhatsApp shows it: a clock while
