@@ -241,7 +241,10 @@ impl CallDesk {
         let at = now();
         let (audio, started) = match CallAudio::open(FORMAT) {
             Ok((audio, ports)) => {
-                let started = self.protocol.read(cx).place_call(&peer, voice(ports), cx);
+                let started = self
+                    .protocol
+                    .read(cx)
+                    .place_call(&peer, voice(ports), None, cx);
                 (Some(audio), Some(started))
             }
             Err(error) => {
@@ -264,7 +267,10 @@ impl CallDesk {
         self.call = None;
         let (audio, started) = match CallAudio::open(FORMAT) {
             Ok((audio, ports)) => {
-                let started = self.protocol.read(cx).answer_call(&ring, voice(ports), cx);
+                let started = self
+                    .protocol
+                    .read(cx)
+                    .answer_call(&ring, voice(ports), None, cx);
                 (Some(audio), Some(started))
             }
             Err(error) => {
@@ -434,6 +440,10 @@ impl CallDesk {
             CallProgress::Answered => call.reached.answered = true,
             CallProgress::Connected => call.reached.connected = true,
             CallProgress::Ended(end) => return self.finish(serial, &end, cx),
+            // Video comes with video calls, which this desk does not take yet.
+            CallProgress::PeerVideo(_)
+            | CallProgress::VideoRequested(_)
+            | CallProgress::KeyframeWanted => return,
         }
         if call.reached.answered && !matches!(call.phase, Phase::Live { .. }) {
             if call.reached.connected {

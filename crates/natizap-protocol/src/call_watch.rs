@@ -6,9 +6,10 @@ use std::sync::Arc;
 
 use futures::StreamExt as _;
 use whatsapp_rust::prelude::Event;
-use whatsapp_rust::voip::{CallEvent, CallHandle, depacketize_opus_from_mlow};
+use whatsapp_rust::voip::{CallEvent, CallHandle, VideoState, depacketize_opus_from_mlow};
 use whatsapp_rust::wacore::types::call::CallAction;
 
+use crate::call_video::VideoRequest;
 use crate::live_call::{CallEnd, CallProgress};
 
 /// Something a call's watch heard.
@@ -130,6 +131,20 @@ impl Watch {
                     CallEvent::AudioFormatMismatch { .. } => {
                         self.fail("the other end's sound is in a format natizap lacks".to_owned());
                     }
+                    CallEvent::VideoStateChanged {
+                        state,
+                        upgrade_token,
+                        ..
+                    } => return video_state(*state, *upgrade_token),
+                    // RTCP feedback asking for a picture to start over from:
+                    // PLI (206, 1) or FIR (206, 4).
+                    CallEvent::RtcpReceived { feedback, .. }
+                        if feedback.iter().any(|asked| {
+                            asked.packet_type == 206 && matches!(asked.fmt, 1 | 4)
+                        }) =>
+                    {
+                        return Some(CallProgress::KeyframeWanted);
+                    }
                     _ => {}
                 }
                 None
@@ -173,6 +188,26 @@ impl Watch {
 
     fn fail(&mut self, why: String) {
         self.end.get_or_insert(CallEnd::Failed(why));
+    }
+}
+
+/// What the other end's `<video>` state says, given the token that answers
+/// a request for video.
+fn video_state(
+    state: VideoState,
+    token: Option<whatsapp_rust::voip::VideoUpgradeToken>,
+) -> Option<CallProgress> {
+    match state {
+        VideoState::UpgradeRequest | VideoState::UpgradeRequestV2 => {
+            token.map(|token| CallProgress::VideoRequested(VideoRequest(token)))
+        }
+        VideoState::Enabled | VideoState::UpgradeAccept => Some(CallProgress::PeerVideo(true)),
+        VideoState::Disabled
+        | VideoState::Paused
+        | VideoState::Stopped
+        | VideoState::UpgradeCancel
+        | VideoState::UpgradeCancelByTimeout => Some(CallProgress::PeerVideo(false)),
+        _ => None,
     }
 }
 
@@ -265,6 +300,50 @@ mod tests {
         assert!(packetize_opus_for_mlow(&mut carried).is_ok());
         assert_ne!(carried, stock);
         assert_eq!(standard_opus(&carried), Some(stock));
+    }
+
+    #[test]
+    fn a_keyframe_is_wanted_when_the_other_end_lost_pictures() {
+        use whatsapp_rust::wacore::voip::rtcp::RtcpFeedback;
+        let rtcp = |packet_type, fmt| {
+            Heard::Media(CallEvent::RtcpReceived {
+                packet_types: vec![packet_type],
+                sender_ssrc: 1,
+                referenced_ssrcs: vec![2],
+                reports_audio: false,
+                reports_video: true,
+                report_blocks: Vec::new(),
+                feedback: vec![RtcpFeedback {
+                    packet_type,
+                    fmt,
+                    sender_ssrc: 1,
+                    media_ssrc: 2,
+                    fci: Vec::new(),
+                }],
+            })
+        };
+        let mut watch = Watch::new("CALL1", true);
+        assert_eq!(
+            watch.hear(&rtcp(206, 1)),
+            Some(CallProgress::KeyframeWanted)
+        );
+        assert_eq!(
+            watch.hear(&rtcp(206, 4)),
+            Some(CallProgress::KeyframeWanted)
+        );
+        // A NACK asks for packets again, not for a new picture.
+        assert_eq!(watch.hear(&rtcp(205, 1)), None);
+    }
+
+    #[test]
+    fn the_other_ends_camera_going_off_is_told() {
+        let mut watch = Watch::new("CALL1", true);
+        let stopped = Heard::Media(CallEvent::VideoStateChanged {
+            state: VideoState::Stopped,
+            orientation: None,
+            upgrade_token: None,
+        });
+        assert_eq!(watch.hear(&stopped), Some(CallProgress::PeerVideo(false)));
     }
 
     #[test]

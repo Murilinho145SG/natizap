@@ -12,6 +12,7 @@ use whatsapp_rust::wacore::types::call::{CallAction, IncomingCall};
 
 use crate::actions::{self, ActionError};
 use crate::call_log::CallFollower;
+use crate::call_video::{Video, VideoRequest};
 use crate::call_watch::Watch;
 use crate::calls::Ringing;
 use crate::{ChatId, Protocol};
@@ -146,6 +147,13 @@ pub enum CallProgress {
     Answered,
     /// Sound flows between both ends.
     Connected,
+    /// The other end's camera came on (`true`) or went off.
+    PeerVideo(bool),
+    /// The other end asks to turn the call into a video call: answer with
+    /// [`Protocol::accept_video`].
+    VideoRequested(VideoRequest),
+    /// The other end lost pictures and needs a keyframe to go on.
+    KeyframeWanted,
     /// The call is over.
     Ended(CallEnd),
 }
@@ -166,7 +174,7 @@ pub enum CallEnd {
 /// A call natizap takes part in. Clones control the same call.
 #[derive(Clone)]
 pub struct LiveCall {
-    handle: CallHandle,
+    pub(crate) handle: CallHandle,
     progress: async_channel::Receiver<CallProgress>,
 }
 
@@ -213,11 +221,13 @@ impl Protocol {
         CallFollower::new(self.answered.clone())
     }
 
-    /// Calls `peer`, with `voice` as the call's sound.
+    /// Calls `peer`, with `voice` as the call's sound and, for a video
+    /// call, `video` as its pictures.
     pub fn place_call(
         &self,
         peer: &ChatId,
         voice: Voice,
+        video: Option<Video>,
         cx: &App,
     ) -> Task<Result<LiveCall, ActionError>> {
         let to = match actions::jid(peer) {
@@ -226,23 +236,28 @@ impl Protocol {
         };
         let signals = self.subscribe(&[EventKind::IncomingCall]);
         let opus = voice.opus.clone();
+        let video = video.map(|video| video.endpoints(cx));
         let started = self.connection.run(cx, move |client| async move {
-            client
-                .voip()
-                .call(&to)
-                .audio(voice.microphone, voice.speaker)
-                .start()
+            let voip = client.voip();
+            let call = voip.call(&to).audio(voice.microphone, voice.speaker);
+            let call = match video {
+                Some((camera, screen)) => call.video(camera, screen),
+                None => call,
+            };
+            call.start()
                 .await
                 .map_err(|error| ActionError::refused(&error))
         });
         follow(started, signals, opus, false, cx)
     }
 
-    /// Answers `ring`, with `voice` as the call's sound.
+    /// Answers `ring`, with `voice` as the call's sound and, when the
+    /// caller turned their camera on, `video` as its pictures.
     pub fn answer_call(
         &self,
         ring: &Ring,
         voice: Voice,
+        video: Option<Video>,
         cx: &App,
     ) -> Task<Result<LiveCall, ActionError>> {
         let signals = self.subscribe(&[EventKind::IncomingCall]);
@@ -255,16 +270,19 @@ impl Protocol {
             ring.id.clone(),
             Arc::clone(&ring.offer),
         );
+        // An offer without video takes none: the library refuses it.
+        let video = video
+            .filter(|_| ring.video)
+            .map(|video| video.endpoints(cx));
         let started = self.connection.run(cx, move |client| async move {
+            let voip = client.voip();
+            let answer = voip.accept(&offer).audio(voice.microphone, voice.speaker);
+            let answer = match video {
+                Some((camera, screen)) => answer.video(camera, screen),
+                None => answer,
+            };
             // The answer's setup is large: on the heap, not the stack.
-            let started = Box::pin(
-                client
-                    .voip()
-                    .accept(&offer)
-                    .audio(voice.microphone, voice.speaker)
-                    .start(),
-            )
-            .await;
+            let started = Box::pin(answer.start()).await;
             if started.is_err() {
                 answered.forget(&id);
             }
