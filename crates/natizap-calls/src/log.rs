@@ -29,6 +29,13 @@ pub struct CallLog {
     _tasks: [Task<()>; 3],
 }
 
+/// Calls the history just filed, from any of its sources, for their chats
+/// to show.
+#[derive(Debug, Clone)]
+pub struct CallsFiled(pub Vec<CallRecord>);
+
+impl gpui::EventEmitter<CallsFiled> for CallLog {}
+
 impl std::fmt::Debug for CallLog {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("CallLog")
@@ -65,17 +72,22 @@ impl CallLog {
                     return;
                 }
             };
+            // At first, every call kept: each shows in its chat, those
+            // kept before chats showed calls among them. A call already
+            // in its chat stays as it was.
+            let mut filed = None;
             loop {
                 match store.recent() {
                     Ok(calls) => {
-                        if lists_tx.send(calls).await.is_err() {
+                        let filed = filed.take().unwrap_or_else(|| calls.clone());
+                        if lists_tx.send((calls, filed)).await.is_err() {
                             return;
                         }
                     }
                     Err(error) => tracing::error!(%error, "could not read the call history"),
                 }
                 // Waits for the next call that ended, or calls to import.
-                let kept = loop {
+                let (kept, calls) = loop {
                     let Ok(input) = inputs.recv().await else {
                         return;
                     };
@@ -83,22 +95,29 @@ impl CallLog {
                         Input::Event(event) => {
                             let ended = follower.hear(&event);
                             if !ended.is_empty() {
-                                break store.keep(&ended);
+                                break (store.keep(&ended), ended);
                             }
                         }
-                        Input::Import(calls) => break store.keep_new(&calls),
+                        Input::Import(calls) => break (store.keep_new(&calls), calls),
                     }
                 };
-                if let Err(error) = kept {
-                    tracing::error!(%error, "could not keep calls");
-                }
+                filed = Some(match kept {
+                    Ok(()) => calls,
+                    Err(error) => {
+                        tracing::error!(%error, "could not keep calls");
+                        Vec::new()
+                    }
+                });
             }
         });
         let apply = cx.spawn(async move |this, cx| {
-            while let Ok(calls) = lists.recv().await {
+            while let Ok((calls, filed)) = lists.recv().await {
                 if this
                     .update(cx, |log, cx| {
                         log.calls = calls;
+                        if !filed.is_empty() {
+                            cx.emit(CallsFiled(filed));
+                        }
                         cx.notify();
                     })
                     .is_err()

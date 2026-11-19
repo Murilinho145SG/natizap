@@ -118,7 +118,9 @@ and whose `StatusReply` it sends through `MessageLog` in the poster's chat.
 The binary tells the `StatusBook` who people are and who the account's
 contacts are, and the chat list who has a status
 (`ChatListView::set_status_rings`). Its Calls button shows the calls'
-`CallsPane`, whose `CallChatRequested` opens that chat. The calls'
+`CallsPane`, whose `CallChatRequested` opens that chat. The call history
+(`CallLog`) emits `CallsFiled` for the calls it files, which the binary
+hands to `MessageLog::file_calls` so each shows in its chat. The calls'
 `CallDesk` lives in the `Shell` with the other features, so a call goes
 on with the window closed; its `CallRang` opens a closed window. The
 conversation emits `CallRequested` from its header, voice or video,

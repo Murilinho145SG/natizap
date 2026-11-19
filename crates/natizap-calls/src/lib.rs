@@ -33,7 +33,7 @@ pub use desk::{
 };
 pub use group::CallGroup;
 pub use keys::{HangUp, ToggleCamera, ToggleMute, call_keys};
-pub use log::CallLog;
+pub use log::{CallLog, CallsFiled};
 pub use pane::{CallBackRequested, CallChatRequested, CallsPane};
 pub use panel::VideoPanel;
 pub use picker::SharePicker;

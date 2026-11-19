@@ -6,7 +6,7 @@
 use std::collections::HashSet;
 
 use gpui::{App, AppContext as _, Context, Entity, WindowHandle, WindowId};
-use natizap_calls::CallRang;
+use natizap_calls::{CallRang, CallsFiled};
 use natizap_messages::StoredStatus;
 use natizap_notifications::NotificationOpened;
 use natizap_protocol::ChatId;
@@ -41,6 +41,12 @@ impl Shell {
             if shell.window.is_none() {
                 shell.show(None, cx);
             }
+        })
+        .detach();
+        // Each call the history files shows in its chat, as on the phone.
+        let messages = features.messages.clone();
+        cx.subscribe(&features.calls, move |_, _, CallsFiled(calls), cx| {
+            messages.read(cx).file_calls(calls);
         })
         .detach();
         Self::hand_over_backlog(&features, cx);
