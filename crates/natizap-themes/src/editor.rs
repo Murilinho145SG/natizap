@@ -4,9 +4,10 @@
 use gpui::prelude::*;
 use gpui::{Context, Entity, FontWeight, SharedString, Window, div, px, rgb, rgba};
 use natizap_ui::theme::Theme;
-use natizap_ui::{Button, ButtonVariant, TextInput};
+use natizap_ui::{Button, ButtonVariant, ColorPicked, ColorPicker, TextInput};
 
 use crate::book::ThemeBook;
+use crate::settings::ThemeSettings;
 use crate::tokens::{self, GROUPS, Token};
 
 /// A theme being made, from a native one or the user's own.
@@ -19,6 +20,8 @@ pub(crate) struct Draft {
     name: Entity<TextInput>,
     /// Each colour's hex field, in the editor's order.
     fields: Vec<(Token, Entity<TextInput>)>,
+    /// The colour whose picker is open, by key, and the picker.
+    picking: Option<(&'static str, Entity<ColorPicker>)>,
 }
 
 impl Draft {
@@ -47,7 +50,40 @@ impl Draft {
             theme,
             name,
             fields,
+            picking: None,
         }
+    }
+
+    /// Opens the picker on the colour `key`, or closes it if it is open
+    /// there. The picker writes what it picks into the colour's field.
+    pub(crate) fn toggle_picker(
+        &mut self,
+        key: &'static str,
+        window: &mut Window,
+        cx: &mut Context<ThemeSettings>,
+    ) {
+        if self.picking.as_ref().is_some_and(|(open, _)| *open == key) {
+            self.picking = None;
+            return;
+        }
+        let Some((token, input)) = self.fields.iter().find(|(token, _)| token.key == key) else {
+            return;
+        };
+        let (token, input) = (*token, input.clone());
+        let picker = cx.new(|_| ColorPicker::new((token.get)(&self.theme), token.alpha));
+        cx.subscribe_in(
+            &picker,
+            window,
+            move |_, _, ColorPicked(color), window, cx| {
+                let hex = token.write(*color);
+                input.update(cx, |input, cx| {
+                    input.clear(window, cx);
+                    input.insert(&hex, window, cx);
+                });
+            },
+        )
+        .detach();
+        self.picking = Some((key, picker));
     }
 
     /// The hex fields, to follow their changes.
@@ -78,8 +114,13 @@ impl Draft {
         self.editing.as_ref()
     }
 
-    /// The editor: the name, then each group of colours.
-    pub(crate) fn render(&self, theme: Theme) -> gpui::Stateful<gpui::Div> {
+    /// The editor: the name, then each group of colours; a swatch opens
+    /// the picker under its colour.
+    pub(crate) fn render(
+        &self,
+        theme: Theme,
+        cx: &mut Context<ThemeSettings>,
+    ) -> gpui::Stateful<gpui::Div> {
         div()
             .id("theme-editor")
             .max_h(px(360.0))
@@ -87,7 +128,7 @@ impl Draft {
             .flex()
             .flex_col()
             .gap_3()
-            .child(row("Name", None, self.name.clone(), theme))
+            .child(row("Name", None, self.name.clone(), theme, cx))
             .children(GROUPS.iter().map(|(group, members)| {
                 div()
                     .flex()
@@ -112,32 +153,63 @@ impl Draft {
                         } else {
                             (color << 8) | 0xff
                         };
-                        Some(row(token.label, Some(swatch), input.clone(), theme))
+                        let picker = self
+                            .picking
+                            .as_ref()
+                            .filter(|(open, _)| *open == token.key)
+                            .map(|(_, picker)| picker.clone());
+                        Some(
+                            div()
+                                .flex()
+                                .flex_col()
+                                .gap_2()
+                                .child(row(
+                                    token.label,
+                                    Some((token.key, swatch)),
+                                    input.clone(),
+                                    theme,
+                                    cx,
+                                ))
+                                .children(
+                                    picker.map(|picker| div().flex().justify_end().child(picker)),
+                                ),
+                        )
                     }))
             }))
     }
 }
 
-/// A labelled field, with the colour it holds beside it.
+/// A labelled field, with the colour it holds beside it; clicking the
+/// colour opens its picker.
 fn row(
     label: &'static str,
-    swatch: Option<u32>,
+    swatch: Option<(&'static str, u32)>,
     input: Entity<TextInput>,
     theme: Theme,
+    cx: &mut Context<ThemeSettings>,
 ) -> gpui::Div {
     div()
         .flex()
         .items_center()
         .gap_3()
         .child(div().flex_1().min_w_0().text_size(px(13.0)).child(label))
-        .children(swatch.map(|color| {
+        .children(swatch.map(|(key, color)| {
             div()
-                .size(px(20.0))
+                .id(SharedString::from(format!("swatch-{key}")))
+                .size(px(22.0))
                 .flex_none()
                 .rounded_md()
                 .border_1()
                 .border_color(rgb(theme.line))
                 .bg(rgba(color))
+                .cursor_pointer()
+                .hover(|swatch| swatch.border_color(rgb(theme.text)))
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    if let Some(draft) = &mut this.draft {
+                        draft.toggle_picker(key, window, cx);
+                        cx.notify();
+                    }
+                }))
         }))
         .child(
             div()

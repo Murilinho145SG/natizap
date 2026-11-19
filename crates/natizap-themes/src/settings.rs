@@ -13,7 +13,7 @@ use crate::editor::{Draft, actions};
 pub struct ThemeSettings {
     book: Entity<ThemeBook>,
     /// The theme being made, while the editor is open.
-    draft: Option<Draft>,
+    pub(crate) draft: Option<Draft>,
     /// Following the editor's fields while it is open.
     fields: Vec<Subscription>,
 }
@@ -181,7 +181,7 @@ impl Render for ThemeSettings {
         );
         if let Some(draft) = &self.draft {
             let editing = draft.editing().is_some();
-            return section.child(draft.render(theme)).child(actions(
+            return section.child(draft.render(theme, cx)).child(actions(
                 editing,
                 |this: &mut Self, cx| {
                     if let Some(name) = this
