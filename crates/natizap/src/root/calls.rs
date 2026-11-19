@@ -1,13 +1,72 @@
-//! The Calls place: the call history in place of the chat list, a call
-//! opening its chat.
+//! Calls: the Calls place, the call history in place of the chat list, a
+//! call opening its chat; and the call under way, placed from the open
+//! chat, in its bar or a window of its own.
 
-use gpui::{AppContext as _, Context, Entity, Window};
-use natizap_calls::{CallChatRequested, CallLog, CallsPane};
+use gpui::{AppContext as _, Context, Entity, Window, px, size};
+use natizap_calls::{
+    CallBar, CallChatRequested, CallDesk, CallLog, CallPoppedOut, CallWindow, CallsPane, RingCard,
+};
 use natizap_chats::ChatList;
+use natizap_messages::{CallRequested, ConversationView};
+use natizap_profiles::ProfilePictures;
 
 use super::{Place, Root};
 
 impl Root {
+    /// The call's bar and ringing card over `desk`. Calls the open chat
+    /// when its header asks, opens the chat of the call in the bar when it
+    /// is clicked, and moves the call to its own window when the bar asks.
+    pub(super) fn follow_desk(
+        desk: &Entity<CallDesk>,
+        pictures: &Entity<ProfilePictures>,
+        conversation: &Entity<ConversationView>,
+        cx: &mut Context<Self>,
+    ) -> (Entity<CallBar>, Entity<RingCard>) {
+        let bar = cx.new(|cx| CallBar::new(desk.clone(), pictures.clone(), cx));
+        let card = cx.new(|cx| RingCard::new(desk.clone(), pictures.clone(), cx));
+        cx.subscribe(conversation, |root, _, CallRequested(peer), cx| {
+            root.desk
+                .update(cx, |desk, cx| desk.place(peer.clone(), cx));
+        })
+        .detach();
+        cx.subscribe(&bar, |root, _, CallChatRequested(chat), cx| {
+            let title = root.calls.read(cx).title(chat);
+            root.place = Place::Chats;
+            root.chat_with(chat, title, cx);
+        })
+        .detach();
+        cx.subscribe(&bar, |root, _, _: &CallPoppedOut, cx| {
+            root.pop_out_call(cx);
+        })
+        .detach();
+        (bar, card)
+    }
+
+    /// Shows the call in its own window, opening it if it is not open.
+    fn pop_out_call(&mut self, cx: &mut Context<Self>) {
+        let shown = self.call_window.is_some_and(|window| {
+            window
+                .update(cx, |_, window, _| window.activate_window())
+                .is_ok()
+        });
+        if shown {
+            return;
+        }
+        let options = crate::window_options(
+            "natizap call",
+            size(px(360.0), px(520.0)),
+            size(px(280.0), px(380.0)),
+            cx,
+        );
+        let (desk, pictures) = (self.desk.clone(), self.pictures.clone());
+        match cx.open_window(options, |window, cx| {
+            cx.new(|cx| CallWindow::new(desk, pictures, window, cx))
+        }) {
+            Ok(window) => self.call_window = Some(window),
+            Err(error) => tracing::error!(?error, "could not open the call's window"),
+        }
+    }
+
     /// Keeps the call history told what chats are called.
     pub(super) fn follow_calls(
         calls: &Entity<CallLog>,

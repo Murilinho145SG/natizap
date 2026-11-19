@@ -19,13 +19,46 @@ const LEAST_CONVERSATION: f32 = 420.0;
 impl Root {
     /// The window's content, laid out for a window `width` wide.
     pub(super) fn content(&mut self, width: Pixels, cx: &mut Context<Self>) -> AnyElement {
-        let theme = *cx.theme();
         if !self.shows_chats(cx) {
             return self.pairing.clone().into_any_element();
         }
         let reconnecting = matches!(self.session.read(cx).state(), SessionState::Reconnecting);
         div()
             .size_full()
+            .relative()
+            .flex()
+            .flex_col()
+            .child(self.call_bar.clone())
+            .child(self.places(width, cx))
+            .child(self.ring_card.clone())
+            // Chats stay readable offline, so the news floats over them
+            // instead of replacing them.
+            .when(reconnecting, |content| {
+                content.child(
+                    div()
+                        .absolute()
+                        .top_3()
+                        .left_0()
+                        .right_0()
+                        .flex()
+                        .justify_center()
+                        .child(
+                            Alert::new(AlertTone::Warning, "Reconnecting…")
+                                .description("The connection dropped. natizap keeps trying."),
+                        ),
+                )
+            })
+            .into_any_element()
+    }
+
+    /// The rail, the side column, the conversation and what opens over
+    /// them, under the call's bar.
+    fn places(&mut self, width: Pixels, cx: &mut Context<Self>) -> AnyElement {
+        let theme = *cx.theme();
+        div()
+            .flex_1()
+            .min_h_0()
+            .w_full()
             .relative()
             .flex()
             .child(self.rail(cx))
@@ -89,23 +122,6 @@ impl Root {
             .children(self.settings.clone())
             .children(self.status_viewer.clone())
             .children(self.status_composer.clone())
-            // Chats stay readable offline, so the news floats over them
-            // instead of replacing them.
-            .when(reconnecting, |content| {
-                content.child(
-                    div()
-                        .absolute()
-                        .top_3()
-                        .left_0()
-                        .right_0()
-                        .flex()
-                        .justify_center()
-                        .child(
-                            Alert::new(AlertTone::Warning, "Reconnecting…")
-                                .description("The connection dropped. natizap keeps trying."),
-                        ),
-                )
-            })
             .into_any_element()
     }
 }

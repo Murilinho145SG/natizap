@@ -6,6 +6,7 @@
 use std::collections::HashSet;
 
 use gpui::{App, AppContext as _, Context, Entity, WindowHandle, WindowId};
+use natizap_calls::CallRang;
 use natizap_messages::StoredStatus;
 use natizap_notifications::NotificationOpened;
 use natizap_protocol::ChatId;
@@ -34,6 +35,13 @@ impl Shell {
                 shell.show(chat.as_ref(), cx);
             },
         )
+        .detach();
+        // A call rings in natizap's window: one closed to the tray opens.
+        cx.subscribe(&features.desk, |shell, _, _: &CallRang, cx| {
+            if shell.window.is_none() {
+                shell.show(None, cx);
+            }
+        })
         .detach();
         Self::hand_over_backlog(&features, cx);
         let shell = cx.weak_entity();
