@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 use std::path::Path;
+use std::time::Duration;
 
 use natizap_protocol::{ChatId, Forwarding, Media, Unread};
-use rusqlite::{Connection, params, params_from_iter};
+use rusqlite::{Connection, TransactionBehavior, params, params_from_iter};
 
 use crate::message::{Delivery, Message, MessageChange, Reaction};
 
@@ -122,15 +123,19 @@ impl MessageStore {
         Self::init(Connection::open_in_memory()?)
     }
 
-    fn init(connection: Connection) -> rusqlite::Result<Self> {
-        let version: i64 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    fn init(mut connection: Connection) -> rusqlite::Result<Self> {
+        // The log and its backlog open the store at once on a first run:
+        // the version is read and the migrations run under one write lock,
+        // which the other waits for, or both would migrate.
+        connection.busy_timeout(Duration::from_secs(10))?;
+        let migrating = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let version: i64 = migrating.query_row("PRAGMA user_version", [], |row| row.get(0))?;
         let applied = usize::try_from(version).unwrap_or(0);
         for (from, migration) in MIGRATIONS.iter().enumerate().skip(applied) {
-            connection.execute_batch(&format!(
-                "BEGIN; {migration} PRAGMA user_version = {}; COMMIT;",
-                from + 1
-            ))?;
+            migrating.execute_batch(migration)?;
+            migrating.execute_batch(&format!("PRAGMA user_version = {};", from + 1))?;
         }
+        migrating.commit()?;
         connection.pragma_update(None, "journal_mode", "WAL")?;
         Ok(Self { connection })
     }

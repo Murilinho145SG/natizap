@@ -589,3 +589,23 @@ fn clearing_a_chat_keeps_its_starred_messages_and_deleting_it_does_not() -> rusq
     );
     Ok(())
 }
+
+#[test]
+fn a_new_store_opened_twice_at_once_migrates_once() {
+    let dir = std::env::temp_dir().join(format!("natizap-store-race-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap_or_default();
+    let path = dir.join("messages.db");
+    // As the log and its backlog do on a first run.
+    let openings: Vec<_> = (0..4)
+        .map(|_| {
+            let path = path.clone();
+            std::thread::spawn(move || MessageStore::open(&path).map(drop))
+        })
+        .collect();
+    for opening in openings {
+        let opened = opening.join().map_err(|_| "a thread panicked");
+        assert!(matches!(opened, Ok(Ok(()))), "{opened:?}");
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
