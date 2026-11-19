@@ -10,6 +10,7 @@ mod answer;
 mod business;
 mod buttons;
 mod call_log;
+mod call_watch;
 mod calls;
 mod chat;
 mod chat_actions;
