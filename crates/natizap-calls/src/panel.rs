@@ -21,14 +21,12 @@ use crate::desk::{CallDesk, CallLayout, CallShown, CameraState, Phase, Sharing, 
 use crate::keys::HANG_UP;
 use crate::look::ringed;
 use crate::person_menu::{peer_badge, person_menu};
-use crate::pointer::{Held, follower};
+use crate::pointer::{DRAG_SLOP, Held, follower, inside};
 use crate::screen::Painted;
 
 const CORNERS: f32 = 14.0;
 /// The smallest the picture shrinks to: its controls still fit.
 const LEAST: (f32, f32) = (220.0, 140.0);
-/// How far the pointer goes before holding the panel is dragging it.
-const DRAG_SLOP: f32 = 4.0;
 
 /// The call under way, floating over the window while it is arranged so.
 /// Draws nothing otherwise.
@@ -163,17 +161,6 @@ impl Held for VideoPanel {
         }
         cx.notify();
     }
-}
-
-/// `place` moved as little as needed for a panel `size` big to fit in
-/// `area`.
-fn inside(place: Point<Pixels>, size: Size<Pixels>, area: Bounds<Pixels>) -> Point<Pixels> {
-    let most_x = (area.size.width - size.width).max(px(0.0));
-    let most_y = (area.size.height - size.height).max(px(0.0));
-    point(
-        place.x.clamp(px(0.0), most_x),
-        place.y.clamp(px(0.0), most_y),
-    )
 }
 
 impl Render for VideoPanel {
@@ -430,31 +417,4 @@ fn own_picture(
                 .child(painted),
         )
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use gpui::{Bounds, point, px, size};
-
-    use super::inside;
-
-    #[test]
-    fn a_dragged_panel_stays_inside_the_window() {
-        let area = Bounds::new(point(px(0.0), px(40.0)), size(px(1000.0), px(600.0)));
-        let panel = size(px(340.0), px(220.0));
-        // Within reach: it goes where it was put.
-        assert_eq!(
-            inside(point(px(100.0), px(50.0)), panel, area),
-            point(px(100.0), px(50.0))
-        );
-        // Past the right and bottom edges, and above the top: held at them.
-        assert_eq!(
-            inside(point(px(990.0), px(-30.0)), panel, area),
-            point(px(660.0), px(0.0))
-        );
-        assert_eq!(
-            inside(point(px(-5.0), px(900.0)), panel, area),
-            point(px(0.0), px(380.0))
-        );
-    }
 }
