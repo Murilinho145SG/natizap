@@ -17,7 +17,7 @@ use natizap_ui::theme::{ActiveTheme as _, Theme};
 use natizap_ui::{Button, ButtonSize, ButtonVariant, Icon, avatar};
 
 use crate::bar::{CallPoppedOut, camera_button, mute_button, screen_button};
-use crate::desk::{CallDesk, CallLayout, CallShown, CameraState, Phase, VideoShown};
+use crate::desk::{CallDesk, CallLayout, CallShown, CameraState, Phase, Sharing, VideoShown};
 use crate::keys::HANG_UP;
 use crate::look::ringed;
 use crate::pointer::{Held, follower};
@@ -194,7 +194,7 @@ impl Render for VideoPanel {
             window,
         );
         let preview = self.preview.paint(
-            video.as_ref().and_then(|video| video.preview.clone()),
+            video.as_ref().and_then(VideoShown::own_picture),
             px(8.0),
             window,
         );
@@ -381,15 +381,17 @@ impl VideoPanel {
 }
 
 /// The user's own picture, `width` by `height`, while the camera is on or
-/// opening; the caller places it over the other end's.
-pub(crate) fn own_picture(
+/// opening or the screen is shared; the caller places it over the other
+/// end's.
+fn own_picture(
     video: &VideoShown,
     painted: gpui::Div,
     theme: Theme,
     width: Pixels,
     height: Pixels,
 ) -> impl IntoElement {
-    let shown = matches!(video.camera, CameraState::On | CameraState::Opening);
+    let shown = matches!(video.camera, CameraState::On | CameraState::Opening)
+        || video.sharing == Sharing::On;
     div().when(shown, |corner| {
         corner.child(
             div()

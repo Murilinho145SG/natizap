@@ -1,8 +1,8 @@
 //! The call shown large: over the chat in the main window, docked with the
 //! chat below it or filling the chat's area, and in a window of its own. A
 //! voice call shows the person in the middle, with the call's clock under
-//! them in the call's own window (the main window's bar shows it there); a video call fills the stage with the other end's picture, the
-//! user's own in its corner. The controls sit at the bottom; in the main
+//! them in the call's own window (the main window's bar shows it there);
+//! a video call shows its pictures as tiles (see `tiles`). The controls sit at the bottom; in the main
 //! window, its arrangement's buttons sit at the top right, and a docked
 //! stage's foot is dragged to make it taller or shorter.
 
@@ -11,20 +11,21 @@ use std::rc::Rc;
 
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, Bounds, Context, Entity, EventEmitter, FontWeight, MouseButton, MouseDownEvent,
-    Pixels, Point, Window, div, px, rgb, rgba,
+    Bounds, Context, Entity, EventEmitter, FontWeight, MouseButton, MouseDownEvent, Pixels, Point,
+    Window, div, px, rgb, rgba,
 };
 use natizap_profiles::ProfilePictures;
 use natizap_ui::theme::{ActiveTheme as _, DISPLAY_FONT, Theme};
 use natizap_ui::{Button, ButtonSize, ButtonVariant, Icon, avatar};
 
 use crate::bar::{CallPoppedOut, camera_button, mute_button, phase_line, screen_button};
-use crate::desk::{CallDesk, CallLayout, CallShown, Phase, VideoShown};
+use crate::desk::{CallDesk, CallLayout, CallShown, Phase};
 use crate::keys::HANG_UP;
 use crate::look::ringed;
-use crate::panel::own_picture;
 use crate::pointer::{Held, follower};
-use crate::screen::Painted;
+use crate::tiles::{Arrangement, Grab};
+
+mod video;
 
 /// The shortest a docked call gets: its controls and the person still fit.
 const LEAST_HEIGHT: f32 = 200.0;
@@ -40,16 +41,27 @@ pub(crate) enum Home {
     Window,
 }
 
+/// What the pointer holds down on a stage.
+#[derive(Debug, Clone, Copy)]
+enum Hold {
+    /// A docked stage's foot: where it went down, and the height then.
+    Foot(Point<Pixels>, Pixels),
+    /// A small tile.
+    Tile(Grab),
+}
+
 /// The call under way, shown large.
 pub struct CallStage {
     desk: Entity<CallDesk>,
     pictures: Entity<ProfilePictures>,
     home: Home,
-    remote: Painted,
-    preview: Painted,
-    /// The pointer dragging a docked stage's foot: where it went down and
-    /// the height then.
-    held: Option<(Point<Pixels>, Pixels)>,
+    paints: video::Paints,
+    /// How the user arranged a video call's tiles.
+    arrangement: Arrangement,
+    /// The small tiles beside the focused one, as last drawn.
+    small_count: usize,
+    /// What the pointer holds down.
+    held: Option<Hold>,
     /// The stage, as last painted.
     area: Rc<Cell<Bounds<Pixels>>>,
     /// The tallest a docked stage may get in the window as last drawn.
@@ -88,8 +100,9 @@ impl CallStage {
             desk,
             pictures,
             home,
-            remote: Painted::default(),
-            preview: Painted::default(),
+            paints: video::Paints::default(),
+            arrangement: Arrangement::default(),
+            small_count: 0,
             held: None,
             area: Rc::default(),
             tallest: px(f32::MAX),
@@ -245,83 +258,23 @@ impl CallStage {
                 MouseButton::Left,
                 cx.listener(|this, event: &MouseDownEvent, _, cx| {
                     let height = this.desk.read(cx).docked_height();
-                    this.held = Some((event.position, height));
+                    this.held = Some(Hold::Foot(event.position, height));
                     cx.stop_propagation();
                 }),
             )
-    }
-
-    /// The call with video: the other end's picture filling the stage.
-    fn pictured(
-        &mut self,
-        call: &CallShown,
-        video: &VideoShown,
-        theme: Theme,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let remote = self.remote.paint(video.remote.clone(), px(0.0), window);
-        let preview = self.preview.paint(video.preview.clone(), px(10.0), window);
-        div()
-            .size_full()
-            .relative()
-            .flex()
-            .flex_col()
-            .bg(rgb(theme.deep))
-            .child(remote)
-            .when(video.remote.is_none(), |stage| {
-                stage.child(self.person(call, cx))
-            })
-            // The main window's bar already says who and how long; the
-            // call's own window has no bar.
-            .when(
-                video.remote.is_some() && self.home == Home::Window,
-                |stage| {
-                    stage.child(
-                        div()
-                            .absolute()
-                            .top_0()
-                            .left_0()
-                            .right_0()
-                            .p_4()
-                            .flex()
-                            .flex_col()
-                            .bg(rgba(theme.scrim))
-                            .child(
-                                div()
-                                    .truncate()
-                                    .font_weight(FontWeight::SEMIBOLD)
-                                    .child(call.title.clone()),
-                            )
-                            .child(phase_line(call, theme)),
-                    )
-                },
-            )
-            .child(
-                div()
-                    .absolute()
-                    .right_4()
-                    .bottom(px(84.0))
-                    .child(own_picture(video, preview, theme, px(160.0), px(120.0))),
-            )
-            .child(
-                div()
-                    .absolute()
-                    .bottom_5()
-                    .left_0()
-                    .right_0()
-                    .flex()
-                    .justify_center()
-                    .child(Self::controls(call, cx)),
-            )
-            .into_any_element()
     }
 }
 
 impl Held for CallStage {
     fn moved(&mut self, at: Point<Pixels>, cx: &mut Context<Self>) {
-        let Some((from, height)) = self.held else {
-            return;
+        let (from, height) = match &mut self.held {
+            Some(Hold::Foot(from, height)) => (*from, *height),
+            Some(Hold::Tile(grab)) => {
+                grab.follow(at);
+                cx.notify();
+                return;
+            }
+            None => return,
         };
         let tallest = self.tallest.max(px(LEAST_HEIGHT));
         let height = (height + (at.y - from.y)).clamp(px(LEAST_HEIGHT), tallest);
@@ -330,7 +283,13 @@ impl Held for CallStage {
     }
 
     fn released(&mut self, _: bool, cx: &mut Context<Self>) {
-        self.held = None;
+        if let Some(Hold::Tile(grab)) = self.held.take() {
+            let stage = self.area.get();
+            match grab.dropped(stage, self.arrangement.corner, self.small_count) {
+                Some(corner) => self.arrangement.corner = corner,
+                None => self.arrangement.focus(grab.tile),
+            }
+        }
         cx.notify();
     }
 }
@@ -341,8 +300,7 @@ impl Render for CallStage {
         let desk = self.desk.read(cx);
         let layout = desk.layout();
         let Some(call) = desk.call(cx) else {
-            self.remote.paint(None, px(0.0), window);
-            self.preview.paint(None, px(0.0), window);
+            self.paints.clear(window);
             return div().size_full().bg(rgb(theme.pane)).into_any_element();
         };
         self.tallest = window.viewport_size().height - px(LEAST_CHAT + 100.0);
@@ -351,8 +309,7 @@ impl Render for CallStage {
         let stage = if let Some(video) = call.video.clone().filter(|_| !ended) {
             self.pictured(&call, &video, theme, window, cx)
         } else {
-            self.remote.paint(None, px(0.0), window);
-            self.preview.paint(None, px(0.0), window);
+            self.paints.clear(window);
             div()
                 .size_full()
                 .flex()

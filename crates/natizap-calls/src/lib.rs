@@ -19,6 +19,7 @@ mod screen;
 mod settings;
 mod stage;
 mod store;
+mod tiles;
 mod window;
 
 pub use bar::{CallBar, CallPoppedOut, RingCard};

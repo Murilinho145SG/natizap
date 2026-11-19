@@ -101,11 +101,24 @@ pub struct CallShown {
 pub struct VideoShown {
     /// The other end's newest picture, while their camera is on.
     pub remote: Option<Arc<RenderImage>>,
-    /// The user's own newest picture, while the camera is on.
-    pub preview: Option<Arc<RenderImage>>,
+    /// The camera's newest picture, while it is on.
+    pub camera_picture: Option<Arc<RenderImage>>,
+    /// The shared screen's newest picture, while it is shared.
+    pub screen_picture: Option<Arc<RenderImage>>,
     pub camera: CameraState,
-    /// Whether the screen is shared, in place of the camera.
+    /// Whether the screen is shared.
     pub sharing: Sharing,
+}
+
+impl VideoShown {
+    /// What the user sends, as they see it small: the shared screen, else
+    /// the camera.
+    #[must_use]
+    pub fn own_picture(&self) -> Option<Arc<RenderImage>> {
+        self.screen_picture
+            .clone()
+            .or_else(|| self.camera_picture.clone())
+    }
 }
 
 /// The one call natizap is in, from placing or answering it until shortly
@@ -307,11 +320,13 @@ impl CallDesk {
                     .peer_on
                     .then(|| video.remote.read(cx).image())
                     .flatten(),
-                // While the screen is shared, the user sees what they share.
-                preview: video
+                camera_picture: video
+                    .preview
+                    .as_ref()
+                    .and_then(|preview| preview.read(cx).image()),
+                screen_picture: video
                     .shared_preview
                     .as_ref()
-                    .or(video.preview.as_ref())
                     .and_then(|preview| preview.read(cx).image()),
                 camera: video.camera,
                 sharing: video.sharing,
