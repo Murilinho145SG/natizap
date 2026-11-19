@@ -4212,7 +4212,7 @@ dependencies = [
 
 [[package]]
 name = "natizap"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "async-channel",
@@ -4242,7 +4242,7 @@ dependencies = [
 
 [[package]]
 name = "natizap-calls"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "async-channel",
  "chrono",
@@ -4258,7 +4258,7 @@ dependencies = [
 
 [[package]]
 name = "natizap-chats"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "async-channel",
  "chrono",
@@ -4272,7 +4272,7 @@ dependencies = [
 
 [[package]]
 name = "natizap-contacts"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "chrono",
  "gpui",
@@ -4285,7 +4285,7 @@ dependencies = [
 
 [[package]]
 name = "natizap-launcher"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "dirs",
  "gpui",
@@ -4297,7 +4297,7 @@ dependencies = [
 
 [[package]]
 name = "natizap-messages"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "async-channel",
  "chrono",
@@ -4317,7 +4317,7 @@ dependencies = [
 
 [[package]]
 name = "natizap-notifications"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "gpui",
  "natizap-playback",
@@ -4328,7 +4328,7 @@ dependencies = [
 
 [[package]]
 name = "natizap-outbox"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "image",
  "natizap-playback",
@@ -4338,7 +4338,7 @@ dependencies = [
 
 [[package]]
 name = "natizap-playback"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "ashpd 0.14.1",
  "async-channel",
@@ -4356,7 +4356,7 @@ dependencies = [
 
 [[package]]
 name = "natizap-player"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "gpui",
  "image",
@@ -4367,7 +4367,7 @@ dependencies = [
 
 [[package]]
 name = "natizap-profiles"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "gpui",
  "natizap-protocol",
@@ -4376,7 +4376,7 @@ dependencies = [
 
 [[package]]
 name = "natizap-protocol"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "async-channel",
  "base64 0.22.1",
@@ -4393,7 +4393,7 @@ dependencies = [
 
 [[package]]
 name = "natizap-session"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "gpui",
  "natizap-protocol",
@@ -4405,7 +4405,7 @@ dependencies = [
 
 [[package]]
 name = "natizap-status"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "async-channel",
  "chrono",
@@ -4423,7 +4423,7 @@ dependencies = [
 
 [[package]]
 name = "natizap-stickers"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "gpui",
  "natizap-protocol",
@@ -4434,7 +4434,7 @@ dependencies = [
 
 [[package]]
 name = "natizap-themes"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "gpui",
  "natizap-ui",
@@ -4443,7 +4443,7 @@ dependencies = [
 
 [[package]]
 name = "natizap-tray"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "async-channel",
  "gpui",
@@ -4457,7 +4457,7 @@ dependencies = [
 
 [[package]]
 name = "natizap-ui"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "gpui",
@@ -4468,7 +4468,7 @@ dependencies = [
 
 [[package]]
 name = "natizap-update"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "gpui",
  "natizap-ui",
