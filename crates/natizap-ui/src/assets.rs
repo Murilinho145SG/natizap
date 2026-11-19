@@ -126,6 +126,14 @@ icons! {
     Muted => "muted.svg",
     /// Chooses where something shows in the window.
     Layout => "layout.svg",
+    /// A voice call that came in.
+    CallIncoming => "call-incoming.svg",
+    /// A voice call that was made.
+    CallOutgoing => "call-outgoing.svg",
+    /// A video call that came in.
+    VideoIncoming => "video-incoming.svg",
+    /// A video call that was made.
+    VideoOutgoing => "video-outgoing.svg",
     /// Moves something into a window of its own.
     PopOut => "pop-out.svg",
     /// Shares the screen in a call.
