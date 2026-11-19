@@ -15,6 +15,16 @@ pub const QUICK: Duration = Duration::from_millis(140);
 /// For things that appear: menus, dialogs, panels, messages.
 pub const ENTER: Duration = Duration::from_millis(220);
 
+/// One breath of something that pulses while a state lasts: dots while
+/// someone types, a ring while a call rings.
+pub const BREATH: Duration = Duration::from_millis(1200);
+
+/// How far into a breath `delta` is, as a swell: 0 at its ends, 1 halfway.
+#[must_use]
+pub fn swell(delta: f32) -> f32 {
+    1.0 - (delta * 2.0 - 1.0).abs()
+}
+
 /// Starts fast and settles gently, as things that arrive should.
 #[must_use]
 pub fn ease_out(delta: f32) -> f32 {
@@ -105,6 +115,14 @@ pub fn slide_in<E: IntoElement + Styled + 'static>(
 #[cfg(test)]
 mod tests {
     use super::{after, ease_out};
+
+    #[test]
+    fn a_breath_swells_and_falls_back() {
+        use super::swell;
+        assert!(swell(0.0).abs() < f32::EPSILON);
+        assert!((swell(0.5) - 1.0).abs() < f32::EPSILON);
+        assert!(swell(1.0).abs() < f32::EPSILON);
+    }
 
     #[test]
     fn eases_from_start_to_end() {

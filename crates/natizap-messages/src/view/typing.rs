@@ -3,10 +3,9 @@
 //! faces, their first names when the user likes them shown, and dots that
 //! breathe, or a microphone while someone records.
 
-use std::time::Duration;
-
 use gpui::prelude::*;
 use gpui::{Animation, AnimationExt as _, Context, Div, SharedString, div, px, rgb, svg};
+use natizap_ui::motion::{BREATH, swell};
 use natizap_ui::theme::{ActiveTheme as _, Theme};
 use natizap_ui::{Icon, avatar};
 
@@ -17,8 +16,6 @@ use natizap_protocol::Activity;
 /// How many faces show; the names say the rest.
 const MOST_FACES: usize = 3;
 const FACE: f32 = 20.0;
-/// One breath of the dots.
-const BREATH: Duration = Duration::from_millis(1200);
 
 impl ConversationView {
     /// The note of who is typing, while anyone is.
@@ -121,8 +118,7 @@ fn dots(theme: Theme) -> Div {
                     Animation::new(BREATH).repeat(),
                     move |dot, delta| {
                         // Bright as each dot's turn comes round, faint between.
-                        let turn = (delta + 1.0 - offset) % 1.0;
-                        let lit = 1.0 - (turn * 2.0 - 1.0).abs();
+                        let lit = swell((delta + 1.0 - offset) % 1.0);
                         dot.opacity(0.3 + 0.7 * lit)
                     },
                 )
@@ -139,7 +135,7 @@ fn microphone(theme: Theme) -> Div {
             .with_animation(
                 "typing-recording",
                 Animation::new(BREATH).repeat(),
-                |mic, delta| mic.opacity(0.4 + 0.6 * (1.0 - (delta * 2.0 - 1.0).abs())),
+                |mic, delta| mic.opacity(0.4 + 0.6 * swell(delta)),
             ),
     )
 }
