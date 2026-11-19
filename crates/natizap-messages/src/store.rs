@@ -95,6 +95,14 @@ const MIGRATIONS: &[&str] = &[
         INSERT INTO messages_fts (rowid, text) VALUES (new.rowid, new.text);
      END;
      INSERT INTO messages_fts (messages_fts) VALUES ('rebuild');",
+    // Stars arrive with the account state, often before the history that
+    // holds their messages: kept here, they reach a message once it is.
+    "CREATE TABLE stars (id TEXT PRIMARY KEY, starred INTEGER NOT NULL);
+     CREATE TRIGGER messages_star_kept AFTER INSERT ON messages
+     WHEN EXISTS (SELECT 1 FROM stars WHERE id = new.id) BEGIN
+        UPDATE messages SET starred = (SELECT starred FROM stars WHERE id = new.id)
+            WHERE rowid = new.rowid;
+     END;",
 ];
 
 /// Every message natizap has seen, on disk.
@@ -204,8 +212,7 @@ impl MessageStore {
                     message_id,
                     starred,
                 } => {
-                    tx.prepare_cached("UPDATE messages SET starred = ?2 WHERE id = ?1")?
-                        .execute(params![message_id, starred])?;
+                    star(&tx, message_id, *starred)?;
                 }
                 MessageChange::PosterSaved { message_id, file } => {
                     save_poster(&tx, message_id, file)?;
@@ -416,6 +423,18 @@ fn record_upload(
         media.file_enc_sha256,
         media.size.and_then(|size| i64::try_from(size).ok()),
     ])?;
+    Ok(())
+}
+
+/// Stars or unstars a message, now or once it arrives.
+fn star(tx: &rusqlite::Transaction<'_>, message_id: &str, starred: bool) -> rusqlite::Result<()> {
+    tx.prepare_cached("UPDATE messages SET starred = ?2 WHERE id = ?1")?
+        .execute(params![message_id, starred])?;
+    tx.prepare_cached(
+        "INSERT INTO stars (id, starred) VALUES (?1, ?2)
+         ON CONFLICT (id) DO UPDATE SET starred = excluded.starred",
+    )?
+    .execute(params![message_id, starred])?;
     Ok(())
 }
 

@@ -536,3 +536,21 @@ fn forgets_old_text_once_edited_or_deleted() -> rusqlite::Result<()> {
     );
     Ok(())
 }
+
+#[test]
+fn a_star_that_arrives_before_its_message_reaches_it() -> rusqlite::Result<()> {
+    let mut store = MessageStore::in_memory()?;
+    let chat = ChatId::new("5511@s.whatsapp.net");
+    store.apply(&[MessageChange::Starred {
+        message_id: "M1".into(),
+        starred: true,
+    }])?;
+    store.apply(&[MessageChange::Received(message(
+        chat.as_str(),
+        "M1",
+        1,
+        "hi",
+    ))])?;
+    assert!(store.latest(std::slice::from_ref(&chat), 1)?[0].starred);
+    Ok(())
+}

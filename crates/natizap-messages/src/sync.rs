@@ -258,7 +258,20 @@ fn history_message(chat: &ChatId, info: &wa::WebMessageInfo) -> Vec<MessageChang
     });
     let content = history_content(chat, info);
     let votes = history_votes(chat, &id, info, content.as_ref());
-    content.into_iter().chain(reactions).chain(votes).collect()
+    // The phone marks the messages it starred in the history too.
+    let star = info
+        .starred
+        .unwrap_or(false)
+        .then(|| MessageChange::Starred {
+            message_id: id.clone(),
+            starred: true,
+        });
+    content
+        .into_iter()
+        .chain(reactions)
+        .chain(votes)
+        .chain(star)
+        .collect()
 }
 
 /// The votes the phone kept with a poll in the history, already opened.
