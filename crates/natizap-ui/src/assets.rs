@@ -120,6 +120,8 @@ icons! {
     Muted => "muted.svg",
     /// Moves something into a window of its own.
     PopOut => "pop-out.svg",
+    /// Shares the screen in a call.
+    ScreenShare => "screen-share.svg",
     /// How the app looks: its theme.
     Palette => "palette.svg",
     /// Pause what is playing.
