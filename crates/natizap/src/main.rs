@@ -18,7 +18,7 @@ use gpui::{
     Action, App, AppContext as _, Bounds, KeyBinding, Pixels, Size, WindowBackgroundAppearance,
     WindowBounds, WindowDecorations, WindowOptions, actions, px, size,
 };
-use natizap_calls::{CallDesk, CallLog};
+use natizap_calls::{CallDesk, CallLog, call_keys};
 use natizap_chats::ChatList;
 use natizap_messages::MessageLog;
 use natizap_notifications::Notifier;
@@ -96,6 +96,7 @@ fn main() -> anyhow::Result<()> {
             tracing::error!(?error, "could not load the bundled fonts");
         }
         let features = features(&data_dir, &executable, cx);
+        CallDesk::answer_keys(&features.desk, cx);
         let shell = cx.new(|cx| Shell::new(features, cx));
         shell.update(cx, |shell, cx| {
             shell.show(None, cx);
@@ -130,6 +131,7 @@ fn bind_app_keys(cx: &mut App) {
     ];
     let bindings: Vec<KeyBinding> = keys
         .into_iter()
+        .chain(call_keys())
         .filter_map(|(keys, action)| {
             KeyBinding::load(keys, action, None, false, None, cx)
                 .inspect_err(|error| tracing::error!(%error, keys, "invalid key binding"))

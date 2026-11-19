@@ -12,6 +12,7 @@ use natizap_ui::{Button, ButtonSize, ButtonVariant, Icon, avatar, window_frame};
 
 use crate::bar::{camera_button, mute_button, phase_line};
 use crate::desk::{CallDesk, CallShown, Phase};
+use crate::keys::HANG_UP;
 use crate::panel::own_picture;
 use crate::screen::Painted;
 
@@ -103,7 +104,7 @@ impl CallWindow {
                     .variant(ButtonVariant::Danger)
                     .size(ButtonSize::Large)
                     .round()
-                    .tooltip("Hang up")
+                    .tooltip(HANG_UP.tip("Hang up"))
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.desk.update(cx, CallDesk::hang_up);
                     })),

@@ -8,6 +8,7 @@ use natizap_ui::theme::{ActiveTheme as _, DISPLAY_FONT, Theme};
 use natizap_ui::{Button, ButtonSize, ButtonVariant, Icon, avatar};
 
 use crate::desk::{CallDesk, CallShown, CameraState, Phase};
+use crate::keys::{CAMERA, HANG_UP, MUTE};
 use crate::pane::CallChatRequested;
 
 /// The user asked for the call in a window of its own.
@@ -128,7 +129,7 @@ impl Render for CallBar {
                                     .icon(Icon::CallEnd)
                                     .variant(ButtonVariant::Danger)
                                     .round()
-                                    .tooltip("Hang up")
+                                    .tooltip(HANG_UP.tip("Hang up"))
                                     .on_click(cx.listener(|bar, _, _, cx| {
                                         bar.desk.update(cx, CallDesk::hang_up);
                                     })),
@@ -296,7 +297,7 @@ pub(crate) fn mute_button(
         .size(size)
         .selected(call.muted)
         .round()
-        .tooltip(if call.muted { "Unmute" } else { "Mute" })
+        .tooltip(MUTE.tip(if call.muted { "Unmute" } else { "Mute" }))
         .on_click(on_click)
 }
 
@@ -319,9 +320,9 @@ pub(crate) fn camera_button(
         .selected(on)
         .round()
         .tooltip(match camera {
-            Some(CameraState::Missing) => "No camera found",
-            _ if on => "Turn camera off",
-            _ => "Turn camera on",
+            Some(CameraState::Missing) => "No camera found".to_owned(),
+            _ if on => CAMERA.tip("Turn camera off"),
+            _ => CAMERA.tip("Turn camera on"),
         })
         .on_click(on_click)
 }
