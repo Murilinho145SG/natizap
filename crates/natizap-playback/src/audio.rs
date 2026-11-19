@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use cpal::traits::{DeviceTrait as _, HostTrait as _, StreamTrait as _};
-use cpal::{SampleFormat, Stream, StreamConfig};
+use cpal::{SampleFormat, Stream, StreamConfig, SupportedStreamConfig, SupportedStreamConfigRange};
 
 use crate::PlaybackError;
 use crate::clock::Clock;
@@ -98,12 +98,23 @@ fn f32_config(device: &cpal::Device) -> Result<StreamConfig, PlaybackError> {
     let preferred = device
         .default_output_config()
         .map_err(|error| PlaybackError::Audio(error.to_string()))?;
-    if preferred.sample_format() == SampleFormat::F32 {
-        return Ok(preferred.config());
-    }
-    device
+    let supported = device
         .supported_output_configs()
-        .map_err(|error| PlaybackError::Audio(error.to_string()))?
+        .map_err(|error| PlaybackError::Audio(error.to_string()))?;
+    closest_f32(&preferred, supported)
+        .ok_or_else(|| PlaybackError::Audio("the sound card does not take f32 samples".into()))
+}
+
+/// `preferred` if it is in `f32` samples, else the first of `supported`
+/// that is, at the rate closest to `preferred`'s.
+pub(crate) fn closest_f32(
+    preferred: &SupportedStreamConfig,
+    mut supported: impl Iterator<Item = SupportedStreamConfigRange>,
+) -> Option<StreamConfig> {
+    if preferred.sample_format() == SampleFormat::F32 {
+        return Some(preferred.config());
+    }
+    supported
         .find(|range| range.sample_format() == SampleFormat::F32)
         .map(|range| {
             let rate = preferred
@@ -111,5 +122,4 @@ fn f32_config(device: &cpal::Device) -> Result<StreamConfig, PlaybackError> {
                 .clamp(range.min_sample_rate(), range.max_sample_rate());
             range.with_sample_rate(rate).config()
         })
-        .ok_or_else(|| PlaybackError::Audio("the sound card does not take f32 samples".into()))
 }

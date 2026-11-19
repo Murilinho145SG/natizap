@@ -6,16 +6,19 @@
 //! steer it and read where it is, and draw it however their feature needs.
 //! [`save_poster`] and [`still_jpeg`] take a still from a video,
 //! [`probe`] reads how long a file plays and how big its pictures are,
-//! [`Recorder`] records voice notes and [`Clip`] plays short sounds held in
-//! memory.
+//! [`Recorder`] records voice notes, [`Clip`] plays short sounds held in
+//! memory and [`CallAudio`] carries a call's sound to and from the sound
+//! card.
 
 mod audio;
+mod call_audio;
 mod clip;
 mod clock;
 mod decode;
 mod poster;
 mod probe;
 mod record;
+mod resample;
 mod speed;
 mod turn;
 
@@ -23,6 +26,7 @@ use std::path::Path;
 use std::sync::{Arc, mpsc};
 use std::time::Duration;
 
+pub use call_audio::{CallAudio, CallAudioError, CallFormat, CallPorts};
 pub use clip::{Clip, ClipError};
 pub use poster::{MediaFileError, save_poster, still_jpeg};
 pub use probe::{Probe, probe};
