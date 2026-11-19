@@ -125,6 +125,9 @@ khronos-egl = { git = "https://github.com/zed-industries/khronos-egl", rev = "42
 # Skips app state patches already applied instead of failing on them; see
 # patches/README.md. Drop when whatsapp-rust ships the fix.
 wacore-appstate = { path = "patches/wacore-appstate" }
+# Takes MLOW on RTP payload type 122, which a calling phone sends; see
+# patches/README.md. Drop when whatsapp-rust ships the fix.
+wacore = { path = "patches/wacore" }
 
 [profile.release]
 lto = "thin"
