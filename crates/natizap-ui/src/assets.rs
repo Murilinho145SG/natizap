@@ -106,6 +106,10 @@ icons! {
     Lock => "lock.svg",
     /// natizap's mark: an "n" that is also a speech bubble.
     Logo => "logo.svg",
+    /// Fills the whole screen.
+    FullScreen => "fullscreen.svg",
+    /// Leaves the whole screen.
+    FullScreenExit => "fullscreen-exit.svg",
     /// Shows things side by side, in a grid.
     Grid => "grid.svg",
     /// Maximize the window.
@@ -120,6 +124,8 @@ icons! {
     More => "more.svg",
     /// Notifications silenced.
     Muted => "muted.svg",
+    /// Chooses where something shows in the window.
+    Layout => "layout.svg",
     /// Moves something into a window of its own.
     PopOut => "pop-out.svg",
     /// Shares the screen in a call.
